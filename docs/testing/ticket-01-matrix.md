@@ -32,6 +32,18 @@ Sources: `.scratch/jev-pilot-port/issues/01-pi-effort-routing.md` and parent spe
 | AC-26     | CLI-26b: reload restores branch-owned decision; shutdown is clean                          | Parent AC-26; Pi lifecycle and `appendEntry` branch storage                                                                                                                             |
 | AC-26     | CLI-26c: resume/fork/tree/compaction use the active branch, not abandoned decisions        | Parent AC-26; Pi session tree and compaction contract                                                                                                                                   |
 
+## Fresh-review regressions (approved P1 corrections)
+
+| Parent AC | Test ID / test name                                                                                                      | Independent expected-value source                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-26     | CLI-26g: fork/tree before a high-classified prompt restores medium and dispatches medium without a CLI thinking override | Accepted review P1-1; AC-26 branch ownership; settings default medium and independent next classifier low/confidence 0 must not alter it |
+| AC-26     | CLI-26h: restoring an excluded application preserves later manual user thinking                                          | Accepted review P1-1 preservation requirement; manual low is independent user authority                                                  |
+| AC-26     | CLI-26i: a fork at the included owning user retains its high effort and decision even before the later receipt entry     | Accepted review P1-1 branch ownership in both directions; an included user owns its application, not merely later receipt availability   |
+| AC-26     | CLI-26j: explicit startup thinking override survives fork replacement and no-change classification                       | Accepted review P1-1 manual user authority; Pi's explicit low selection on replacement must not be replaced with excluded saved high     |
+| AC-08     | CLI-08c: steering all lookup then continue dispatches low and retains both owners' low decisions                         | Accepted review P1-2; pinned continuation reuses immediate predecessor; low/.99 lookup follows earlier high/.95                          |
+
+| AC-26 | CLI-26k: restoring before a prompt does not reassign its application to a later command-like user message | Accepted review P1-1 branch ownership: an excluded prompt's decision stays excluded when the next input is ineligible for classification |
+
 ## Verification levels
 
 - `bun test tests/effort-policy.test.ts`: offline independent policy examples; **not E2E**.

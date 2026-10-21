@@ -47,7 +47,9 @@ System One receives:
 
 The extension does not automatically send tool arguments/results, thinking blocks, images, file contents or the full transcript. Platform discovery reads directory entries only, at the project root and at most 60 immediate subdirectories, excluding dependencies/build outputs and symbolic links. Prompt and assistant text may themselves contain sensitive data: **there is no automatic secret-redaction guarantee**. Authentication headers and complete service responses are not logged.
 
-Branch state is reconstructed only from the active Pi branch. New sessions do not inherit another session's decisions; resume/reload, forks/tree navigation and compaction retain only their owned history. Shutdown/reload cleanup aborts active classifier work and is idempotent.
+Branch state is reconstructed only from the active Pi branch. A pre-application `jev-pilot:effort-application` entry records the baseline and numeric decision before Pi appends a thinking change; the following owning user entry makes it eligible on that branch. A `jev-pilot:effort` receipt links the application to its persisted user ID. Restore boundaries record `jev-pilot:effort-restored`, discard excluded provisional changes and preserve manual thinking entries and explicit startup overrides. These entries contain no prompt text and are not sent to the model.
+
+New sessions do not inherit another session's decisions; resume/reload, forks/tree navigation and compaction retain only their owned history. In steering mode `all`, each persisted queued user's receipt is committed before the next queued message reads its predecessor; `continue` therefore reuses the immediate decision rather than an older one. Shutdown/reload cleanup aborts active classifier work and is idempotent.
 
 ## Verify locally
 

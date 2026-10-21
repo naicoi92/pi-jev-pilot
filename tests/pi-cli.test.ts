@@ -356,6 +356,204 @@ test("CLI-26c resume, fork, tree and compaction respect branch ownership", async
   expect(fixture.process.exitCode).toBe(0);
 }, 30000);
 
+test("CLI-26g excluded prompt effort does not survive fork or tree restoration", async () => {
+  fixture = new PiFixture();
+  await fixture.start();
+  await fixture.prompt(task);
+  const original = (await fixture.command("get_state")).data as {
+    sessionFile: string;
+  };
+  const entries = (
+    (await fixture.command("get_entries")).data as {
+      entries: { id: string; message?: { role: string } }[];
+    }
+  ).entries;
+  const user = entries.find((entry) => entry.message?.role === "user")!;
+  const beforeUser = entries[entries.indexOf(user) - 1]!;
+  await fixture.command("fork", { entryId: user.id });
+  expect((await fixture.command("get_state")).data).toMatchObject({
+    thinkingLevel: "medium",
+  });
+  fixture.response = answer("low", 0);
+  await fixture.prompt(
+    "Please inspect this independent lengthy task and explain all relevant implementation details carefully",
+  );
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
+  expect(await lastDecision(fixture)).toMatchObject({ effective: "medium" });
+  await fixture.command("switch_session", {
+    sessionPath: original.sessionFile,
+  });
+  await fixture.command("prompt", {
+    message: `/fixture-tree ${beforeUser.id}`,
+  });
+  expect((await fixture.command("get_state")).data).toMatchObject({
+    thinkingLevel: "medium",
+  });
+  await fixture.prompt(
+    "Please inspect another independent lengthy task and explain all relevant implementation details carefully",
+  );
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
+  expect(await lastDecision(fixture)).toMatchObject({ effective: "medium" });
+}, 20000);
+
+test("CLI-26h restoring an excluded application preserves manual user thinking", async () => {
+  fixture = new PiFixture();
+  await fixture.start();
+  await fixture.prompt(task);
+  await fixture.command("set_thinking_level", { level: "low" });
+  const entries = (
+    (await fixture.command("get_entries")).data as {
+      entries: { id: string; type: string; thinkingLevel?: string }[];
+    }
+  ).entries;
+  const manual = entries.findLast(
+    (entry) =>
+      entry.type === "thinking_level_change" && entry.thinkingLevel === "low",
+  )!;
+  await fixture.prompt(task);
+  await fixture.command("prompt", { message: `/fixture-tree ${manual.id}` });
+  expect((await fixture.command("get_state")).data).toMatchObject({
+    thinkingLevel: "low",
+  });
+  fixture.response = answer("low", 0);
+  await fixture.prompt(
+    "Please inspect this independent lengthy task and explain all relevant implementation details carefully",
+  );
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
+}, 20000);
+
+test("CLI-08c steering all continuation retains the immediately preceding lookup decision", async () => {
+  fixture = new PiFixture();
+  await fixture.start();
+  await fixture.prompt(task);
+  await fixture.command("set_steering_mode", { mode: "all" });
+  fixture.modelDelay = 300;
+  const prior = fixture.generations.length;
+  const offset = fixture.records.length;
+  await fixture.command("prompt", { message: task });
+  await fixture.wait(() => fixture!.generations.length > prior);
+  fixture.response = answer("low", 0.99);
+  await fixture.command("steer", {
+    message:
+      "What is the ordinary low effort lookup for this exact independent question?",
+  });
+  await fixture.command("steer", { message: "continue" });
+  await fixture.wait(() =>
+    fixture!.records
+      .slice(offset)
+      .some((entry) => entry.type === "agent_settled"),
+  );
+  expect(
+    fixture.generations.map((request) => request.reasoning_effort),
+  ).toEqual(["high", "high", "low"]);
+  expect(fixture.classifications).toHaveLength(3);
+  const entries = (
+    (await fixture.command("get_entries")).data as {
+      entries: {
+        id: string;
+        customType?: string;
+        data?: { ownerEntryId: string };
+        message?: { role: string };
+      }[];
+    }
+  ).entries;
+  const users = entries
+    .filter((entry) => entry.message?.role === "user")
+    .slice(-2);
+  const retained = entries
+    .filter((entry) => entry.customType === "jev-pilot:effort")
+    .slice(-2)
+    .map((entry) => entry.data);
+  expect(retained).toMatchObject([
+    {
+      ownerEntryId: users[0]!.id,
+      outcome: "classified",
+      effective: "low",
+      decision: { effort: 0, effortConfidence: 0.99 },
+    },
+    {
+      ownerEntryId: users[1]!.id,
+      outcome: "reused",
+      effective: "low",
+      decision: { effort: 0, effortConfidence: 0.99 },
+    },
+  ]);
+  expect(users[0]!.id).not.toBe(users[1]!.id);
+}, 20000);
+
+test("CLI-26i fork including the owning user retains its effort and reusable decision", async () => {
+  fixture = new PiFixture();
+  await fixture.start();
+  await fixture.prompt(task);
+  const entries = (
+    (await fixture.command("get_entries")).data as {
+      entries: { id: string; message?: { role: string } }[];
+    }
+  ).entries;
+  const user = entries.find((entry) => entry.message?.role === "user")!;
+  await fixture.command("prompt", { message: `/fixture-fork-at ${user.id}` });
+  expect((await fixture.command("get_state")).data).toMatchObject({
+    thinkingLevel: "high",
+  });
+  fixture.response = answer("low", 0);
+  await fixture.prompt("continue");
+  expect(fixture.classifications).toHaveLength(1);
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("high");
+  expect(await lastDecision(fixture)).toMatchObject({
+    outcome: "reused",
+    decision: { effort: 2 },
+  });
+}, 20000);
+
+test("CLI-26j explicit startup thinking override survives fork replacement without a new decision", async () => {
+  fixture = new PiFixture();
+  await fixture.start({}, "low");
+  await fixture.prompt(task);
+  const entries = (
+    (await fixture.command("get_entries")).data as {
+      entries: { id: string; message?: { role: string } }[];
+    }
+  ).entries;
+  const user = entries.find((entry) => entry.message?.role === "user")!;
+  await fixture.command("fork", { entryId: user.id });
+  expect((await fixture.command("get_state")).data).toMatchObject({
+    thinkingLevel: "low",
+  });
+  fixture.response = answer("low", 0);
+  await fixture.prompt(
+    "Please inspect this independent lengthy task and explain all relevant implementation details carefully",
+  );
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
+}, 20000);
+
+test("CLI-26k excluded applications are not reassigned to an ineligible later user", async () => {
+  fixture = new PiFixture();
+  await fixture.start();
+  await fixture.prompt(task);
+  const original = (await fixture.command("get_state")).data as {
+    sessionFile: string;
+  };
+  const entries = (
+    (await fixture.command("get_entries")).data as {
+      entries: { id: string; message?: { role: string } }[];
+    }
+  ).entries;
+  const user = entries.find((entry) => entry.message?.role === "user")!;
+  await fixture.command("fork", { entryId: user.id });
+  await fixture.prompt("/unregistered-command");
+  const current = (await fixture.command("get_state")).data as {
+    sessionFile: string;
+  };
+  await fixture.command("switch_session", {
+    sessionPath: original.sessionFile,
+  });
+  await fixture.command("switch_session", { sessionPath: current.sessionFile });
+  fixture.response = answer("low", 0);
+  await fixture.prompt("continue");
+  expect(fixture.classifications).toHaveLength(2);
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
+}, 20000);
+
 test("CLI-26e provider retries preserve effort without new classification", async () => {
   fixture = new PiFixture();
   fixture.modelFailures = 3;

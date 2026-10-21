@@ -46,7 +46,10 @@ export class PiFixture {
   classifierHeaderChecks = 0;
   private sequence = 0;
 
-  async start(env: Record<string, string> = {}): Promise<this> {
+  async start(
+    env: Record<string, string> = {},
+    thinkingOverride?: string,
+  ): Promise<this> {
     this.directory = await mkdtemp(join(tmpdir(), "pi-jev-ticket01-"));
     const agent = join(this.directory, "agent");
     await mkdir(agent);
@@ -163,6 +166,7 @@ import { appendFileSync } from "node:fs";
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("fixture-reload", { handler: async (_args, ctx) => { await ctx.reload(); } });
   pi.registerCommand("fixture-tree", { handler: async (id, ctx) => { await ctx.navigateTree(id, { summarize: false }); } });
+  pi.registerCommand("fixture-fork-at", { handler: async (id, ctx) => { await ctx.fork(id, { position: "at" }); } });
   const log = (event: unknown) => appendFileSync(${JSON.stringify(join(this.directory, "lifecycle.jsonl"))}, JSON.stringify(event) + "\\n");
   pi.on("session_start", log);
   pi.on("session_shutdown", log);
@@ -216,8 +220,7 @@ export default function (pi: ExtensionAPI) {
         "--no-approve",
         "--model",
         "fixture/fixture-model",
-        "--thinking",
-        "medium",
+        ...(thinkingOverride ? ["--thinking", thinkingOverride] : []),
       ],
       { cwd: this.directory, env: childEnv },
     );
