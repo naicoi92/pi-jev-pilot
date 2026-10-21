@@ -1,0 +1,12 @@
+node_modules/
+.codegraph/
+.pi/subagents/
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+dist/
+*.tgz
+.DS_Store
+docs/research/data/
