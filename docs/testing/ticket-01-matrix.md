@@ -43,6 +43,9 @@ Sources: `.scratch/jev-pilot-port/issues/01-pi-effort-routing.md` and parent spe
 | AC-08     | CLI-08c: steering all lookup then continue dispatches low and retains both owners' low decisions                         | Accepted review P1-2; pinned continuation reuses immediate predecessor; low/.99 lookup follows earlier high/.95                          |
 
 | AC-26 | CLI-26k: restoring before a prompt does not reassign its application to a later command-like user message | Accepted review P1-1 branch ownership: an excluded prompt's decision stays excluded when the next input is ineligible for classification |
+| AC-26 | CLI-26l: explicit startup high wins on fork replacement even when it equals the excluded provisional high | Accepted targeted re-review P1 and Pi 1.3.0 `sdk.js:121–125`: explicit `options.thinkingLevel` takes priority over restored transcript. Start high, manually select medium, classify high, fork before the owner, then classify low/confidence 0: restored state, next provider effort and retained effective decision must all remain high. Equality is not provenance. |
+
+**Current checkpoint: BLOCK.** `CLI-26l` is intentionally retained as a normal failing regression, not skipped or expected-failure annotated. See the [startup provenance blocker](ticket-01-startup-provenance-blocker.md) for released API evidence, the three joint invariants and unapproved host/API options. Earlier green results do not cover this collision.
 
 ## Verification levels
 

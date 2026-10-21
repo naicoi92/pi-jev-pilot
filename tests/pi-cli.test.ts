@@ -499,6 +499,40 @@ test("CLI-26j explicit startup thinking override survives fork replacement witho
   expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
 }, 20000);
 
+test("CLI-26l explicit startup override wins when it equals the excluded provisional thinking", async () => {
+  fixture = new PiFixture();
+  await fixture.start({}, "high");
+  expect((await fixture.command("get_state")).data).toMatchObject({
+    thinkingLevel: "high",
+  });
+  await fixture.command("set_thinking_level", { level: "medium" });
+  expect((await fixture.command("get_state")).data).toMatchObject({
+    thinkingLevel: "medium",
+  });
+  await fixture.prompt(task);
+  const entries = (
+    (await fixture.command("get_entries")).data as {
+      entries: { id: string; message?: { role: string } }[];
+    }
+  ).entries;
+  const user = entries.find((entry) => entry.message?.role === "user")!;
+  await fixture.command("fork", { entryId: user.id });
+  const restored = (await fixture.command("get_state")).data;
+  fixture.response = answer("low", 0);
+  await fixture.prompt(
+    "Please inspect this independent lengthy task and explain all relevant implementation details carefully",
+  );
+  expect({
+    restored,
+    providerEffort: fixture.generations.at(-1)?.reasoning_effort,
+    retained: await lastDecision(fixture),
+  }).toMatchObject({
+    restored: { thinkingLevel: "high" },
+    providerEffort: "high",
+    retained: { effective: "high", decision: { effort: 0, effortConfidence: 0 } },
+  });
+}, 20000);
+
 test("CLI-26k excluded applications are not reassigned to an ineligible later user", async () => {
   fixture = new PiFixture();
   await fixture.start();
