@@ -9,40 +9,26 @@ export interface SystemOneConfig {
 }
 
 export function systemOneConfig(): SystemOneConfig {
-  const url =
-    process.env.JEV_SYSTEM_ONE_URL ?? "https://api.typesafe.ai/v1/systemone";
+  const url = process.env.JEV_SYSTEM_ONE_URL ?? "https://api.typesafe.ai/v1/systemone";
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error(
-      "Set JEV_SYSTEM_ONE_URL to a valid HTTP(S) System One endpoint.",
-    );
+    throw new Error("Set JEV_SYSTEM_ONE_URL to a valid HTTP(S) System One endpoint.");
   }
-  if (
-    !["https:", "http:"].includes(parsed.protocol) ||
-    parsed.username ||
-    parsed.password
-  )
+  if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password)
     throw new Error(
       "Set JEV_SYSTEM_ONE_URL to an HTTP(S) System One endpoint without embedded credentials.",
     );
-  const apiKey =
-    process.env.JEV_SYSTEM_ONE_API_KEY ?? process.env.TYPESAFE_API_KEY ?? "";
+  const apiKey = process.env.JEV_SYSTEM_ONE_API_KEY ?? process.env.TYPESAFE_API_KEY ?? "";
   if (!apiKey.trim())
-    throw new Error(
-      "Set JEV_SYSTEM_ONE_API_KEY (or TYPESAFE_API_KEY) for System One.",
-    );
+    throw new Error("Set JEV_SYSTEM_ONE_API_KEY (or TYPESAFE_API_KEY) for System One.");
   const model = process.env.JEV_SYSTEM_ONE_MODEL ?? "jev-latest";
   if (!model.trim())
-    throw new Error(
-      "Set JEV_SYSTEM_ONE_MODEL to a decision model ID (default: jev-latest).",
-    );
+    throw new Error("Set JEV_SYSTEM_ONE_MODEL to a decision model ID (default: jev-latest).");
   const timeoutMs = Number(process.env.JEV_TIMEOUT_MS ?? 1500);
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0)
-    throw new Error(
-      "Set JEV_TIMEOUT_MS to a positive integer in milliseconds (default: 1500).",
-    );
+    throw new Error("Set JEV_TIMEOUT_MS to a positive integer in milliseconds (default: 1500).");
   return { url, apiKey, model, timeoutMs };
 }
 
@@ -59,9 +45,7 @@ const questions = {
     type: "choice",
     instructions:
       'How much step-by-step reasoning does the work this request asks for need? Rate the work, not how important the topic sounds: a question or advice answered in words, even about architecture or security, is low or medium, and reviewing a small diff is medium. A short reply that approves, continues or picks an option ("go ahead", "fix all and continue", "1") takes the size of the work it approves, from the recent conversation.',
-    criteria: Object.fromEntries(
-      EFFORT_ORDER.map((level, index) => [level, rubric[index]]),
-    ),
+    criteria: Object.fromEntries(EFFORT_ORDER.map((level, index) => [level, rubric[index]])),
   },
   risky: {
     type: "noul",
@@ -81,12 +65,7 @@ function object(value: unknown): Record<string, unknown> | null {
     : null;
 }
 function probability(value: unknown): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isFinite(value) &&
-    value >= 0 &&
-    value <= 1
-  );
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
 /** Reject malformed values before they can change the current effort. */
@@ -97,8 +76,7 @@ function readDecision(value: unknown): EffortDecision | null {
   if (!answers || !effort || !risk) return null;
   const risky = risk.noul ?? risk.probability;
   if (!probability(risky)) return null;
-  if (effort.confidence !== undefined && !probability(effort.confidence))
-    return null;
+  if (effort.confidence !== undefined && !probability(effort.confidence)) return null;
   const raw = effort.probabilities;
   let probabilities: Record<string, number> | null = null;
   if (raw !== undefined) {
@@ -111,30 +89,19 @@ function readDecision(value: unknown): EffortDecision | null {
       return null;
     const named = EFFORT_ORDER.some((level) => level in distribution);
     const keys = named ? [...EFFORT_ORDER] : ["0", "1", "2", "3", "4"];
-    if (Object.keys(distribution).some((key) => !keys.includes(key)))
-      return null;
+    if (Object.keys(distribution).some((key) => !keys.includes(key))) return null;
     probabilities = Object.fromEntries(
       keys.map((key, index) => [String(index), distribution[key] ?? 0]),
     ) as Record<string, number>;
-    const total = Object.values(probabilities).reduce(
-      (sum, value) => sum + value,
-      0,
-    );
+    const total = Object.values(probabilities).reduce((sum, value) => sum + value, 0);
     if (Math.abs(total - 1) > 0.02) return null;
   }
-  const choice = EFFORT_ORDER.indexOf(
-    effort.choice as (typeof EFFORT_ORDER)[number],
-  );
+  const choice = EFFORT_ORDER.indexOf(effort.choice as (typeof EFFORT_ORDER)[number]);
   const score = effort.score;
   if (
     !probabilities &&
     choice === -1 &&
-    !(
-      typeof score === "number" &&
-      Number.isFinite(score) &&
-      score >= 0 &&
-      score <= 4
-    )
+    !(typeof score === "number" && Number.isFinite(score) && score >= 0 && score <= 4)
   )
     return null;
   const confidence = effort.confidence as number | undefined;
@@ -148,8 +115,7 @@ function readDecision(value: unknown): EffortDecision | null {
         ? choice
         : (score as number),
     effortConfidence:
-      confidence ??
-      (probabilities ? Math.max(...Object.values(probabilities)) : null),
+      confidence ?? (probabilities ? Math.max(...Object.values(probabilities)) : null),
     effortProbabilities: probabilities,
     risky,
   };
@@ -196,9 +162,7 @@ export async function classify(
       return { outcome: "schema-error" };
     }
     const decision = readDecision(value);
-    return decision
-      ? { outcome: "classified", decision }
-      : { outcome: "schema-error" };
+    return decision ? { outcome: "classified", decision } : { outcome: "schema-error" };
   } catch (error) {
     if (signal.aborted) throw error;
     return { outcome: timedOut ? "timeout" : "service-error" };

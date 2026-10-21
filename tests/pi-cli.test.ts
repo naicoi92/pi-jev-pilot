@@ -2,17 +2,14 @@ import { afterEach, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { PiFixture, answer } from "./fixtures/pi-cli.ts";
 
-const task =
-  "Please review the complete patch with particular care for failure modes";
+const task = "Please review the complete patch with particular care for failure modes";
 let fixture: PiFixture | undefined;
 
 async function lastDecision(fixture: PiFixture): Promise<unknown> {
   const entries = (await fixture.command("get_entries")).data as {
     entries: { customType?: string; data?: unknown }[];
   };
-  return entries.entries
-    .filter((entry) => entry.customType === "jev-pilot:effort")
-    .at(-1)?.data;
+  return entries.entries.filter((entry) => entry.customType === "jev-pilot:effort").at(-1)?.data;
 }
 afterEach(async () => {
   await fixture?.close();
@@ -88,10 +85,7 @@ for (const env of [
 test("CLI-10 classifier context is bounded and excludes repository contents", async () => {
   fixture = new PiFixture();
   await fixture.start();
-  await writeFile(
-    `${fixture.directory}/vercel.json`,
-    "repository-secret-never-sent",
-  );
+  await writeFile(`${fixture.directory}/vercel.json`, "repository-secret-never-sent");
   fixture.modelText = "x".repeat(5000) + " Shall I apply the proposed change?";
   for (let index = 0; index < 4; index++)
     await fixture.prompt(`Question ${index}: what is the proposed plan?`);
@@ -113,9 +107,7 @@ test("CLI-10 classifier context is bounded and excludes repository contents", as
     is_question: false,
   });
   expect(state.tool_names).toContain("read");
-  expect(JSON.stringify(fixture.classifications)).not.toContain(
-    "repository-secret-never-sent",
-  );
+  expect(JSON.stringify(fixture.classifications)).not.toContain("repository-secret-never-sent");
 }, 20000);
 
 test("CLI-10b actual read tool inputs and outputs are absent from classifier payload", async () => {
@@ -132,12 +124,8 @@ test("CLI-10b actual read tool inputs and outputs are absent from classifier pay
   };
   expect(state.recent_context).toContain("[tools: read]");
   expect(state.signals).toMatchObject({ recent_tools: { reads: 1 } });
-  expect(JSON.stringify(fixture.classifications)).not.toContain(
-    "private-tool-argument",
-  );
-  expect(JSON.stringify(fixture.classifications)).not.toContain(
-    "private-tool-result",
-  );
+  expect(JSON.stringify(fixture.classifications)).not.toContain("private-tool-argument");
+  expect(JSON.stringify(fixture.classifications)).not.toContain("private-tool-result");
 }, 20000);
 
 for (const example of [
@@ -244,9 +232,7 @@ test("CLI-13b missing model authentication never invents a route", async () => {
   fixture = new PiFixture();
   fixture.configuredModelKey = false;
   await fixture.start();
-  await expect(fixture.prompt(task)).rejects.toThrow(
-    "No API key found for fixture",
-  );
+  await expect(fixture.prompt(task)).rejects.toThrow("No API key found for fixture");
   expect(fixture.generations).toHaveLength(0);
 }, 20000);
 
@@ -270,9 +256,7 @@ test("CLI-26f queued steering input is classified at its own message boundary", 
   await fixture.command("prompt", { message: task });
   await fixture.wait(() => fixture!.generations.length === 1);
   await fixture.command("steer", { message: "Why is this a simple lookup?" });
-  await fixture.wait(() =>
-    fixture!.records.some((entry) => entry.type === "agent_settled"),
-  );
+  await fixture.wait(() => fixture!.records.some((entry) => entry.type === "agent_settled"));
   expect(fixture.classifications).toHaveLength(2);
   expect(fixture.classifications[1]?.state).toMatchObject({
     prompt: "Why is this a simple lookup?",
@@ -286,9 +270,7 @@ test("CLI-26d tool continuation keeps the applied effort without reclassificatio
   fixture.nextReadPath = `${fixture.directory}/readme.txt`;
   await fixture.prompt(task);
   expect(fixture.generations).toHaveLength(2);
-  expect(
-    fixture.generations.map((request) => request.reasoning_effort),
-  ).toEqual(["high", "high"]);
+  expect(fixture.generations.map((request) => request.reasoning_effort)).toEqual(["high", "high"]);
   expect(fixture.classifications).toHaveLength(1);
 }, 20000);
 
@@ -317,11 +299,8 @@ test("CLI-26c resume, fork, tree and compaction respect branch ownership", async
   const originalEntries = (await fixture.command("get_entries")).data as {
     entries: { id: string; type: string; message?: { role: string } }[];
   };
-  const firstUser = originalEntries.entries.find(
-    (entry) => entry.message?.role === "user",
-  )!;
-  const beforeUser =
-    originalEntries.entries[originalEntries.entries.indexOf(firstUser) - 1]!;
+  const firstUser = originalEntries.entries.find((entry) => entry.message?.role === "user")!;
+  const beforeUser = originalEntries.entries[originalEntries.entries.indexOf(firstUser) - 1]!;
   await fixture.command("new_session");
   await fixture.command("switch_session", {
     sessionPath: original.sessionFile,
@@ -347,9 +326,7 @@ test("CLI-26c resume, fork, tree and compaction respect branch ownership", async
   await fixture.prompt("continue");
   expect(fixture.classifications).toHaveLength(count);
   await fixture.stop();
-  const lifecycle = await Bun.file(
-    `${fixture.directory}/lifecycle.jsonl`,
-  ).text();
+  const lifecycle = await Bun.file(`${fixture.directory}/lifecycle.jsonl`).text();
   expect(lifecycle).toContain('"reason":"fork"');
   expect(lifecycle).toContain('"reason":"resume"');
   expect(lifecycle).toContain('"reason":"quit"');
@@ -407,8 +384,7 @@ test("CLI-26h restoring an excluded application preserves manual user thinking",
     }
   ).entries;
   const manual = entries.findLast(
-    (entry) =>
-      entry.type === "thinking_level_change" && entry.thinkingLevel === "low",
+    (entry) => entry.type === "thinking_level_change" && entry.thinkingLevel === "low",
   )!;
   await fixture.prompt(task);
   await fixture.command("prompt", { message: `/fixture-tree ${manual.id}` });
@@ -434,18 +410,17 @@ test("CLI-08c steering all continuation retains the immediately preceding lookup
   await fixture.wait(() => fixture!.generations.length > prior);
   fixture.response = answer("low", 0.99);
   await fixture.command("steer", {
-    message:
-      "What is the ordinary low effort lookup for this exact independent question?",
+    message: "What is the ordinary low effort lookup for this exact independent question?",
   });
   await fixture.command("steer", { message: "continue" });
   await fixture.wait(() =>
-    fixture!.records
-      .slice(offset)
-      .some((entry) => entry.type === "agent_settled"),
+    fixture!.records.slice(offset).some((entry) => entry.type === "agent_settled"),
   );
-  expect(
-    fixture.generations.map((request) => request.reasoning_effort),
-  ).toEqual(["high", "high", "low"]);
+  expect(fixture.generations.map((request) => request.reasoning_effort)).toEqual([
+    "high",
+    "high",
+    "low",
+  ]);
   expect(fixture.classifications).toHaveLength(3);
   const entries = (
     (await fixture.command("get_entries")).data as {
@@ -457,9 +432,7 @@ test("CLI-08c steering all continuation retains the immediately preceding lookup
       }[];
     }
   ).entries;
-  const users = entries
-    .filter((entry) => entry.message?.role === "user")
-    .slice(-2);
+  const users = entries.filter((entry) => entry.message?.role === "user").slice(-2);
   const retained = entries
     .filter((entry) => entry.customType === "jev-pilot:effort")
     .slice(-2)
@@ -561,9 +534,9 @@ test("CLI-26e provider retries preserve effort without new classification", asyn
   await fixture.command("set_auto_retry", { enabled: true });
   await fixture.prompt(task);
   expect(fixture.generations.length).toBeGreaterThan(3);
-  expect(
-    new Set(fixture.generations.map((request) => request.reasoning_effort)),
-  ).toEqual(new Set(["high"]));
+  expect(new Set(fixture.generations.map((request) => request.reasoning_effort))).toEqual(
+    new Set(["high"]),
+  );
   expect(fixture.classifications).toHaveLength(1);
 }, 30000);
 
@@ -613,9 +586,7 @@ test("CLI-12b explicit abort during classification never generates fallback", as
   await fixture.command("prompt", { message: task });
   await fixture.wait(() => fixture!.classifications.length === 1);
   await fixture.command("abort");
-  await fixture.wait(() =>
-    fixture!.records.some((entry) => entry.type === "agent_settled"),
-  );
+  await fixture.wait(() => fixture!.records.some((entry) => entry.type === "agent_settled"));
   await fixture.wait(() => fixture!.classifierAborts === 1);
   expect(fixture.generations).toHaveLength(0);
   expect(await lastDecision(fixture)).toBeUndefined();
@@ -628,9 +599,7 @@ test("CLI-12c explicit abort during model work cancels provider transport", asyn
   await fixture.command("prompt", { message: task });
   await fixture.wait(() => fixture!.generations.length === 1);
   await fixture.command("abort");
-  await fixture.wait(() =>
-    fixture!.records.some((entry) => entry.type === "agent_settled"),
-  );
+  await fixture.wait(() => fixture!.records.some((entry) => entry.type === "agent_settled"));
   await fixture.wait(() => fixture!.modelAborts === 1);
   expect(fixture.generations).toHaveLength(1);
 }, 20000);
@@ -638,14 +607,10 @@ test("CLI-12c explicit abort during model work cancels provider transport", asyn
 test("CLI-04 effort selection preserves the physical model and configured defaults", async () => {
   fixture = new PiFixture();
   await fixture.start();
-  await fixture.prompt(
-    "Please review the complete patch with particular care for failure modes",
-  );
+  await fixture.prompt("Please review the complete patch with particular care for failure modes");
   expect(fixture.generations[0]?.model).toBe("fixture-model");
   expect(fixture.generations[0]?.reasoning_effort).toBe("high");
-  const settings = await Bun.file(
-    `${fixture.directory}/agent/settings.json`,
-  ).json();
+  const settings = await Bun.file(`${fixture.directory}/agent/settings.json`).json();
   expect(settings.defaultThinkingLevel).toBe("medium");
   const state = (await fixture.command("get_state")).data as {
     model: { provider: string; id: string };
@@ -696,8 +661,6 @@ test("CLI-08b approval is classified with the proposed work in recent context", 
   await fixture.prompt("yes");
   expect(fixture.classifications).toHaveLength(2);
   const state = fixture.classifications[1]?.state as { recent_context: string };
-  expect(state.recent_context).toContain(
-    "Shall I implement the proposed multi-file change?",
-  );
+  expect(state.recent_context).toContain("Shall I implement the proposed multi-file change?");
   expect(fixture.generations[1]?.reasoning_effort).toBe("high");
 }, 20000);

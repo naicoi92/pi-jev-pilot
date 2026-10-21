@@ -18,11 +18,7 @@ export function isContinuation(prompt: string): boolean {
 function isFollowUp(prompt: string): boolean {
   const text = prompt.trim();
   if (!text || /[?？]$/.test(text)) return false;
-  if (
-    /^(what|why|how|is|are|do|does|did|can|could|should|where|when|which|who)\b/i.test(
-      text,
-    )
-  )
+  if (/^(what|why|how|is|are|do|does|did|can|could|should|where|when|which|who)\b/i.test(text))
     return false;
   if (
     /为什么|为啥|怎么|怎样|如何|什么|是不是|能不能|可不可以|有没有|是否|[吗呢][\s。.!！~～]*$/.test(
@@ -44,10 +40,7 @@ function effortScore(decision: EffortDecision): number | null {
     .map(([level, probability]) => ({ level: Number(level), probability }))
     .filter(
       ({ level, probability }) =>
-        Number.isInteger(level) &&
-        level >= 0 &&
-        level <= 4 &&
-        Number.isFinite(probability),
+        Number.isInteger(level) && level >= 0 && level <= 4 && Number.isFinite(probability),
     )
     .sort((a, b) => b.probability - a.probability || b.level - a.level);
   const [best, second] = ranked;
@@ -67,14 +60,10 @@ function effortScore(decision: EffortDecision): number | null {
     if (level <= 2 && veryHard >= 0.6) return 3;
     return level;
   }
-  if (decision.effort === null || !Number.isFinite(decision.effort))
-    return null;
+  if (decision.effort === null || !Number.isFinite(decision.effort)) return null;
   const score = Math.min(4, Math.max(0, decision.effort));
   const whole = Math.floor(score);
-  return Math.min(
-    4,
-    score - whole >= 0.5 - (whole + 1 <= 2 ? 0.15 : 0) ? whole + 1 : whole,
-  );
+  return Math.min(4, score - whole >= 0.5 - (whole + 1 <= 2 ? 0.15 : 0) ? whole + 1 : whole);
 }
 
 /** Upstream start-of-turn rules only; no mid-turn escalation or model selection. */
@@ -95,8 +84,7 @@ export function selectEffort(
   const lowering = from !== null && to < from;
   if ((isFollowUp(prompt) && lowering) || to === from) return null;
   const confidence = decision.effortConfidence;
-  const allowed =
-    confidence === null ? !lowering : confidence >= (lowering ? 0.6 : 0.3);
+  const allowed = confidence === null ? !lowering : confidence >= (lowering ? 0.6 : 0.3);
   const sureOfHigh = confidence === null || confidence >= 0.5;
   return forced || (allowed && (lowering || to < 2 || sureOfHigh))
     ? (EFFORT_ORDER[to] ?? null)

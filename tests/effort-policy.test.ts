@@ -1,9 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  selectEffort,
-  type EffortDecision,
-  type Effort,
-} from "../src/effort-policy.ts";
+import { selectEffort, type EffortDecision, type Effort } from "../src/effort-policy.ts";
 
 // AC-03 / POLICY-03: pinned route(): upgrade .3 and high confidence .5.
 test("POLICY-03 raises medium to high at the upstream high-confidence bar", () => {

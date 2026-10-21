@@ -13,9 +13,7 @@ function messagesOf(ctx: ExtensionContext): ContextMessage[] {
   const source = ctx.sessionManager.buildSessionProjection().messages;
   const failed = new Set(
     source.flatMap((message) =>
-      message.role === "toolResult" && message.isError
-        ? [message.toolCallId]
-        : [],
+      message.role === "toolResult" && message.isError ? [message.toolCallId] : [],
     ),
   );
   return source.flatMap((message): ContextMessage[] => {
@@ -35,9 +33,7 @@ function messagesOf(ctx: ExtensionContext): ContextMessage[] {
           typeof content === "string"
             ? []
             : content.flatMap((part) =>
-                part.type === "toolCall"
-                  ? [{ name: part.name, failed: failed.has(part.id) }]
-                  : [],
+                part.type === "toolCall" ? [{ name: part.name, failed: failed.has(part.id) }] : [],
               ),
       },
     ];
@@ -46,10 +42,7 @@ function messagesOf(ctx: ExtensionContext): ContextMessage[] {
 
 function recentContext(messages: ContextMessage[], prompt: string): string {
   let list = messages;
-  if (
-    list.at(-1)?.role === "user" &&
-    list.at(-1)?.text.trim() === prompt.trim()
-  )
+  if (list.at(-1)?.role === "user" && list.at(-1)?.text.trim() === prompt.trim())
     list = list.slice(0, -1);
   const newestAssistant = list.findLastIndex(
     (message) => message.role === "assistant" && message.text.trim(),
@@ -59,12 +52,9 @@ function recentContext(messages: ContextMessage[], prompt: string): string {
   for (let index = list.length - 1; index >= 0 && lines.length < 4; index--) {
     const message = list[index]!;
     const text = message.text.replace(/\s+/g, " ").trim();
-    const tools = message.tools.map(
-      (tool) => `${tool.name}${tool.failed ? " (failed)" : ""}`,
-    );
+    const tools = message.tools.map((tool) => `${tool.name}${tool.failed ? " (failed)" : ""}`);
     if (!text && !tools.length) continue;
-    const cap =
-      index === newestAssistant ? 1100 : newestAssistant >= 0 ? 300 : 500;
+    const cap = index === newestAssistant ? 1100 : newestAssistant >= 0 ? 300 : 500;
     const tail = index === newestAssistant ? 792 : 0;
     const said =
       text.length <= cap
@@ -132,8 +122,7 @@ async function platformNames(cwd: string): Promise<string> {
       if (excluded.has(entry.name) || entry.isSymbolicLink()) continue;
       const path = relative ? `${relative}/${entry.name}` : entry.name;
       paths.push(`${path}${entry.isDirectory() ? "/" : ""}`);
-      if (entry.isDirectory() && depth > 0 && directories++ < 60)
-        await scan(path, depth - 1);
+      if (entry.isDirectory() && depth > 0 && directories++ < 60) await scan(path, depth - 1);
     }
   }
   await scan("", 1);
@@ -166,8 +155,7 @@ export async function classifierState(
     for (const tool of message.tools) {
       if (["edit", "write"].includes(tool.name)) recentTools.edits++;
       if (["bash", "powershell"].includes(tool.name)) recentTools.commands++;
-      if (["read", "grep", "find", "ls"].includes(tool.name))
-        recentTools.reads++;
+      if (["read", "grep", "find", "ls"].includes(tool.name)) recentTools.reads++;
       if (tool.name === "subagent") recentTools.subagents++;
       if (tool.failed) recentTools.failed++;
     }
@@ -180,13 +168,9 @@ export async function classifierState(
     recent_context: recentContext(messages, prompt),
     signals: {
       prompt_chars: text.length,
-      files_mentioned: new Set(
-        [...text.matchAll(pathPattern)].map((match) => match[1]),
-      ).size,
+      files_mentioned: new Set([...text.matchAll(pathPattern)].map((match) => match[1])).size,
       has_code_or_error:
-        /```|Traceback|Exception|\berror\b|\bfailed\b|stack ?trace|\bat \S+:\d+/i.test(
-          text,
-        ),
+        /```|Traceback|Exception|\berror\b|\bfailed\b|stack ?trace|\bat \S+:\d+/i.test(text),
       is_question:
         text.endsWith("?") ||
         /^(what|why|how|when|where|which|who|can|could|does|do|did|is|are|should|would|will)\b/i.test(

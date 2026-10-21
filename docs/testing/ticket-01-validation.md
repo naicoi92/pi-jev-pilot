@@ -36,6 +36,17 @@ Environment: Bun `1.4.3`; official Pi `1.3.0`. Commands run from the dedicated `
 
 The initial red cases are preserved in the implementation session history: missing policy module, effort thresholds, missing extension, missing requested/effective state, missing approval context, parent cancellation at the wrong hook, and invalid configuration continuing generation. Each was followed by a focused green change. Pure-policy threshold cases form one table-driven policy slice; CLI cases exercise actual public behavior. The matrix existed before the first test file and was extended before new cases.
 
+## Current tooling (operator-approved switch)
+
+After the ownership fix was committed separately, the operator required **oxlint + oxfmt**, then approved replacing `tsc --noEmit` with **`bun check`**. Earlier Prettier/tsc commands above are historical evidence, not current project instructions. No Prettier dependency/config was present; no further Prettier runs were used after this decision.
+
+- Installed via `bun add --dev oxlint oxfmt`: oxlint **1.89.0**, oxfmt **0.74.0**, lockfile updated. Read their current `--help`; scripts are `lint`, `fmt`, `fmt:check`. Lint uses `--deny-warnings`, without autofix or rule suppressions.
+- Verified `bun check --help` and the [official Bun typechecking documentation](https://bun.com/docs/runtime/check). Bun **1.4.3+c6da4a4d3** is the tested minimum recorded in `engines.bun`; older versions are not claimed.
+- Ran `bun check` and the existing `tsc --noEmit` once against the same project: both passed, no discrepancy. The permanent `typecheck` script is now `bun check`, not two duplicate gates.
+- A temporary `/tmp/pi-jev-ticket01-check` project with no node_modules/typescript verified TS2322 exits **1**, `strict` from tsconfig is enforced, the excluded erroneous file is ignored, `--strictNullChecks false` overrides the config, and no JavaScript is emitted even with `noEmit:false` in the fixture config.
+- Bun docs explicitly state the TypeScript package is unnecessary and library declarations are built in. Removed the direct `typescript` devDependency only after that evidence, then reran project checking successfully without `node_modules/typescript`.
+- Current validation: `bun run lint`, `bun run fmt:check`, `bun run typecheck`, full `bun test`, and both parent-provided CLI repros. Formatting changes are isolated from logic fixes in the tooling commit.
+
 ## Fresh review corrections
 
 The fresh review of `71b7862541450134d2ae92b566d6de9ff413b2db` correctly blocked two reproduced P1 regressions. The original 54 passing tests were insufficient: the shared fixture's explicit `--thinking medium` masked restoration, and the queue test used only one message.

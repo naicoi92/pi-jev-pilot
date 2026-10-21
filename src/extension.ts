@@ -1,17 +1,6 @@
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-  SessionEntry,
-} from "@earendil-works/pi-coding-agent";
-import {
-  clampThinkingLevel,
-  type ModelThinkingLevel,
-} from "@earendil-works/pi-ai";
-import {
-  isContinuation,
-  selectEffort,
-  type EffortDecision,
-} from "./effort-policy.ts";
+import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
+import { clampThinkingLevel, type ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
 import { classify, systemOneConfig } from "./system-one.ts";
 import { classifierState } from "./classifier-context.ts";
 
@@ -31,22 +20,13 @@ export default function (pi: ExtensionAPI): void {
   const commitPending = (ctx: ExtensionContext) => {
     const branch = ctx.sessionManager.getBranch();
     for (const state of pending) {
-      if (
-        state.signal.aborted ||
-        state.sessionId !== ctx.sessionManager.getSessionId()
-      )
-        continue;
-      const applicationIndex = branch.findIndex(
-        (entry) => entry.id === state.data.applicationId,
-      );
+      if (state.signal.aborted || state.sessionId !== ctx.sessionManager.getSessionId()) continue;
+      const applicationIndex = branch.findIndex((entry) => entry.id === state.data.applicationId);
       if (applicationIndex === -1) continue;
       const owner = branch
         .slice(applicationIndex + 1)
-        .find(
-          (entry) => entry.type === "message" && entry.message.role === "user",
-        );
-      if (owner)
-        pi.appendEntry(STATE_TYPE, { ...state.data, ownerEntryId: owner.id });
+        .find((entry) => entry.type === "message" && entry.message.role === "user");
+      if (owner) pi.appendEntry(STATE_TYPE, { ...state.data, ownerEntryId: owner.id });
     }
     pending = [];
   };
@@ -54,9 +34,7 @@ export default function (pi: ExtensionAPI): void {
     const branch = ctx.sessionManager.getBranch();
     const desired = ownedThinking(branch);
     if (!desired) return;
-    const recorded = branch.findLast(
-      (entry) => entry.type === "thinking_level_change",
-    );
+    const recorded = branch.findLast((entry) => entry.type === "thinking_level_change");
     // A startup CLI/user override differs from recorded history and remains authoritative.
     // Tree navigation does not restore thinking in Pi 1.3.0, so restore its owned prefix.
     const restored =
@@ -110,9 +88,7 @@ export default function (pi: ExtensionAPI): void {
         );
     } catch (error) {
       ctx.ui.notify(
-        error instanceof Error
-          ? error.message
-          : "Invalid Jev Pilot configuration.",
+        error instanceof Error ? error.message : "Invalid Jev Pilot configuration.",
         "error",
       );
       ctx.abort();
@@ -141,9 +117,7 @@ export default function (pi: ExtensionAPI): void {
       if (controller.signal.aborted) return;
       const current = pi.getThinkingLevel();
       const decision = result.outcome === "classified" ? result.decision : null;
-      const requested = decision
-        ? (selectEffort(decision, current, prompt) ?? current)
-        : current;
+      const requested = decision ? (selectEffort(decision, current, prompt) ?? current) : current;
       const effective = clampThinkingLevel(ctx.model!, requested);
       // setThinkingLevel appends before the owning user is persisted. Record its
       // baseline first so a branch excluding that user can discard this change.
@@ -201,15 +175,9 @@ function ownedApplications(branch: SessionEntry[]): Set<string> {
   const owned = new Set<string>();
   let applicationId: string | undefined;
   for (const entry of branch) {
-    if (entry.type === "custom" && entry.customType === RESTORED_TYPE)
-      applicationId = undefined;
-    if (entry.type === "custom" && entry.customType === APPLICATION_TYPE)
-      applicationId = entry.id;
-    if (
-      entry.type === "message" &&
-      entry.message.role === "user" &&
-      applicationId
-    ) {
+    if (entry.type === "custom" && entry.customType === RESTORED_TYPE) applicationId = undefined;
+    if (entry.type === "custom" && entry.customType === APPLICATION_TYPE) applicationId = entry.id;
+    if (entry.type === "message" && entry.message.role === "user" && applicationId) {
       owned.add(applicationId);
       applicationId = undefined;
     }
@@ -229,8 +197,7 @@ function ownedThinking(branch: SessionEntry[]): ModelThinkingLevel | undefined {
       continue;
     }
     if (entry.type === "custom" && entry.customType === RESTORED_TYPE) {
-      level = (entry.data as { thinkingLevel: ModelThinkingLevel })
-        .thinkingLevel;
+      level = (entry.data as { thinkingLevel: ModelThinkingLevel }).thinkingLevel;
     }
     if (entry.type === "thinking_level_change") {
       const provisional =

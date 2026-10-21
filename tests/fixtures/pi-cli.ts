@@ -7,16 +7,9 @@ export interface RecordData {
   [key: string]: unknown;
 }
 export const root = resolve(import.meta.dir, "../..");
-const cli = join(
-  root,
-  "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
-);
+const cli = join(root, "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js");
 
-export function answer(
-  level = "high",
-  confidence = 0.95,
-  risky = 0,
-): RecordData {
+export function answer(level = "high", confidence = 0.95, risky = 0): RecordData {
   return {
     answers: { effort: { choice: level, confidence }, risky: { noul: risky } },
   };
@@ -36,8 +29,7 @@ export class PiFixture {
   modelDelay = 0;
   classifierAborts = 0;
   modelAborts = 0;
-  modelText =
-    "Fixture answer. Shall I implement the proposed multi-file change?";
+  modelText = "Fixture answer. Shall I implement the proposed multi-file change?";
   nextReadPath: string | undefined;
   modelFailures = 0;
   reasoning = true;
@@ -46,10 +38,7 @@ export class PiFixture {
   classifierHeaderChecks = 0;
   private sequence = 0;
 
-  async start(
-    env: Record<string, string> = {},
-    thinkingOverride?: string,
-  ): Promise<this> {
+  async start(env: Record<string, string> = {}, thinkingOverride?: string): Promise<this> {
     this.directory = await mkdtemp(join(tmpdir(), "pi-jev-ticket01-"));
     const agent = join(this.directory, "agent");
     await mkdir(agent);
@@ -62,24 +51,16 @@ export class PiFixture {
           this.classifications.push(body);
           this.classifierHeaderChecks++;
           this.sawClassifierBearer =
-            request.headers.get("authorization") ===
-            "Bearer fixture-not-a-credential";
-          request.signal.addEventListener(
-            "abort",
-            () => this.classifierAborts++,
-            { once: true },
-          );
+            request.headers.get("authorization") === "Bearer fixture-not-a-credential";
+          request.signal.addEventListener("abort", () => this.classifierAborts++, { once: true });
           if (this.classifierDelay) await Bun.sleep(this.classifierDelay);
           return new Response(
-            typeof this.response === "string"
-              ? this.response
-              : JSON.stringify(this.response),
+            typeof this.response === "string" ? this.response : JSON.stringify(this.response),
             { status: this.status },
           );
         }
         this.generations.push(body);
-        if (this.modelFailures-- > 0)
-          return new Response("temporary failure", { status: 503 });
+        if (this.modelFailures-- > 0) return new Response("temporary failure", { status: 503 });
         request.signal.addEventListener("abort", () => this.modelAborts++, {
           once: true,
         });
@@ -133,9 +114,7 @@ export class PiFixture {
           fixture: {
             baseUrl: `${this.server.url}v1`,
             api: "openai-completions",
-            ...(this.configuredModelKey
-              ? { apiKey: "fixture-not-a-credential" }
-              : {}),
+            ...(this.configuredModelKey ? { apiKey: "fixture-not-a-credential" } : {}),
             models: [
               {
                 id: "fixture-model",
@@ -238,10 +217,7 @@ export default function (pi: ExtensionAPI) {
         }
       }
     });
-    this.process.stderr.on(
-      "data",
-      (data: Buffer) => (this.stderr += data.toString()),
-    );
+    this.process.stderr.on("data", (data: Buffer) => (this.stderr += data.toString()));
     await this.command("get_state");
     return this;
   }
@@ -270,25 +246,20 @@ export default function (pi: ExtensionAPI) {
     const offset = this.records.length;
     await this.command("prompt", { message });
     await this.wait(() =>
-      this.records
-        .slice(offset)
-        .some((entry) => entry.type === "agent_settled"),
+      this.records.slice(offset).some((entry) => entry.type === "agent_settled"),
     );
   }
 
   async stop(): Promise<void> {
     if (this.process && this.process.exitCode === null) {
       this.process.stdin.end();
-      await this.wait(() => this.process.exitCode !== null, 5000).catch(() =>
-        this.process.kill(),
-      );
+      await this.wait(() => this.process.exitCode !== null, 5000).catch(() => this.process.kill());
     }
   }
 
   async close(): Promise<void> {
     await this.stop();
     this.server?.stop(true);
-    if (this.directory)
-      await rm(this.directory, { recursive: true, force: true });
+    if (this.directory) await rm(this.directory, { recursive: true, force: true });
   }
 }
