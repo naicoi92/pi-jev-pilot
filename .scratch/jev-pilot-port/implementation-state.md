@@ -19,5 +19,6 @@ Parent owns tracker statuses and integration checkout. Future ready tickets get 
 ## Progress
 
 - 07: resolved (operator decision recorded).
-- 01: assigned to isolated worker; completion requires real Pi CLI/local-fixture verification.
+- 01: isolated worker `896ba5ec-bc03-4eb9-885c-6acd9ab7d46f` interrupted by provider 429 quota during workflow `5443a5c0-f4a2-49d6-9b65-3e0d59a8fd43`; workflow terminal failed, review never started. User requested continuation. Retained child is resumable; resume the same writer, not a replacement.
+- Checkpoint: integration checkout clean; worker branch at `436fa79` has untracked LICENSE, NOTICE.md, bun.lock, package.json, tsconfig.json, docs/testing/ticket-01-matrix.md, four source modules and policy/CLI tests. No implementation commit, completion or passing verification accepted. Preserve all partial files. Next gate remains completed Pi CLI/local-fixture verification and fresh review.
 - Remaining tickets: blocked per graph until dependencies are accepted.
