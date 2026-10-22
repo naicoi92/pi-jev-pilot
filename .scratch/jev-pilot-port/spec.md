@@ -68,7 +68,7 @@ Included feature IDs are 01, 03, 04, 05, 06, 07, 08, 09, 10, 13 and 14 from the 
 
 ## Approved decision gating clarification
 
-The operator approved [decision gating](decision-gating.md): explicit user thinking is not selected or overwritten by Jev; only enabled and applicable capabilities contribute classifier questions; no questions means zero classifier calls. Existing capability scope remains intact. Advice is not execution enforcement. Supported explicit-intent detection must be verified before implementation; no implicit value heuristic or unapproved opt-in/lock mechanism is allowed. This clarification supersedes conflicting unconditional effort behavior without treating the agent-added startup-equality interpretation as an independently approved product requirement.
+The operator approved [decision gating](decision-gating.md), then clarified effort authority: installing/enabling auto-effort permits Jev to select effort over default/current thinking according to upstream policy. Existing named thinking is not a persistent lock; automatic native-intent detection and native startup-equality precedence are not required. Discard in-flight classification invalidated by manual model/thinking changes. Only enabled and applicable capabilities contribute classifier questions; no questions means zero classifier calls. Existing capability scope/defaults and task graph remain intact. Advice is not execution enforcement. No new persistent lock, opt-in mode, host patch or heuristic provenance is approved.
 
 ## Implementation Decisions
 

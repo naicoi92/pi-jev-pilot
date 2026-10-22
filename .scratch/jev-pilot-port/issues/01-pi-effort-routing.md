@@ -21,7 +21,7 @@
 
 ## Approved gating clarification
 
-Read [decision-gating.md](../decision-gating.md) before further implementation. Package/config/classifier foundation must not require unconditional auto-effort. Explicit user thinking disables Jev effort selection; no enabled/applicable questions means zero classifier requests. Verify supported intent detection first; if unavailable, escalate for approval of a concrete mechanism. Existing candidate is historical, not accepted under this clarification. Retain timeout/cancel/privacy/ownership requirements; review dependencies before resuming implementation.
+Read [decision-gating.md](../decision-gating.md) before further implementation. Operator clarified that installing/enabling auto-effort permits upstream-policy effort selection over default/current thinking; named thinking is not a persistent lock. Drop automatic-intent/startup-equality acceptance, not real branch ownership. Discard stale in-flight classifications after manual model/thinking changes. No applicable questions means zero classifier requests. Retain the effort-only vertical slice and original dependency graph; no extra opt-in/default-off, host patch or persistent lock. Candidate must be revised and independently accepted, including real timeout/cancel/privacy/ownership/queue tests.
 
 ## Verification
 

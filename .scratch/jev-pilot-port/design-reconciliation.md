@@ -1,6 +1,10 @@
 # Design reconciliation
 
-Status: evidence and implementation recommendation, not approval for new controls, changed defaults, deferred capabilities, host modifications or acceptance removal.
+Status: historical reconciliation with a superseding operator decision below. No new controls, changed defaults, deferred capabilities or host modifications approved.
+
+## Superseding operator decision
+
+The operator clarified that installing/enabling Jev auto-effort authorizes overwriting default/current thinking under upstream policy. The earlier automatic explicit-intent guarantee and agent-added startup-equality requirement no longer block implementation. Keep original capability scope/defaults/task graph, real branch ownership/queue regressions, applicable-question/zero-call gating and stale-result guards for manual changes during classification. No foundation/effort split or opt-in lock is selected. The older recommendations below are retained as history where they conflict; current authority is decision-gating.md.
 
 ## Primary-source recheck
 
