@@ -1,6 +1,6 @@
 # 06: Route direct and async native subagents through Pi
 
-**What to build:** A normal direct or asynchronous native subagent call reaches a real execution-package worker with the selected model and effort, preserving deliberate model pins and cancellation. This ticket must resolve the remaining runtime adapter feasibility through executable evidence.
+**What to build:** A normal direct or asynchronous native subagent call reaches a real execution-package worker with the selected model and effort, allowing Jev policy to overwrite caller-supplied models while preserving cancellation. This ticket must resolve the remaining runtime adapter feasibility through executable evidence.
 
 **Blocked by:** 01: Run the Pi package with per-prompt effort routing
 
@@ -13,8 +13,8 @@
 
 - [ ] Validate the exact external package/Pi versions and the supported tool-call mutation contract; start with source-researched pi-subagents 0.80.0, rechecking compatibility before committing to it.
 - [ ] Classify the worker brief/description/type without parent conversation history.
-- [ ] Resolve the effective configured/inherited worker model through supported discovery/preflight APIs; do not duplicate private precedence or mistake agent configuration for an explicit caller pin.
-- [ ] Preserve ordinary caller model pins; inject chosen supported effort using the documented model suffix without replacing the pinned physical identity.
+- [ ] Resolve only baseline/applicability information required by routing through supported APIs; do not duplicate private precedence or impose generic discovery/provenance requirements without a concrete failing scenario.
+- [ ] Apply valid Jev model/effort selections even when the ordinary caller supplied a model; use the documented model suffix and verify direct/async child receipts. Disabled routing preserves input; timeout/error/cancellation retain their defined contracts.
 - [ ] Execute direct and async native workers and capture actual effective model/thinking and returned outcomes/usage.
 - [ ] Cancellation aborts classifier and worker work; lifecycle cleanup is idempotent and isolated to the correct run.
 - [ ] Characterize fork/specialized-agent exceptions and fail clearly for unsupported runners; no private monkey patches or dependency-cache edits.
@@ -28,3 +28,6 @@ Run Pi CLI contract smokes with the real execution package and deterministic loc
 Before writing tests, map each test to exactly one parent acceptance criterion and an independent expected-value source. Tests and verification belong to this slice, not a later horizontal testing ticket.
 
 ## Comments
+
+Implementation remains incomplete, blocked on supported effective-executor discovery/provenance. Clean feasibility checkpoint `ddae716c2957154a1103217b680c6221e1391684` on the ticket branch is NOT an accepted implementation and is not merged. See that worktree's `docs/testing/ticket-06-contract-gap.md`. Official Pi 1.4.0 / pi-subagents 0.80.0 direct and async fixtures prove mutation/suffix execution; machine and runtime-registration fixtures expose preflight/executor mismatches. 344 passing tests characterize feasibility/gaps, not ticket completion. Production source is unchanged. Independent review confirms the two discovery gaps but not impossibility of ordinary native routing. Operator subsequently superseded caller-pin preservation: Jev may overwrite ordinary caller models. Reassess minimum required data under that authority before treating these gaps as blockers; no narrowed compatibility scope or required new API approved.
+
