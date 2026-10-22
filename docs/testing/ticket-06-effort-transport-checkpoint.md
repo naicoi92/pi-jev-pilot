@@ -1,5 +1,7 @@
 # Ticket 06 — bounded first-child-request effort checkpoint
 
+> Historical checkpoint. Integration `a13d38c` supersedes configured-child-effort preservation and the transport requirement below. No binding ENV was used or approved. See `ticket-06-production-checkpoint.md` for the current implementation and concrete coexistence limitation.
+
 **Incomplete; no production adapter.** This checkpoint follows operator model-override authority at integration `576dbc7` and model-baseline clarification `ca998b6`. It retires the earlier blanket discovery blocker, not the historical gap evidence. A separately demonstrated first-child-request effort transport remains unproven through supported public APIs.
 
 ## Minimum information audit

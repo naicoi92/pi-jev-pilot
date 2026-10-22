@@ -1,5 +1,7 @@
 # Ticket 06 feasibility checkpoint — incomplete / blocked
 
+> Historical findings, not current blanket blockers. Integration `a13d38c` authorizes model/effort decisions over configured defaults. See `ticket-06-production-checkpoint.md` for current production receipts and the separate supported helper coexistence limitation.
+
 This is an executable feasibility checkpoint, **not an ordinary-worker adapter implementation or acceptance claim**. The supervisor required stopping broad implementation after supported preflight/discovery gaps were found. Production `src/` is unchanged. No ticket, spec, status, global adapter, host setting, or dependency cache was edited.
 
 ## Verified versions and authority

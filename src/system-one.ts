@@ -75,6 +75,14 @@ const rubric = [
   "Novel architecture, a security or data-integrity question, a failure that resisted earlier attempts, or work where a subtle mistake is costly and hard to undo.",
 ];
 
+// Pinned model-router.policy.ts SUBAGENT_EFFORT_INSTRUCTIONS; same effort rubric.
+export const WORKER_EFFORT_QUESTION = {
+  type: "choice",
+  instructions:
+    "How much step-by-step reasoning does a subagent need to carry out this brief? A brief that already names the files, the steps and the tests has done the design: carrying it out is execution. Rate higher only when the brief itself asks for design, an unknown cause, or reasoning that is not already written out. Rate the work, not how important the topic sounds: reviewing a small diff is medium, even for security.",
+  criteria: Object.fromEntries(EFFORT_ORDER.map((level, index) => [level, rubric[index]])),
+};
+
 const questions = {
   effort: {
     type: "choice",

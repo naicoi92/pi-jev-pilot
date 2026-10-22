@@ -212,6 +212,7 @@ export default function(pi) {
         PI_OFFLINE: "1",
         PI_TELEMETRY: "0",
         PI_SUBAGENTS_TEMP_ROOT: join(directory, "runtime"),
+        JEV_WORKER_ROUTING_ENABLED: "false",
         JEV_EFFORT_ENABLED: "false",
         JEV_SKILLS_ENABLED: "false",
         JEV_STRATEGY_ENABLED: "false",

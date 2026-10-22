@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import { registerWorkerAdapter } from "./worker-adapter.ts";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   clampThinkingLevel,
@@ -22,6 +23,17 @@ const RESTORED_TYPE = "jev-pilot:effort-restored";
 
 /** Session-only routing: physical effort path or explicitly selected Jev virtual model. */
 export default function (pi: ExtensionAPI): void {
+  const executionChildren = new Set<string>();
+  pi.events.on("jev-pilot:execution-child:v1", (value: unknown) => {
+    if (
+      value &&
+      typeof value === "object" &&
+      "sessionId" in value &&
+      typeof value.sessionId === "string"
+    )
+      executionChildren.add(value.sessionId);
+  });
+  registerWorkerAdapter(pi);
   const edits = new Map<string, number>();
   const runs = new Map<string, number>();
   let loopNoted = false;
@@ -333,7 +345,8 @@ export default function (pi: ExtensionAPI): void {
   // User message_start is awaited before request preparation, includes queued
   // input, and supplies the active cancellation signal unlike before_agent_start.
   pi.on("message_start", async (event, ctx) => {
-    if (event.message.role !== "user") return;
+    if (event.message.role !== "user" || executionChildren.has(ctx.sessionManager.getSessionId()))
+      return;
     resetLoop();
     if (isJevModel(ctx)) {
       const session = ctx.sessionManager.getSessionId();
