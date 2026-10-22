@@ -10,6 +10,10 @@
   in `triage-labels.md`.
 - Comments: append under `## Comments`.
 
+## Implementation lifecycle
+
+Triage `Status:` remains the readiness label, not execution completion. Implementation tickets use a separate `Implementation:` field: `pending`, `in-progress`, or `completed`. Mark completed only after reviewed work is merged and integration verification passes; record merge SHA and evidence under Comments. Dependencies are satisfied by completed implementation fields or resolved decision tickets.
+
 ## Skill Operations
 
 - Publish a spec or ticket: create its file in the layout above.

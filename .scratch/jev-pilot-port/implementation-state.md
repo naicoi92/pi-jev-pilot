@@ -16,6 +16,10 @@ No remote or PR. Research raw benchmark excerpts are ignored, not committed or b
 
 Parent owns tracker statuses and integration checkout. Future ready tickets get separate worktrees after dependency merge and verification. No implementation worker owns this board or integration branch.
 
+## Accepted integration and frontier
+
+Ticket 01 completed at merge a2d7dfc09def16c12881e78f302f4f84bdd813e0 after independent review and integration gates (80 tests/255 assertions, installed smoke, Oxc/Bun checks). Ticket 07 decision resolved. Ready frontier: 02/03/04/06/09. Ticket 02 is assigned next; other frontier tickets await bounded central-seam ownership contracts before concurrent writers. Entire spec remains in progress.
+
 ## Current authority update
 
 Operator clarified auto-effort ownership: installing/enabling it authorizes routing over default/current thinking under original policy. Native automatic-intent detection and startup-equality precedence are superseded blockers, not unresolved requirements. Preserve actual branch/queue ownership, in-flight manual-change invalidation and enabled/applicable zero-call gating. Keep original ticket graph/defaults; do not introduce lock/opt-in modes, defer effort or depend on host prototype. Resume ticket01 writer against updated spec/decision-gating and transparently retire superseded regression expectations; no merge accepted yet.
