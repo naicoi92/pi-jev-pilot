@@ -18,7 +18,7 @@ Parent owns tracker statuses and integration checkout. Future ready tickets get 
 
 ## Accepted integration and frontier
 
-Ticket 01 completed at merge a2d7dfc09def16c12881e78f302f4f84bdd813e0 after independent review and integration gates (80 tests/255 assertions, installed smoke, Oxc/Bun checks). Ticket 07 decision resolved. Ready frontier: 02/03/04/06/09. Ticket 02 is assigned next; other frontier tickets await bounded central-seam ownership contracts before concurrent writers. Entire spec remains in progress.
+Ticket 01 completed at merge a2d7dfc09def16c12881e78f302f4f84bdd813e0 after independent review and integration gates (80 tests/255 assertions, installed smoke, Oxc/Bun checks). Ticket 07 decision resolved. Ticket 02 completed at merge96c5dcbcb3897895021516aed1ab5b13e433bfa0 after review OK and integration142tests/394assertions plus physical/virtual installed smokes. Ready frontier:03/04/06/09. Ticket03 assigned next, owning shared classifier/extension/resource integration; other frontier writers remain queued to avoid overlapping central-seam changes. Entire spec remains in progress.
 
 ## Current authority update
 

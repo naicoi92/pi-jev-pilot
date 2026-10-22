@@ -5,6 +5,7 @@
 **Blocked by:** 01: Run the Pi package with per-prompt effort routing
 
 **Status:** ready-for-agent
+**Implementation:** in-progress
 
 **Parent:** Jev Pilot for Pi — Faithful Port (local feature spec).
 
