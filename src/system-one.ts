@@ -1,5 +1,22 @@
 // Effort and risk questions adapted from pinned Jev Pilot; see NOTICE.md.
 import { EFFORT_ORDER, type EffortDecision } from "./effort-policy.ts";
+import { TIER_ORDER, type Tier } from "./tier-policy.ts";
+
+export interface Decision extends EffortDecision {
+  tier?: Tier;
+  confidence?: number | null;
+}
+export interface DecisionQuestions {
+  tier: boolean;
+  effort: boolean;
+}
+
+export function mainRoutingEnabled(): boolean {
+  const value = process.env.JEV_MAIN_ROUTING_ENABLED ?? "false";
+  if (value !== "true" && value !== "false")
+    throw new Error("Set JEV_MAIN_ROUTING_ENABLED to true or false (default: false).");
+  return value === "true";
+}
 
 export interface SystemOneConfig {
   url: string;
@@ -128,8 +145,54 @@ function readDecision(value: unknown): EffortDecision | null {
   };
 }
 
+const tierQuestion = {
+  type: "choice",
+  instructions: "Which is the cheapest tier that can complete this coding task well?",
+  criteria: {
+    fast: "Haiku. Choose for read-only lookups where a mistake is cheap to spot: search or list files, find where something is defined, read files, logs or test output and report what is there, run a command and report the result. Nothing is written or changed.",
+    balanced:
+      "Sonnet. Choose for read-only work that needs some understanding (summarize or explain code, research across many files, review a diff and report the findings), and for code changes with a clear spec and a way to check the result: the brief says what to change and a test, build or type check shows it works, such as a bug fix whose cause is known, a feature to a written spec, tests for existing code, or a scoped refactor.",
+    deep: "Opus. Choose for work that needs careful judgment or runs long: design, a change whose spec is open or that nothing can check, a bug whose cause is unknown, long multi-step work across many components, security, data migrations, production or money.",
+  },
+};
+
+function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | null {
+  const answers = object(object(value)?.answers);
+  const risk = object(answers?.risky);
+  const risky = risk?.noul ?? risk?.probability;
+  if (!probability(risky)) return null;
+  const decision: Decision | null = enabled.effort
+    ? readDecision(value)
+    : { effort: null, effortConfidence: null, risky };
+  if (!decision) return null;
+  if (enabled.tier) {
+    const tier = object(answers?.tier);
+    if (!tier || !TIER_ORDER.includes(tier.choice as Tier)) return null;
+    if (tier.confidence !== undefined && !probability(tier.confidence)) return null;
+    const distribution = tier.probabilities === undefined ? null : object(tier.probabilities);
+    if (
+      tier.probabilities !== undefined &&
+      (!distribution ||
+        !Object.keys(distribution).length ||
+        Object.entries(distribution).some(
+          ([key, value]) => !TIER_ORDER.includes(key as Tier) || !probability(value),
+        ) ||
+        Math.abs(
+          Object.values(distribution).reduce<number>((sum, value) => sum + (value as number), 0) -
+            1,
+        ) > 0.02)
+    )
+      return null;
+    decision.tier = tier.choice as Tier;
+    decision.confidence =
+      (tier.confidence as number | undefined) ??
+      (distribution ? Math.max(...(Object.values(distribution) as number[])) : null);
+  }
+  return decision;
+}
+
 export type Classification =
-  | { outcome: "classified"; decision: EffortDecision }
+  | { outcome: "classified"; decision: Decision }
   | { outcome: "timeout" | "service-error" | "schema-error" };
 
 /** Deadline cancels transport; parent cancellation rejects and is never fail-open. */
@@ -137,7 +200,14 @@ export async function classify(
   config: SystemOneConfig,
   state: unknown,
   signal: AbortSignal,
+  enabled: DecisionQuestions = { tier: false, effort: true },
 ): Promise<Classification> {
+  if (!enabled.tier && !enabled.effort) throw new Error("No applicable Jev questions.");
+  const asked = {
+    ...(enabled.tier ? { tier: tierQuestion } : {}),
+    ...(enabled.effort ? { effort: questions.effort } : {}),
+    risky: questions.risky,
+  };
   const controller = new AbortController();
   let timedOut = false;
   const cancel = () => controller.abort(signal.reason);
@@ -154,7 +224,7 @@ export async function classify(
         "content-type": "application/json",
         authorization: `Bearer ${config.apiKey}`,
       },
-      body: JSON.stringify({ model: config.model, state, questions }),
+      body: JSON.stringify({ model: config.model, state, questions: asked }),
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -168,7 +238,7 @@ export async function classify(
       if (controller.signal.aborted) throw error;
       return { outcome: "schema-error" };
     }
-    const decision = readDecision(value);
+    const decision = readAnswers(value, enabled);
     return decision ? { outcome: "classified", decision } : { outcome: "schema-error" };
   } catch (error) {
     if (signal.aborted) throw error;
