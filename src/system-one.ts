@@ -2,13 +2,22 @@
 import { EFFORT_ORDER, type EffortDecision } from "./effort-policy.ts";
 import { TIER_ORDER, type Tier } from "./tier-policy.ts";
 
-export interface Decision extends EffortDecision {
+import {
+  QUALITY_QUESTIONS,
+  type QualityReads,
+  type StrategyRead,
+  STRATEGY_CRITERIA,
+} from "./guidance-policy.ts";
+
+export interface Decision extends EffortDecision, QualityReads, StrategyRead {
   tier?: Tier;
   confidence?: number | null;
 }
 export interface DecisionQuestions {
   tier: boolean;
   effort: boolean;
+  quality?: boolean;
+  strategy?: boolean;
 }
 
 export function mainRoutingEnabled(): boolean {
@@ -165,7 +174,7 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
     ? readDecision(value)
     : { effort: null, effortConfidence: null, risky: risky as number | null };
   if (!decision) return null;
-  if (enabled.tier) {
+  if (enabled.tier || enabled.strategy) {
     const tier = object(answers?.tier);
     if (!tier || !TIER_ORDER.includes(tier.choice as Tier)) return null;
     if (tier.confidence !== undefined && !probability(tier.confidence)) return null;
@@ -188,6 +197,38 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
       (tier.confidence as number | undefined) ??
       (distribution ? Math.max(...(Object.values(distribution) as number[])) : null);
   }
+  if (enabled.strategy) {
+    const strategy = object(answers?.strategy);
+    if (
+      strategy &&
+      typeof strategy.choice === "string" &&
+      Object.hasOwn(STRATEGY_CRITERIA, strategy.choice)
+    ) {
+      const raw = strategy.probabilities;
+      const distribution = raw === undefined ? null : object(raw);
+      const valid = strategy.confidence === undefined || probability(strategy.confidence);
+      const validDistribution =
+        raw === undefined ||
+        (distribution &&
+          Object.keys(distribution).length > 0 &&
+          Object.entries(distribution).every(
+            ([key, value]) => Object.hasOwn(STRATEGY_CRITERIA, key) && probability(value),
+          ));
+      if (valid && validDistribution) {
+        decision.strategy = strategy.choice as NonNullable<StrategyRead["strategy"]>;
+        decision.strategyConfidence =
+          (strategy.confidence as number | undefined) ??
+          (distribution ? Math.max(...(Object.values(distribution) as number[])) : null);
+      }
+    }
+  }
+  if (enabled.quality) {
+    for (const name of Object.keys(QUALITY_QUESTIONS) as (keyof QualityReads)[]) {
+      const answer = object(answers?.[name]);
+      const value = answer?.noul ?? answer?.probability;
+      if (probability(value)) decision[name] = value;
+    }
+  }
   return decision;
 }
 
@@ -203,10 +244,34 @@ export async function classify(
   enabled: DecisionQuestions = { tier: false, effort: true },
   additionalQuestions: Record<string, unknown> = {},
 ): Promise<Classification> {
-  if (!enabled.tier && !enabled.effort && !Object.keys(additionalQuestions).length)
+  if (
+    !enabled.tier &&
+    !enabled.effort &&
+    !enabled.strategy &&
+    !enabled.quality &&
+    !Object.keys(additionalQuestions).length
+  )
     throw new Error("No applicable Jev questions.");
   const asked = {
-    ...(enabled.tier ? { tier: tierQuestion } : {}),
+    ...(enabled.tier || enabled.strategy ? { tier: tierQuestion } : {}),
+    ...(enabled.strategy
+      ? {
+          strategy: {
+            type: "choice",
+            instructions:
+              "How should a coding assistant carry out the latest request, given the recent conversation? Prefer the simplest way that does it well.",
+            criteria: STRATEGY_CRITERIA,
+          },
+        }
+      : {}),
+    ...(enabled.quality
+      ? Object.fromEntries(
+          Object.entries(QUALITY_QUESTIONS).map(([name, question]) => [
+            name,
+            { type: "noul", ...question },
+          ]),
+        )
+      : {}),
     ...(enabled.effort ? { effort: questions.effort } : {}),
     ...(enabled.tier || enabled.effort ? { risky: questions.risky } : {}),
     ...additionalQuestions,

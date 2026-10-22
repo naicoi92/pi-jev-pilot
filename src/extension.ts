@@ -11,8 +11,10 @@ import { TIER_ORDER, selectTier, type TierDecision, type Tiers } from "./tier-po
 import { classifierState } from "./classifier-context.ts";
 import { decideMain, eligibleSkills, skillBlock } from "./skill-matching.ts";
 import type { SkillCandidate } from "./skill-policy.ts";
+import { guidanceEnabled, observeLoop, stepBackNote } from "./guidance-policy.ts";
 
 const SKILL_TYPE = "jev-pilot:skill";
+const ADVICE_TYPE = "jev-pilot:advice";
 
 const STATE_TYPE = "jev-pilot:effort";
 const APPLICATION_TYPE = "jev-pilot:effort-application";
@@ -20,6 +22,25 @@ const RESTORED_TYPE = "jev-pilot:effort-restored";
 
 /** Session-only routing: physical effort path or explicitly selected Jev virtual model. */
 export default function (pi: ExtensionAPI): void {
+  const edits = new Map<string, number>();
+  const runs = new Map<string, number>();
+  let loopNoted = false;
+  const resetLoop = () => {
+    edits.clear();
+    runs.clear();
+    loopNoted = false;
+  };
+  pi.on("tool_result", (event, ctx) => {
+    if (ctx.signal?.aborted || event.parentToolCallId || loopNoted || !guidanceEnabled("QUALITY"))
+      return;
+    const circle = observeLoop(event.toolName, event.input, event.isError, edits, runs);
+    if (!circle) return;
+    loopNoted = true;
+    return {
+      content: [...event.content, { type: "text" as const, text: stepBackNote(circle) }],
+      structuredContent: event.structuredContent,
+    };
+  });
   let active: AbortController | undefined;
   let selectionRevision = 0;
   let pending: PendingEffort[] = [];
@@ -110,7 +131,7 @@ export default function (pi: ExtensionAPI): void {
         try {
           const previous = request.state?.decision ?? null;
           const reused = previous?.tier !== undefined && isContinuation(prompt);
-          const { result, skill } = reused
+          const { result, skill, advice } = reused
             ? { result: { outcome: "classified" as const, decision: previous }, skill: undefined }
             : await decideMain(
                 pi,
@@ -134,7 +155,7 @@ export default function (pi: ExtensionAPI): void {
             throw new Error("Jev routing invalidated by a selection or session change.");
           }
           const decision = result?.outcome === "classified" ? result.decision : null;
-          if (skill) {
+          if (skill || advice) {
             const users = [];
             for (const entry of ctx.sessionManager.getBranch().reverse()) {
               if (entry.type !== "message") continue;
@@ -144,8 +165,10 @@ export default function (pi: ExtensionAPI): void {
             const owner =
               users.findLast((message) => !isContinuation(userText(message.content))) ??
               users.at(-1);
-            if (owner && "jevPilotInputId" in owner)
-              pi.appendEntry(SKILL_TYPE, { inputId: owner.jevPilotInputId, skill });
+            if (owner && "jevPilotInputId" in owner) {
+              if (skill) pi.appendEntry(SKILL_TYPE, { inputId: owner.jevPilotInputId, skill });
+              if (advice) pi.appendEntry(ADVICE_TYPE, { inputId: owner.jevPilotInputId, advice });
+            }
           }
           const physical = decision?.tier
             ? (selectTier(decision as TierDecision, identity, tiers) ?? identity)
@@ -180,6 +203,7 @@ export default function (pi: ExtensionAPI): void {
     });
   }
   const dispose = () => {
+    resetLoop();
     active?.abort();
     active = undefined;
     pending = [];
@@ -236,12 +260,14 @@ export default function (pi: ExtensionAPI): void {
     restoreThinking(ctx, true);
   });
   pi.on("agent_end", () => {
+    resetLoop();
     pending = [];
   });
   pi.on("context", (event, ctx) => {
     commitPending(ctx);
     if (ctx.signal?.aborted) return;
     const selections = new Map<string, SkillCandidate>();
+    const adviceSelections = new Map<string, string>();
     const branch = ctx.sessionManager.getBranch();
     const owners = new Set(
       branch.flatMap((entry) =>
@@ -253,6 +279,10 @@ export default function (pi: ExtensionAPI): void {
       ),
     );
     for (const entry of branch) {
+      if (entry.type === "custom" && entry.customType === ADVICE_TYPE) {
+        const data = entry.data as { inputId: string; advice: string };
+        if (owners.has(data.inputId)) adviceSelections.set(data.inputId, data.advice);
+      }
       if (entry.type === "custom" && entry.customType === SKILL_TYPE) {
         const data = entry.data as { inputId: string; skill: SkillCandidate };
         if (owners.has(data.inputId)) selections.set(data.inputId, data.skill);
@@ -271,13 +301,19 @@ export default function (pi: ExtensionAPI): void {
         }
         if (!("jevPilotInputId" in message)) return message;
         const skill = selections.get(message.jevPilotInputId as string);
-        if (!skill) return message;
+        const advice = adviceSelections.get(message.jevPilotInputId as string);
+        if (!skill && !advice) return message;
         const content =
           typeof message.content === "string"
             ? [{ type: "text" as const, text: message.content }]
             : message.content;
-        const block = skillBlock(skill, loaded.get(skill.filePath) === skill.body);
-        loaded.set(skill.filePath, skill.body);
+        const block = [
+          skill ? skillBlock(skill, loaded.get(skill.filePath) === skill.body) : null,
+          advice,
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+        if (skill) loaded.set(skill.filePath, skill.body);
         return {
           ...message,
           content: [...content, { type: "text" as const, text: block }],
@@ -298,6 +334,7 @@ export default function (pi: ExtensionAPI): void {
   // input, and supplies the active cancellation signal unlike before_agent_start.
   pi.on("message_start", async (event, ctx) => {
     if (event.message.role !== "user") return;
+    resetLoop();
     if (isJevModel(ctx)) {
       const session = ctx.sessionManager.getSessionId();
       const leaf = ctx.sessionManager.getLeafId();
@@ -306,7 +343,9 @@ export default function (pi: ExtensionAPI): void {
       if (!prompt.trim() || explicitCommand(prompt)) return;
       const skills = await eligibleSkills(pi, prompt);
       if (
-        skills.length &&
+        (skills.length ||
+          (!isContinuation(prompt) &&
+            (guidanceEnabled("QUALITY") || guidanceEnabled("STRATEGY")))) &&
         !ctx.signal?.aborted &&
         session === ctx.sessionManager.getSessionId() &&
         revision === selectionRevision &&
@@ -359,7 +398,7 @@ export default function (pi: ExtensionAPI): void {
     try {
       const previous = previousDecision(ctx);
       const reused = withEffort && previous !== null && isContinuation(prompt);
-      const { result, skill } = reused
+      const { result, skill, advice } = reused
         ? { result: { outcome: "classified" as const, decision: previous }, skill: undefined }
         : await decideMain(
             pi,
@@ -384,12 +423,13 @@ export default function (pi: ExtensionAPI): void {
       )
         return;
       active = undefined;
-      if (!result) return;
+      if (!result || (!skill && !advice && !withEffort)) return;
       const existing =
         "jevPilotInputId" in event.message ? event.message.jevPilotInputId : undefined;
       const inputId = typeof existing === "string" ? existing : crypto.randomUUID();
-      if (skill || withEffort) inputIds.set(event.message, inputId);
+      if (skill || advice || withEffort) inputIds.set(event.message, inputId);
       if (skill) pi.appendEntry(SKILL_TYPE, { inputId, skill });
+      if (advice) pi.appendEntry(ADVICE_TYPE, { inputId, advice });
       if (!withEffort) return;
       const current = pi.getThinkingLevel();
       const decision = result.outcome === "classified" ? result.decision : null;
