@@ -22,6 +22,9 @@
     "typecheck": "bun check",
     "test:e2e": "bun test tests/pi-cli.test.ts tests/main-routing.test.ts tests/skill-matching.test.ts tests/guidance.test.ts tests/design-pack.test.ts"
   },
+  "dependencies": {
+    "pi-subagents": "0.80.0"
+  },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.4.0",
     "@earendil-works/pi-coding-agent": "1.4.0",
