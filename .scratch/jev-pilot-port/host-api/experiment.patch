@@ -1,0 +1,1536 @@
+diff --git a/packages/coding-agent/docs/experimental-thinking-provenance.md b/packages/coding-agent/docs/experimental-thinking-provenance.md
+new file mode 100644
+index 0000000..caf1fcd
+--- /dev/null
++++ b/packages/coding-agent/docs/experimental-thinking-provenance.md
+@@ -0,0 +1,143 @@
++# Experimental startup thinking provenance
++
++**Local investigation only. Not an official supported Pi release. Ticket 01 remains BLOCKED.**
++
++This checkout experiments with one additive field on `SessionStartEvent`. It does not integrate Jev into Pi, change thinking precedence, or change session persistence. Production repositories and installed packages remain untouched.
++
++## Proposed contract
++
++```typescript
++interface SessionStartEvent {
++  type: "session_start";
++  reason: "startup" | "reload" | "new" | "resume" | "fork";
++  previousSessionFile?: string;
++  thinkingLevelOverride?: ThinkingLevel;
++}
++```
++
++`createAgentSession()` supplies `thinkingLevelOverride` from its explicit `options.thinkingLevel`, before model-capability clamping. `undefined` means that runtime creation had no explicit thinking option; it does not mean `"off"`. Settings and transcript values are never used to infer the field. The SDK overwrites any caller-supplied provenance in `sessionStartEvent` with the real option.
++
++The CLI passes its resolved startup thinking option through that SDK factory for each runtime creation/replacement. Runtime replacement (`new`, `resume`, `fork`, clone, import) therefore reports the option used by the replacement factory. A custom host must explicitly carry its option into its factory; this field does not make a prior option sticky.
++
++Reload is not runtime creation: its `session_start` event has reason `"reload"` and no override. It must not cause consumers to reapply an old startup option over a manual current choice. Tree navigation emits `session_tree`, not `session_start`; consumers should replay the active prefix rather than use startup precedence there. This is provenance of a creation input, not an instruction to reapply that input indefinitely.
++
++Consumers needing the effective selection must use the current host value or the public `clampThinkingLevel()` helper and current model. For example, raw `"max"` may select effective `"high"`; a non-reasoning model selects `"off"`. Do not infer source from equality between those values.
++
++## Why this seam
++
++A `message_start` thinking setter persists before its owning user. Fork-before can retain that provisional change while excluding its owner. Existing user `message_end` also precedes persistence. `context` runs after request thinking capture, while `before_provider_request` exposes opaque provider payloads. None is a supported provider-neutral fix in released Pi 1.3.0.
++
++Authoritative provenance lets a branch-aware consumer reconcile excluded applications only when the host restored history, while leaving explicit replacement choices authoritative. It retains the existing consumer's application/owner ledger. A post-user-persistence event could remove some of that ledger, but must still define fork-at boundaries (the owner can be included while later metadata is excluded), cancellation, and tree restoration. A request-local effort API avoids persistent provisional changes entirely, but needs explicit semantics for continuation, retries, queue batches, tool turns, manual changes, branch reconstruction, and displayed effort. Those are larger, useful alternatives, not implied by this one-field experiment.
++
++Existing public alternatives have different integration contracts. An SDK owner can install `session.agent.prepareRequest` (agent-core `PrepareRequest`), returning `{ thinkingLevel }` per request after persisted input, but an ordinary extension has no supported access to that callback. Using it requires a host-owned SDK wrapper, whose lifecycle and per-prompt decision semantics need approval. `registerVirtualModel().route(request, ctx)` already returns a provider-neutral physical model/thinking pair with a request signal. It requires selecting a virtual model and uses separate selection/dispatch state, so it does not preserve the current requirement to keep the user's physical model selection unchanged. Neither is silently substituted by this experiment.
++
++## Acceptance matrix (defined before tests)
++
++Sources: operator investigation task; ticket `docs/testing/ticket-01-startup-provenance-blocker.md`; independent fresh review of `917ec659422e05243d3eb66ab1d82f61f54c4bd6`; supervisor-approved local experiment. Expected values below are literal acceptance requirements, not computed from the implementation.
++
++| Criterion | Test ID / behavior | Independent expected observation |
++|---|---|---|
++| AC-1 | CLI-1: no override, fork-before excluded high owner | Restored state and next low/0-confidence generation are medium |
++| AC-2 | CLI-2: explicit startup high equals excluded provisional high after manual medium | Replacement state and next no-change generation remain high |
++| AC-3 | CLI-3: tree retains manual low on active prefix | State and next no-change generation are low |
++| AC-4 | CLI-4: reload after startup high and manual low | State and next no-change generation stay low, reload carries no creation override |
++| AC-5 | CLI-5: fork-at includes owner but not later receipt | High and reusable decision survive; continuation does not classify again |
++| AC-6 | CLI-6: steering and follow-up mode all, low lookup then continuation | Requests [high, high, low]; separate low classified/reused receipts with correct owner IDs |
++| AC-7 | CLI-7: abort active classifier, then submit fresh work | Classifier HTTP aborts, no generation/application/receipt for canceled classification; next work succeeds |
++| AC-8 | CLI-8: session effort changes | Global settings bytes remain unchanged |
++| AC-9 | CLI-9: explicit off differs from omitted override | Fork-before and no-change generation stay off |
++| AC-10 | CLI-10 / SDK-10: unsupported raw override | Raw max remains authoritative provenance; effective host/request high for restricted reasoning model, off for non-reasoning model |
++| AC-11 | CLI-11: new/resume/clone; SDK-11: import runtime producer | Each replacement reports its actual factory override and next request uses it |
++| AC-12 | SDK-12: equal SDK option vs no option, conflicting supplied metadata | Explicit high vs undefined distinguished at equal effective high; SDK option wins over supplied event metadata |
++| AC-13 | CLI-13: excluded application then ineligible input | Orphan application is closed, not reassigned to a future user |
++
++The consumer fixture is an experimental copy of ticket `a2ebf6f4ccc7a2f610c9340958203f6fbcdddede`, not a new production adapter. Only restoration consumes the new field; classification, pending ownership, and active signal handling stay on public APIs. CLI tests run the actual source CLI in RPC mode against local HTTP classifier/model servers. SDK tests use the faux provider. No credentials or paid inference are used.
++
++## Compatibility and rollout gate
++
++The field is additive, but optional absence on released hosts is indistinguishable from no override on an experimental host. A consumer must require a known released supporting host version/capability; silently feature-detecting this field on one event is insufficient. Direct `new AgentSession()` hosts must provide authoritative metadata themselves if they bypass the SDK. Other extensions may mutate thinking during startup; this field only identifies the SDK input and does not order arbitrary competing writers.
++
++This experiment does not migrate historical Jev ledgers or approve their adoption. Before any target change: independent review, operator approval of the seam/rollout, official host support or explicitly approved custom-host contract, and complete target CLI regressions are required. Interactive rendering, real Jev services, paid providers, and exhaustive cancellation timing interleavings are outside this local proof.
++
++## Source lifecycle map
++
++Paths below are relative to `packages/coding-agent/src`, except agent-core references. These are investigation-checkout line references, not claims about a future release.
++
++| Boundary | Source | Consequence |
++|---|---|---|
++| CLI startup option | `main.ts:475–546,818–857` | Explicit `--thinking`, model suffix, or resolved scoped startup level becomes `sessionOptions.thinkingLevel`; creation options are recalculated for replacement cwd/services |
++| SDK selection | `core/sdk.ts:253–278` | Explicit option outranks transcript; settings are fallback; model clamp follows |
++| SDK persistence | `core/sdk.ts:448–458` | Existing transcript with thinking metadata gets no new equal-value source marker |
++| New metadata | `core/sdk.ts:477–481`; `core/extensions/types.ts:755–766` | SDK creation records the raw option independently of effective value |
++| Initial event | `core/agent-session.ts:3288–3312` | Extension binding emits the prepared creation event |
++| User persistence | `core/agent-session.ts:1143–1168` | Extension `message_end` completes before `appendMessage()` assigns the user's persisted entry ID |
++| Capture | `core/agent-session.ts:785–846`; `packages/agent/src/agent-loop.ts:219–250` | Request projection reads selected thinking before stream/context transformation |
++| Context | `core/sdk.ts:436–439`; `packages/agent/src/agent-loop.ts:381–409` | Context transformation is later than thinking capture; changing session thinking there cannot rewrite captured config |
++| Session-local setter | `core/agent-session.ts:2642–2664` | Appends effective thinking on change; global defaults only with `persist: true` |
++| Replacement | `core/agent-session-runtime.ts:167–188,195–401` | Abort and teardown current session; create through stored factory, then bind replacement |
++| Reload | `core/agent-session.ts:3723–3727` | Emits `{ type: "session_start", reason: "reload" }` on the same session; no creation option reapplied |
++| Tree | `core/agent-session.ts:4118–4181` | Moves leaf and rebuilds messages/tools; does not restore thinking; consumer replays active prefix on `session_tree` |
++
++All replacement producers were checked: new (`runtime.ts:251`), resume (`:218`), fork with empty prefix (`:305`), persisted fork (`:326`), in-memory fork (`:345`), and JSONL import (`:397`). All converge on the SDK via the runtime factory. Clone uses fork-at; no separate provenance source is needed. Focused behavioral tests cover persisted fork-before/fork-at, new/resume/clone and SDK import. Empty-prefix and in-memory fork producer sites were inspected, not given new dedicated provenance E2E cases.
++
++The released public SDK already exposes agent-core `PrepareRequest` at `packages/agent/src/types.ts:173–189`. It returns `AgentRequestUpdate` (context/model/thinkingLevel), accepts the active `AbortSignal`, and runs after selected input events. This is a supported host-owner alternative, not an extension API. The existing virtual-model route contract is documented in `docs/virtual-models.md`; it changes selection semantics and was not prototyped.
++
++## Local validation and before/after proof
++
++Environment: Darwin arm64, Node `v26.8.1`, npm `11.19.0`. The host has `package-lock.json` and CI uses `npm ci --ignore-scripts`, so its npm manager was preserved instead of converting to Bun. Install used a new isolated `/tmp/pi-jev-host-api-npm-cache` with lifecycle scripts disabled. npm reported existing dependency engine/deprecation warnings; no manifests or lockfiles changed.
++
++The initial source CLI could not import ignored generated model data (`packages/ai/src/providers/data/amazon-bedrock.json`). Copying official installed Pi AI **1.3.0** model JSON read-only into this checkout's ignored data directory resolved it; `npm run check:model-data` passed. No build, downloaded model catalog, provider credentials or paid inference was needed. The original CLI path was reproduced before changing host or consumer.
++
++**RED, original host and unmodified consumer:**
++
++```text
++node ../../node_modules/vitest/dist/cli.js --run test/thinking-provenance-cli.test.ts -t CLI-2
++Tests 1 failed | 11 skipped
++                  expected   observed
++fork state        high       medium
++provider effort   high       medium
++receipt effective high       medium
++```
++
++SDK contract tests were also RED before implementation: supplied event metadata `low` was not derived from the actual absent SDK option; a high option on a non-reasoning model had no corresponding provenance field.
++
++**GREEN, host prototype and experimental consumer:**
++
++```sh
++# From packages/coding-agent
++node ../../node_modules/vitest/dist/cli.js --run \
++  test/thinking-provenance-cli.test.ts test/thinking-provenance-sdk.test.ts \
++  test/agent-session-runtime-events.test.ts test/suite/agent-session-runtime.test.ts \
++  test/sdk-session-manager.test.ts test/sdk-stream-options.test.ts \
++  test/suite/agent-session-model-extension.test.ts test/suite/agent-session-queue.test.ts
++```
++
++Result: **8 files, 79 tests passed**. The 16 new tests cover all 13 matrix criteria; the remaining 63 are existing lifecycle/runtime/SDK/model/queue regressions. This is actual source CLI/RPC/HTTP E2E and SDK/faux execution, not an installed-release or interactive-TUI claim. The equality case now asserts high in state, actual serialized provider request and retained receipt; no-override medium and manual-prefix low pass in the same run. Both all-mode queue variants assert `[high, high, low]`, three classifications and distinct correct receipt owner IDs.
++
++During test development, the abort assertion was corrected to exclude a legitimate pre-existing startup restore marker rather than prohibit all restore metadata. SDK fixtures were configured with faux provider auth. `/import` is not a built-in RPC prompt command, so import proof uses the public SDK runtime operation rather than pretending a normal user prompt exercised import. These were fixture corrections, not hidden product changes.
++
++Full check was decomposed with supervisor approval to avoid root `npm run check` invoking `biome --write .`. Only explicitly authored files were formatted; whole-repo Biome ran read-only:
++
++```sh
++node scripts/biome-check.mjs
++npm run check:pinned-deps
++npm run check:runtime-deps
++npm run check:ts-imports
++npm run check:entry-graphs
++npm run check:install-lock:coding-agent
++node node_modules/typescript/bin/tsc --noEmit
++npm run check:browser-smoke
++git diff --check
++```
++
++All passed; Biome checked **1492 files, no fixes applied**. The literal root `npm run check`, build, full test suite, package release and production target regressions were **not run**. This is not a claim that the literal root command ran. No staged files remain after the local investigation commit.
++
++Local full-output evidence (temporary paths; the durable assertions, summaries and source matrix above do not depend on their persistence):
++
++| Log | SHA-256 |
++|---|---|
++| `/tmp/pi-jev-host-api-cli-red.log` | `5a9f20884aefc994eff4e0b8e0382dda8d5ac2178e5b94045a15a5224fbd1a6b` |
++| `/tmp/pi-jev-host-api-sdk-red.log` | `ad6abb418ba8083a3ac45680a57695de198c7634ba8efaa7c34f43555126408f` |
++| `/tmp/pi-jev-host-api-green-expanded.log` | `98cfe493d4f1d99275b9fb8f467e1cd13bba817cd13165dc57c88ce6bf748f9d` |
++| `/tmp/pi-jev-host-api-biome.log` | `2de51b79a603102bcc6c3ddbafcb4a09d0b931f635d3582eaed19dfffc9a3b6e` |
++| `/tmp/pi-jev-host-api-check.log` | `3b63213a48a88637d72185b7c5afc2d3a2e4223e6de1a7bea28d7f37a10eb073` |
+diff --git a/packages/coding-agent/src/core/extensions/types.ts b/packages/coding-agent/src/core/extensions/types.ts
+index 60388c0..f504f68 100644
+--- a/packages/coding-agent/src/core/extensions/types.ts
++++ b/packages/coding-agent/src/core/extensions/types.ts
+@@ -758,6 +758,12 @@ export interface SessionStartEvent {
+ 	reason: "startup" | "reload" | "new" | "resume" | "fork";
+ 	/** Previously active session file. Present for "new", "resume", and "fork". */
+ 	previousSessionFile?: string;
++	/**
++	 * Experimental: explicit thinkingLevel supplied to createAgentSession(), before model clamping.
++	 * Absent when creation used history/settings, and on same-session reload. Not a current-level
++	 * instruction: later manual selections and tree navigation do not reapply this creation input.
++	 */
++	thinkingLevelOverride?: ThinkingLevel;
+ }
+ 
+ /** Fired when the current session metadata changes. */
+diff --git a/packages/coding-agent/src/core/sdk.ts b/packages/coding-agent/src/core/sdk.ts
+index f678ba4..f54eefd 100644
+--- a/packages/coding-agent/src/core/sdk.ts
++++ b/packages/coding-agent/src/core/sdk.ts
+@@ -474,7 +474,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
+ 		allowedToolNames,
+ 		excludedToolNames,
+ 		extensionRunnerRef,
+-		sessionStartEvent: options.sessionStartEvent,
++		sessionStartEvent: {
++			...(options.sessionStartEvent ?? { type: "session_start", reason: "startup" }),
++			// Creation inputs, not equal effective values, establish startup override provenance.
++			thinkingLevelOverride: options.thinkingLevel,
++		},
+ 	});
+ 
+ 	const extensionsResult = resourceLoader.getExtensions();
+diff --git a/packages/coding-agent/test/fixtures/jev-thinking-provenance/LICENSE b/packages/coding-agent/test/fixtures/jev-thinking-provenance/LICENSE
+new file mode 100644
+index 0000000..7e99f56
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/jev-thinking-provenance/LICENSE
+@@ -0,0 +1,24 @@
++MIT License
++
++Copyright (c) 2026 Ahmed Akram
++Portions copyright (c) 2025 Daniel (San) Ávila — the jev-model-router and
++jev-skill-suggestion mods from https://github.com/davila7/claude-code-templates,
++on which this project is built.
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/packages/coding-agent/test/fixtures/jev-thinking-provenance/NOTICE.md b/packages/coding-agent/test/fixtures/jev-thinking-provenance/NOTICE.md
+new file mode 100644
+index 0000000..9a58a95
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/jev-thinking-provenance/NOTICE.md
+@@ -0,0 +1,5 @@
++# Attribution
++
++Effort rubric, confidence/risk/ceiling rules, follow-up recognition, context minimization and platform markers are adapted from [Jev Pilot 0.12.1](https://github.com/Akramovic1/jev-pilot/tree/5d27135b34edf81b40c0bf1df01ae401f6b72ea7), commit `5d27135b34edf81b40c0bf1df01ae401f6b72ea7`, by Ahmed Akram, with portions by Daniel (San) Ávila. The upstream MIT notice is preserved in `LICENSE`.
++
++This port targets official Pi, not Pi-Bolt. It implements only effort selection in this slice. No upstream mid-turn escalation, tier switching, worker engine, health probes, pet, or live controls are imported.
+diff --git a/packages/coding-agent/test/fixtures/jev-thinking-provenance/README.md b/packages/coding-agent/test/fixtures/jev-thinking-provenance/README.md
+new file mode 100644
+index 0000000..e9b55f9
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/jev-thinking-provenance/README.md
+@@ -0,0 +1,22 @@
++# Experimental Jev consumer fixture
++
++This is a throwaway acceptance consumer for the local host API investigation, not a supported Jev release, built-in extension, or production integration.
++
++The four consumer source files were copied from ticket checkout commit `a2ebf6f4ccc7a2f610c9340958203f6fbcdddede`:
++
++- `extension.ts`
++- `effort-policy.ts`
++- `system-one.ts`
++- `classifier-context.ts`
++
++Behavioral changes are restricted to `extension.ts`: replace value-equality provenance with the experimental `SessionStartEvent.thinkingLevelOverride` and treat reload/tree as active-prefix reconstruction, not runtime-creation override application. The fixture also types the local config variable and follows host Biome formatting/import ordering. Policy, transport, and minimized classifier context are not redesigned. Upstream attribution/license are preserved in `NOTICE.md` and `LICENSE`.
++
++`controls.ts` exposes supported command-context fork-at/tree/reload controls and records startup event metadata. `cli-fixture.ts` launches the actual checkout CLI with its source resolver, an isolated HOME/agent directory and explicit extensions. It only sends requests to loopback HTTP servers, never to real providers. Its fake model server speaks OpenAI-compatible SSE; assertions inspect actual serialized `reasoning_effort` after Pi's provider-neutral selection and model clamp.
++
++The source checkout needs generated model data for imports. In this investigation it was copied read-only from the already installed official `@earendil-works/pi-ai` 1.3.0 `dist/providers/data` to the ignored checkout `packages/ai/src/providers/data`, and `npm run check:model-data` validated it. No installed dependency, production checkout, existing dependency cache, manifest or lockfile was modified.
++
++See `../../../docs/experimental-thinking-provenance.md` for the proposed contract and pre-test acceptance matrix. Run from `packages/coding-agent`:
++
++```sh
++node ../../node_modules/vitest/dist/cli.js --run test/thinking-provenance-cli.test.ts test/thinking-provenance-sdk.test.ts
++```
+diff --git a/packages/coding-agent/test/fixtures/jev-thinking-provenance/classifier-context.ts b/packages/coding-agent/test/fixtures/jev-thinking-provenance/classifier-context.ts
+new file mode 100644
+index 0000000..bf34b0b
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/jev-thinking-provenance/classifier-context.ts
+@@ -0,0 +1,168 @@
++// Context minimization adapted from Jev Pilot context.ts; see NOTICE.md.
++import { readdir } from "node:fs/promises";
++import { join } from "node:path";
++import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
++
++interface ContextMessage {
++	role: "user" | "assistant";
++	text: string;
++	tools: { name: string; failed: boolean }[];
++}
++
++function messagesOf(ctx: ExtensionContext): ContextMessage[] {
++	const source = ctx.sessionManager.buildSessionProjection().messages;
++	const failed = new Set(
++		source.flatMap((message) => (message.role === "toolResult" && message.isError ? [message.toolCallId] : [])),
++	);
++	return source.flatMap((message): ContextMessage[] => {
++		if (message.role !== "user" && message.role !== "assistant") return [];
++		const content = message.content;
++		return [
++			{
++				role: message.role,
++				text:
++					typeof content === "string"
++						? content
++						: content
++								.filter((part) => part.type === "text")
++								.map((part) => part.text)
++								.join("\n"),
++				tools:
++					typeof content === "string"
++						? []
++						: content.flatMap((part) =>
++								part.type === "toolCall" ? [{ name: part.name, failed: failed.has(part.id) }] : [],
++							),
++			},
++		];
++	});
++}
++
++function recentContext(messages: ContextMessage[], prompt: string): string {
++	let list = messages;
++	if (list.at(-1)?.role === "user" && list.at(-1)?.text.trim() === prompt.trim()) list = list.slice(0, -1);
++	const newestAssistant = list.findLastIndex((message) => message.role === "assistant" && message.text.trim());
++	const lines: string[] = [];
++	let used = 0;
++	for (let index = list.length - 1; index >= 0 && lines.length < 4; index--) {
++		const message = list[index]!;
++		const text = message.text.replace(/\s+/g, " ").trim();
++		const tools = message.tools.map((tool) => `${tool.name}${tool.failed ? " (failed)" : ""}`);
++		if (!text && !tools.length) continue;
++		const cap = index === newestAssistant ? 1100 : newestAssistant >= 0 ? 300 : 500;
++		const tail = index === newestAssistant ? 792 : 0;
++		const said =
++			text.length <= cap
++				? text
++				: tail
++					? `${text.slice(0, cap - tail)} … ${text.slice(-tail)}`
++					: `${text.slice(0, cap)}…`;
++		const line = `${message.role}: ${said}${tools.length ? ` [tools: ${tools.join(", ")}]` : ""}`;
++		if (used + line.length > 2000) {
++			if (!lines.length) lines.unshift(`${line.slice(0, 1999)}…`);
++			break;
++		}
++		lines.unshift(line);
++		used += line.length + 1;
++	}
++	return lines.join("\n");
++}
++
++const platforms: [RegExp, string][] = [
++	[/(^|\/)vercel\.json$|(^|\/)\.vercel\/$/, "Vercel"],
++	[/(^|\/)cdk\.json$/, "AWS CDK"],
++	[/(^|\/)serverless\.(yml|yaml|ts|js)$/, "AWS Serverless"],
++	[/(^|\/)template\.ya?ml$|(^|\/)samconfig\.toml$/, "AWS SAM"],
++	[/(^|\/)buildspec\.ya?ml$/, "AWS CodeBuild"],
++	[/(^|\/)amplify\.ya?ml$|(^|\/)amplify\/$/, "AWS Amplify"],
++	[/(^|\/)netlify\.toml$/, "Netlify"],
++	[/(^|\/)firebase\.json$/, "Firebase"],
++	[/(^|\/)supabase\/config\.toml$/, "Supabase"],
++	[/(^|\/)fly\.toml$/, "Fly.io"],
++	[/(^|\/)wrangler\.(toml|json|jsonc)$/, "Cloudflare Workers"],
++	[/(^|\/)app\.ya?ml$|(^|\/)cloudbuild\.ya?ml$/, "Google Cloud"],
++	[/(^|\/)render\.ya?ml$/, "Render"],
++	[/(^|\/)railway\.(json|toml)$/, "Railway"],
++	[/(^|\/)(docker-)?compose\.ya?ml$/, "Docker Compose"],
++	[/(^|\/)Dockerfile$/, "Docker"],
++	[/(^|\/)\.github\/workflows\/$/, "GitHub Actions"],
++	[/(^|\/)bitbucket-pipelines\.yml$/, "Bitbucket Pipelines"],
++];
++
++async function platformNames(cwd: string): Promise<string> {
++	const paths: string[] = [];
++	const excluded = new Set([
++		"node_modules",
++		".git",
++		".pi",
++		".codegraph",
++		"dist",
++		"build",
++		".next",
++		"out",
++		"cdk.out",
++		"vendor",
++		"target",
++		".venv",
++		"venv",
++		"__pycache__",
++		"coverage",
++	]);
++	async function scan(relative: string, depth: number): Promise<void> {
++		const entries = await readdir(join(cwd, relative), {
++			withFileTypes: true,
++		}).catch(() => []);
++		let directories = 0;
++		for (const entry of entries) {
++			if (excluded.has(entry.name) || entry.isSymbolicLink()) continue;
++			const path = relative ? `${relative}/${entry.name}` : entry.name;
++			paths.push(`${path}${entry.isDirectory() ? "/" : ""}`);
++			if (entry.isDirectory() && depth > 0 && directories++ < 60) await scan(path, depth - 1);
++		}
++	}
++	await scan("", 1);
++	return (
++		[
++			...new Set(platforms.filter(([pattern]) => paths.some((path) => pattern.test(path))).map(([, name]) => name)),
++		].join(", ") || "none found"
++	);
++}
++
++/** Only prompt, bounded text, derived signals, tool names and platform marker names leave the host. */
++export async function classifierState(ctx: ExtensionContext, prompt: string, toolNames: string[]): Promise<unknown> {
++	const messages = messagesOf(ctx);
++	const recentTools = {
++		edits: 0,
++		commands: 0,
++		reads: 0,
++		subagents: 0,
++		failed: 0,
++	};
++	for (const message of messages.slice(-10)) {
++		for (const tool of message.tools) {
++			if (["edit", "write"].includes(tool.name)) recentTools.edits++;
++			if (["bash", "powershell"].includes(tool.name)) recentTools.commands++;
++			if (["read", "grep", "find", "ls"].includes(tool.name)) recentTools.reads++;
++			if (tool.name === "subagent") recentTools.subagents++;
++			if (tool.failed) recentTools.failed++;
++		}
++	}
++	const pathPattern =
++		/(?:^|[\s`'"(])((?:[\w.-]+\/)+[\w.-]+|[\w-]+\.(?:tsx?|jsx?|mjs|py|go|rs|java|kt|swift|rb|php|cs|c|cc|cpp|h|hpp|sql|json|ya?ml|toml|md|css|scss|html|sh|lock))(?=$|[\s`'"),:;])/g;
++	const text = prompt.trim();
++	return {
++		prompt,
++		recent_context: recentContext(messages, prompt),
++		signals: {
++			prompt_chars: text.length,
++			files_mentioned: new Set([...text.matchAll(pathPattern)].map((match) => match[1])).size,
++			has_code_or_error: /```|Traceback|Exception|\berror\b|\bfailed\b|stack ?trace|\bat \S+:\d+/i.test(text),
++			is_question:
++				text.endsWith("?") ||
++				/^(what|why|how|when|where|which|who|can|could|does|do|did|is|are|should|would|will)\b/i.test(text),
++			recent_tools: recentTools,
++		},
++		project_platforms: await platformNames(ctx.cwd),
++		tool_names: toolNames,
++	};
++}
+diff --git a/packages/coding-agent/test/fixtures/jev-thinking-provenance/cli-fixture.ts b/packages/coding-agent/test/fixtures/jev-thinking-provenance/cli-fixture.ts
+new file mode 100644
+index 0000000..0fb12ca
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/jev-thinking-provenance/cli-fixture.ts
+@@ -0,0 +1,228 @@
++import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
++import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { createServer, type Server } from "node:http";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { setTimeout as sleep } from "node:timers/promises";
++import { fileURLToPath } from "node:url";
++import type { SessionEntry, SessionStartEvent } from "../../../src/index.ts";
++
++interface RpcRecord {
++	id?: string;
++	type: string;
++	success?: boolean;
++	data?: unknown;
++}
++
++export class ThinkingProvenanceCliFixture {
++	directory = "";
++	process!: ChildProcessWithoutNullStreams;
++	server!: Server;
++	records: RpcRecord[] = [];
++	generations: Record<string, unknown>[] = [];
++	classifications: unknown[] = [];
++	classifierAborts = 0;
++	classifierDelay = 0;
++	modelDelay = 0;
++	response = { answers: { effort: { choice: "high", confidence: 0.95 }, risky: { noul: 0 } } };
++	stderr = "";
++	settingsBefore = "";
++	private sequence = 0;
++
++	async start(thinking?: string, reasoning = true): Promise<void> {
++		this.directory = await mkdtemp(join(tmpdir(), "pi-thinking-provenance-"));
++		const agentDir = join(this.directory, "agent");
++		await mkdir(agentDir);
++		this.server = createServer(async (request, response) => {
++			let text = "";
++			for await (const chunk of request) text += chunk.toString();
++			const body = JSON.parse(text) as Record<string, unknown>;
++			if (request.url === "/systemone") {
++				this.classifications.push(body);
++				response.on("close", () => {
++					if (!response.writableEnded) this.classifierAborts++;
++				});
++				await sleep(this.classifierDelay);
++				response.setHeader("content-type", "application/json");
++				response.end(JSON.stringify(this.response));
++				return;
++			}
++			this.generations.push(body);
++			await sleep(this.modelDelay);
++			const chunk = {
++				id: "fixture",
++				object: "chat.completion.chunk",
++				created: 1,
++				model: "fixture-model",
++				choices: [
++					{
++						index: 0,
++						delta: { role: "assistant", content: "Fixture answer. Shall I implement?" },
++						finish_reason: null,
++					},
++				],
++			};
++			const end = {
++				...chunk,
++				choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
++				usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 },
++			};
++			response.setHeader("content-type", "text/event-stream");
++			response.end(`data: ${JSON.stringify(chunk)}\n\ndata: ${JSON.stringify(end)}\n\ndata: [DONE]\n\n`);
++		});
++		await new Promise<void>((resolve) => this.server.listen(0, "127.0.0.1", resolve));
++		const address = this.server.address();
++		if (!address || typeof address === "string") throw new Error("No fixture server address");
++		const url = `http://127.0.0.1:${address.port}`;
++		await writeFile(
++			join(agentDir, "models.json"),
++			JSON.stringify({
++				providers: {
++					fixture: {
++						baseUrl: `${url}/v1`,
++						api: "openai-completions",
++						apiKey: "fixture-not-a-credential",
++						models: [
++							{
++								id: "fixture-model",
++								reasoning,
++								input: ["text"],
++								contextWindow: 32000,
++								maxTokens: 512,
++								thinkingLevelMap: {
++									off: "none",
++									minimal: null,
++									low: "low",
++									medium: "medium",
++									high: "high",
++									xhigh: null,
++									max: null,
++								},
++							},
++						],
++					},
++				},
++			}),
++		);
++		this.settingsBefore = JSON.stringify({
++			defaultThinkingLevel: "medium",
++			retry: { enabled: false },
++			compaction: { enabled: false },
++		});
++		await writeFile(join(agentDir, "settings.json"), this.settingsBefore);
++		const resolver = fileURLToPath(new URL("../../../src/experimental/source-resolver.ts", import.meta.url));
++		const cli = fileURLToPath(new URL("../../../src/cli.ts", import.meta.url));
++		this.process = spawn(
++			process.execPath,
++			[
++				"--import",
++				resolver,
++				cli,
++				"--mode",
++				"rpc",
++				"--no-extensions",
++				"-e",
++				fileURLToPath(new URL("extension.ts", import.meta.url)),
++				"-e",
++				fileURLToPath(new URL("controls.ts", import.meta.url)),
++				"--no-mcp",
++				"--no-skills",
++				"--no-prompt-templates",
++				"--no-themes",
++				"--no-context-files",
++				"--no-tools",
++				"--offline",
++				"--no-approve",
++				"--model",
++				"fixture/fixture-model",
++				...(thinking === undefined ? [] : ["--thinking", thinking]),
++			],
++			{
++				cwd: this.directory,
++				env: {
++					PATH: process.env.PATH,
++					HOME: this.directory,
++					PI_CODING_AGENT_DIR: agentDir,
++					PI_OFFLINE: "1",
++					PI_TELEMETRY: "0",
++					HOST_API_EVENTS: join(this.directory, "events.jsonl"),
++					JEV_SYSTEM_ONE_URL: `${url}/systemone`,
++					JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
++					JEV_TIMEOUT_MS: "10000",
++				},
++			},
++		);
++		let pending = "";
++		this.process.stdout.on("data", (data: Buffer) => {
++			pending += data.toString();
++			while (pending.includes("\n")) {
++				const index = pending.indexOf("\n");
++				const line = pending.slice(0, index);
++				pending = pending.slice(index + 1);
++				try {
++					this.records.push(JSON.parse(line) as RpcRecord);
++				} catch {
++					this.stderr += line;
++				}
++			}
++		});
++		this.process.stderr.on("data", (data: Buffer) => {
++			this.stderr += data.toString();
++		});
++		await this.command("get_state");
++	}
++
++	async wait(predicate: () => boolean): Promise<void> {
++		const until = Date.now() + 12000;
++		while (!predicate()) {
++			if (Date.now() > until || this.process.exitCode !== null)
++				throw new Error(`CLI deadline/exit: ${this.stderr}; ${JSON.stringify(this.records.slice(-5))}`);
++			await sleep(10);
++		}
++	}
++
++	async command<T = unknown>(type: string, data: Record<string, unknown> = {}): Promise<T> {
++		const id = `request-${++this.sequence}`;
++		this.process.stdin.write(`${JSON.stringify({ id, type, ...data })}\n`);
++		await this.wait(() => this.records.some((record) => record.id === id));
++		const response = this.records.find((record) => record.id === id)!;
++		if (!response.success) throw new Error(JSON.stringify(response));
++		return response.data as T;
++	}
++
++	async prompt(message: string): Promise<void> {
++		const offset = this.records.length;
++		await this.command("prompt", { message });
++		await this.wait(() => this.records.slice(offset).some((record) => record.type === "agent_settled"));
++	}
++
++	async entries(): Promise<SessionEntry[]> {
++		return (await this.command<{ entries: SessionEntry[] }>("get_entries")).entries;
++	}
++
++	async starts(): Promise<SessionStartEvent[]> {
++		return (await readFile(join(this.directory, "events.jsonl"), "utf8"))
++			.trim()
++			.split("\n")
++			.map((line) => JSON.parse(line) as SessionStartEvent);
++	}
++
++	async settings(): Promise<string> {
++		return readFile(join(this.directory, "agent/settings.json"), "utf8");
++	}
++
++	noChange(): void {
++		this.response = { answers: { effort: { choice: "low", confidence: 0 }, risky: { noul: 0 } } };
++	}
++
++	async close(): Promise<void> {
++		if (this.process && this.process.exitCode === null) {
++			this.process.stdin.end();
++			await Promise.race([new Promise<void>((resolve) => this.process.once("exit", () => resolve())), sleep(3000)]);
++			if (this.process.exitCode === null) this.process.kill("SIGKILL");
++		}
++		this.server?.closeAllConnections();
++		if (this.server) await new Promise<void>((resolve) => this.server.close(() => resolve()));
++		if (this.directory) await rm(this.directory, { recursive: true, force: true });
++	}
++}
+diff --git a/packages/coding-agent/test/fixtures/jev-thinking-provenance/controls.ts b/packages/coding-agent/test/fixtures/jev-thinking-provenance/controls.ts
+new file mode 100644
+index 0000000..54d0438
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/jev-thinking-provenance/controls.ts
+@@ -0,0 +1,23 @@
++import { appendFileSync } from "node:fs";
++import type { ExtensionAPI } from "../../../src/index.ts";
++
++export default function (pi: ExtensionAPI) {
++	pi.on("session_start", (event) => {
++		appendFileSync(process.env.HOST_API_EVENTS!, `${JSON.stringify(event)}\n`);
++	});
++	pi.registerCommand("fixture-tree", {
++		handler: async (id, ctx) => {
++			await ctx.navigateTree(id, { summarize: false });
++		},
++	});
++	pi.registerCommand("fixture-fork-at", {
++		handler: async (id, ctx) => {
++			await ctx.fork(id, { position: "at" });
++		},
++	});
++	pi.registerCommand("fixture-reload", {
++		handler: async (_args, ctx) => {
++			await ctx.reload();
++		},
++	});
++}
+diff --git a/packages/coding-agent/test/fixtures/jev-thinking-provenance/effort-policy.ts b/packages/coding-agent/test/fixtures/jev-thinking-provenance/effort-policy.ts
+new file mode 100644
+index 0000000..24e7519
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/jev-thinking-provenance/effort-policy.ts
+@@ -0,0 +1,72 @@
++// Adapted from Jev Pilot 0.12.1 model-router.policy.ts; see NOTICE.md and LICENSE.
++export const EFFORT_ORDER = ["low", "medium", "high", "xhigh", "max"] as const;
++export type Effort = (typeof EFFORT_ORDER)[number];
++
++export interface EffortDecision {
++	effort: number | null;
++	effortConfidence: number | null;
++	effortProbabilities?: Record<string, number> | null;
++	risky: number | null;
++}
++
++export function isContinuation(prompt: string): boolean {
++	return /^(?:please\s+)?(?:continue|go on|keep going|carry on|resume)(?:\s+please)?[.!]*$/i.test(prompt.trim());
++}
++
++function isFollowUp(prompt: string): boolean {
++	const text = prompt.trim();
++	if (!text || /[?？]$/.test(text)) return false;
++	if (/^(what|why|how|is|are|do|does|did|can|could|should|where|when|which|who)\b/i.test(text)) return false;
++	if (/为什么|为啥|怎么|怎样|如何|什么|是不是|能不能|可不可以|有没有|是否|[吗呢][\s。.!！~～]*$/.test(text))
++		return false;
++	const unspaced = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/gu;
++	const count = text.match(unspaced)?.length ?? 0;
++	const spaced = text
++		.replace(unspaced, " ")
++		.split(/\s+/)
++		.filter((token) => /[\p{L}\p{N}]/u.test(token)).length;
++	return spaced + Math.ceil(count / 1.5) <= 8;
++}
++
++function effortScore(decision: EffortDecision): number | null {
++	const ranked = Object.entries(decision.effortProbabilities ?? {})
++		.map(([level, probability]) => ({ level: Number(level), probability }))
++		.filter(
++			({ level, probability }) =>
++				Number.isInteger(level) && level >= 0 && level <= 4 && Number.isFinite(probability),
++		)
++		.sort((a, b) => b.probability - a.probability || b.level - a.level);
++	const [best, second] = ranked;
++	if (best) {
++		let level = best.level;
++		if (second && second.level > level && second.level <= 2 && best.probability - second.probability <= 0.15)
++			level = second.level;
++		const veryHard = ranked.filter((entry) => entry.level > 2).reduce((sum, entry) => sum + entry.probability, 0);
++		if (level > 2 && veryHard < 0.6) return 2;
++		if (level <= 2 && veryHard >= 0.6) return 3;
++		return level;
++	}
++	if (decision.effort === null || !Number.isFinite(decision.effort)) return null;
++	const score = Math.min(4, Math.max(0, decision.effort));
++	const whole = Math.floor(score);
++	return Math.min(4, score - whole >= 0.5 - (whole + 1 <= 2 ? 0.15 : 0) ? whole + 1 : whole);
++}
++
++/** Upstream start-of-turn rules only; no mid-turn escalation or model selection. */
++export function selectEffort(decision: EffortDecision, current: string, prompt: string): Effort | null {
++	let score = effortScore(decision);
++	const forced = decision.risky !== null && decision.risky > 0.7;
++	if (forced) score = Math.max(score ?? 0, 2);
++	if (score === null) return null;
++	const index = EFFORT_ORDER.indexOf(current as Effort);
++	const from = index === -1 ? null : index;
++	let to = Math.min(Math.round(score), 3);
++	if (forced) to = Math.max(to, from ?? 0, 2);
++	if (from !== null && from > 3) return null;
++	const lowering = from !== null && to < from;
++	if ((isFollowUp(prompt) && lowering) || to === from) return null;
++	const confidence = decision.effortConfidence;
++	const allowed = confidence === null ? !lowering : confidence >= (lowering ? 0.6 : 0.3);
++	const sureOfHigh = confidence === null || confidence >= 0.5;
++	return forced || (allowed && (lowering || to < 2 || sureOfHigh)) ? (EFFORT_ORDER[to] ?? null) : null;
++}
+diff --git a/packages/coding-agent/test/fixtures/jev-thinking-provenance/extension.ts b/packages/coding-agent/test/fixtures/jev-thinking-provenance/extension.ts
+new file mode 100644
+index 0000000..7cd47ea
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/jev-thinking-provenance/extension.ts
+@@ -0,0 +1,207 @@
++import { clampThinkingLevel, type ModelThinkingLevel } from "@earendil-works/pi-ai";
++import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
++import { classifierState } from "./classifier-context.ts";
++import { type EffortDecision, isContinuation, selectEffort } from "./effort-policy.ts";
++import { classify, type SystemOneConfig, systemOneConfig } from "./system-one.ts";
++
++const STATE_TYPE = "jev-pilot:effort";
++const APPLICATION_TYPE = "jev-pilot:effort-application";
++const RESTORED_TYPE = "jev-pilot:effort-restored";
++
++/** Effort-only adapter: never replaces the selected model or writes global defaults. */
++export default function (pi: ExtensionAPI): void {
++	let active: AbortController | undefined;
++	let pending: PendingEffort[] = [];
++	const dispose = () => {
++		active?.abort();
++		active = undefined;
++		pending = [];
++	};
++	const commitPending = (ctx: ExtensionContext) => {
++		const branch = ctx.sessionManager.getBranch();
++		for (const state of pending) {
++			if (state.signal.aborted || state.sessionId !== ctx.sessionManager.getSessionId()) continue;
++			const applicationIndex = branch.findIndex((entry) => entry.id === state.data.applicationId);
++			if (applicationIndex === -1) continue;
++			const owner = branch
++				.slice(applicationIndex + 1)
++				.find((entry) => entry.type === "message" && entry.message.role === "user");
++			if (owner) pi.appendEntry(STATE_TYPE, { ...state.data, ownerEntryId: owner.id });
++		}
++		pending = [];
++	};
++	const restoreThinking = (ctx: ExtensionContext, hasCreationOverride: boolean) => {
++		const branch = ctx.sessionManager.getBranch();
++		const desired = ownedThinking(branch);
++		if (!desired) return;
++		// Experimental host provenance identifies an explicit creation input, including off
++		// and values equal to restored history. The host already applied model clamping.
++		const restored = hasCreationOverride ? pi.getThinkingLevel() : desired;
++		// Close any application whose user was excluded, including when an explicit
++		// startup override wins. A future unrelated user must never become its owner.
++		pi.appendEntry(RESTORED_TYPE, { thinkingLevel: restored });
++		pi.setThinkingLevel(restored);
++	};
++	pi.on("session_shutdown", dispose);
++	pi.on("session_start", (event, ctx) => {
++		dispose();
++		restoreThinking(ctx, event.reason !== "reload" && event.thinkingLevelOverride !== undefined);
++	});
++	pi.on("session_tree", (_event, ctx) => {
++		dispose();
++		restoreThinking(ctx, false);
++	});
++	pi.on("agent_end", () => {
++		pending = [];
++	});
++	pi.on("context", (_event, ctx) => {
++		commitPending(ctx);
++	});
++
++	// before_agent_start has no active agent signal in Pi 1.3.0. User message_start
++	// is awaited before request preparation, includes queued input, and owns cancellation.
++	pi.on("message_start", async (event, ctx) => {
++		if (event.message.role !== "user") return;
++		// Pi persisted the preceding queued user at message_end. Commit it before a
++		// following continuation reads its predecessor, even in steering mode "all".
++		commitPending(ctx);
++		const prompt =
++			typeof event.message.content === "string"
++				? event.message.content
++				: event.message.content
++						.filter((part) => part.type === "text")
++						.map((part) => part.text)
++						.join("\n");
++		if (!prompt.trim() || /^\/\S/.test(prompt.trim())) return;
++		let config: SystemOneConfig;
++		try {
++			config = systemOneConfig();
++			if (!ctx.model || !ctx.modelRegistry.hasConfiguredAuth(ctx.model))
++				throw new Error("Select a configured physical Pi model with authentication before submitting work.");
++		} catch (error) {
++			ctx.ui.notify(error instanceof Error ? error.message : "Invalid Jev Pilot configuration.", "error");
++			ctx.abort();
++			return;
++		}
++		const controller = new AbortController();
++		active = controller;
++		const parentSignal = ctx.signal;
++		const cancel = () => controller.abort();
++		parentSignal?.addEventListener("abort", cancel, { once: true });
++		if (parentSignal?.aborted) cancel();
++		try {
++			const previous = previousDecision(ctx);
++			const reused = previous !== null && isContinuation(prompt);
++			const result = reused
++				? { outcome: "classified" as const, decision: previous }
++				: await classify(
++						config,
++						await classifierState(
++							ctx,
++							prompt,
++							pi.getAllTools().map((tool) => tool.name),
++						),
++						controller.signal,
++					);
++			if (controller.signal.aborted) return;
++			const current = pi.getThinkingLevel();
++			const decision = result.outcome === "classified" ? result.decision : null;
++			const requested = decision ? (selectEffort(decision, current, prompt) ?? current) : current;
++			const effective = clampThinkingLevel(ctx.model!, requested);
++			// setThinkingLevel appends before the owning user is persisted. Record its
++			// baseline first so a branch excluding that user can discard this change.
++			const state: DecisionState = {
++				requested,
++				effective,
++				outcome: reused ? "reused" : result.outcome,
++				decision: decision ?? previous,
++			};
++			pi.appendEntry(APPLICATION_TYPE, { baseline: current, ...state });
++			const applicationId = ctx.sessionManager.getLeafId()!;
++			pi.setThinkingLevel(requested);
++			pending.push({
++				sessionId: ctx.sessionManager.getSessionId(),
++				signal: parentSignal ?? controller.signal,
++				data: { applicationId, ...state },
++			});
++			ctx.ui.setStatus("jev-pilot", `jev · ${requested} → ${effective} · ${reused ? "reused" : result.outcome}`);
++		} catch {
++			if (!controller.signal.aborted)
++				ctx.ui.notify("Jev Pilot could not classify this input; current effort is unchanged.", "warning");
++		} finally {
++			parentSignal?.removeEventListener("abort", cancel);
++			if (active === controller) active = undefined;
++		}
++	});
++}
++
++interface EffortState extends DecisionState {
++	applicationId: string;
++	ownerEntryId?: string;
++}
++interface DecisionState {
++	requested: ModelThinkingLevel;
++	effective: ModelThinkingLevel;
++	outcome: string;
++	decision: EffortDecision | null;
++}
++interface PendingEffort {
++	sessionId: string;
++	signal: AbortSignal;
++	data: EffortState;
++}
++interface EffortApplication extends DecisionState {
++	baseline: ModelThinkingLevel;
++}
++
++function ownedApplications(branch: SessionEntry[]): Set<string> {
++	const owned = new Set<string>();
++	let applicationId: string | undefined;
++	for (const entry of branch) {
++		if (entry.type === "custom" && entry.customType === RESTORED_TYPE) applicationId = undefined;
++		if (entry.type === "custom" && entry.customType === APPLICATION_TYPE) applicationId = entry.id;
++		if (entry.type === "message" && entry.message.role === "user" && applicationId) {
++			owned.add(applicationId);
++			applicationId = undefined;
++		}
++	}
++	return owned;
++}
++
++/** Replay manual changes and only applications whose owning user is on this branch. */
++function ownedThinking(branch: SessionEntry[]): ModelThinkingLevel | undefined {
++	const committed = ownedApplications(branch);
++	let level: ModelThinkingLevel | undefined;
++	let application: { id: string; data: EffortApplication } | undefined;
++	for (const entry of branch) {
++		if (entry.type === "custom" && entry.customType === APPLICATION_TYPE) {
++			application = { id: entry.id, data: entry.data as EffortApplication };
++			level ??= application.data.baseline;
++			continue;
++		}
++		if (entry.type === "custom" && entry.customType === RESTORED_TYPE) {
++			level = (entry.data as { thinkingLevel: ModelThinkingLevel }).thinkingLevel;
++		}
++		if (entry.type === "thinking_level_change") {
++			const provisional =
++				application &&
++				application.data.baseline !== application.data.effective &&
++				entry.thinkingLevel === application.data.effective;
++			if (!provisional || committed.has(application!.id)) level = entry.thinkingLevel as ModelThinkingLevel;
++		}
++		application = undefined;
++	}
++	return level;
++}
++
++function previousDecision(ctx: ExtensionContext): EffortDecision | null {
++	const branch = ctx.sessionManager.getBranch();
++	const owned = ownedApplications(branch);
++	for (const entry of branch.reverse()) {
++		if (entry.type !== "custom") continue;
++		if (entry.customType !== STATE_TYPE && !(entry.customType === APPLICATION_TYPE && owned.has(entry.id))) continue;
++		const data = entry.data as DecisionState | undefined;
++		return data?.decision ?? null;
++	}
++	return null;
++}
+diff --git a/packages/coding-agent/test/fixtures/jev-thinking-provenance/system-one.ts b/packages/coding-agent/test/fixtures/jev-thinking-provenance/system-one.ts
+new file mode 100644
+index 0000000..cafb5ad
+--- /dev/null
++++ b/packages/coding-agent/test/fixtures/jev-thinking-provenance/system-one.ts
+@@ -0,0 +1,161 @@
++// Effort and risk questions adapted from pinned Jev Pilot; see NOTICE.md.
++import { EFFORT_ORDER, type EffortDecision } from "./effort-policy.ts";
++
++export interface SystemOneConfig {
++	url: string;
++	apiKey: string;
++	model: string;
++	timeoutMs: number;
++}
++
++export function systemOneConfig(): SystemOneConfig {
++	const url = process.env.JEV_SYSTEM_ONE_URL ?? "https://api.typesafe.ai/v1/systemone";
++	let parsed: URL;
++	try {
++		parsed = new URL(url);
++	} catch {
++		throw new Error("Set JEV_SYSTEM_ONE_URL to a valid HTTP(S) System One endpoint.");
++	}
++	if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password)
++		throw new Error("Set JEV_SYSTEM_ONE_URL to an HTTP(S) System One endpoint without embedded credentials.");
++	const apiKey = process.env.JEV_SYSTEM_ONE_API_KEY ?? process.env.TYPESAFE_API_KEY ?? "";
++	if (!apiKey.trim()) throw new Error("Set JEV_SYSTEM_ONE_API_KEY (or TYPESAFE_API_KEY) for System One.");
++	const model = process.env.JEV_SYSTEM_ONE_MODEL ?? "jev-latest";
++	if (!model.trim()) throw new Error("Set JEV_SYSTEM_ONE_MODEL to a decision model ID (default: jev-latest).");
++	const timeoutMs = Number(process.env.JEV_TIMEOUT_MS ?? 1500);
++	if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0)
++		throw new Error("Set JEV_TIMEOUT_MS to a positive integer in milliseconds (default: 1500).");
++	return { url, apiKey, model, timeoutMs };
++}
++
++const rubric = [
++	"Answered from what is already known, or mechanical work with nothing to work out: a lookup, a single command, a rename or find-and-replace (even across many files), a search that lists what it finds, formatting, a one-line change.",
++	"An ordinary, well-specified change to one or a few files, or a direct question about code already in view.",
++	"A change across several files that needs working out, a bug whose cause is described but has to be traced, writing tests, or reviewing a diff with care.",
++	"Design across several components, a bug whose cause is unknown, a refactor with many dependents, or careful reasoning about concurrency, performance or failure modes.",
++	"Novel architecture, a security or data-integrity question, a failure that resisted earlier attempts, or work where a subtle mistake is costly and hard to undo.",
++];
++
++const questions = {
++	effort: {
++		type: "choice",
++		instructions:
++			'How much step-by-step reasoning does the work this request asks for need? Rate the work, not how important the topic sounds: a question or advice answered in words, even about architecture or security, is low or medium, and reviewing a small diff is medium. A short reply that approves, continues or picks an option ("go ahead", "fix all and continue", "1") takes the size of the work it approves, from the recent conversation.',
++		criteria: Object.fromEntries(EFFORT_ORDER.map((level, index) => [level, rubric[index]])),
++	},
++	risky: {
++		type: "noul",
++		instructions:
++			"Carrying out this task would itself change production, move real money, or alter data that cannot be restored. Writing or testing code that deals with such things, without running it against the real system, does not count.",
++		criteria: {
++			true: "Doing the task runs something against a real system with lasting effect: deploying or releasing, changing production data or configuration, moving money, deleting or overwriting data with no backup, or rewriting shared history (force-push).",
++			false: "Reading, explaining, planning, or writing and testing code locally, even code that deals with production, payments or data, without running it against the real system.",
++		},
++	},
++};
++
++function object(value: unknown): Record<string, unknown> | null {
++	return value !== null && typeof value === "object" && !Array.isArray(value)
++		? (value as Record<string, unknown>)
++		: null;
++}
++function probability(value: unknown): value is number {
++	return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
++}
++
++/** Reject malformed values before they can change the current effort. */
++function readDecision(value: unknown): EffortDecision | null {
++	const answers = object(object(value)?.answers);
++	const effort = object(answers?.effort);
++	const risk = object(answers?.risky);
++	if (!answers || !effort || !risk) return null;
++	const risky = risk.noul ?? risk.probability;
++	if (!probability(risky)) return null;
++	if (effort.confidence !== undefined && !probability(effort.confidence)) return null;
++	const raw = effort.probabilities;
++	let probabilities: Record<string, number> | null = null;
++	if (raw !== undefined) {
++		const distribution = object(raw);
++		if (
++			!distribution ||
++			!Object.keys(distribution).length ||
++			Object.values(distribution).some((value) => !probability(value))
++		)
++			return null;
++		const named = EFFORT_ORDER.some((level) => level in distribution);
++		const keys = named ? [...EFFORT_ORDER] : ["0", "1", "2", "3", "4"];
++		if (Object.keys(distribution).some((key) => !keys.includes(key))) return null;
++		probabilities = Object.fromEntries(keys.map((key, index) => [String(index), distribution[key] ?? 0])) as Record<
++			string,
++			number
++		>;
++		const total = Object.values(probabilities).reduce((sum, value) => sum + value, 0);
++		if (Math.abs(total - 1) > 0.02) return null;
++	}
++	const choice = EFFORT_ORDER.indexOf(effort.choice as (typeof EFFORT_ORDER)[number]);
++	const score = effort.score;
++	if (
++		!probabilities &&
++		choice === -1 &&
++		!(typeof score === "number" && Number.isFinite(score) && score >= 0 && score <= 4)
++	)
++		return null;
++	const confidence = effort.confidence as number | undefined;
++	return {
++		effort: probabilities
++			? Object.entries(probabilities).reduce((sum, [level, value]) => sum + Number(level) * value, 0)
++			: choice !== -1
++				? choice
++				: (score as number),
++		effortConfidence: confidence ?? (probabilities ? Math.max(...Object.values(probabilities)) : null),
++		effortProbabilities: probabilities,
++		risky,
++	};
++}
++
++export type Classification =
++	| { outcome: "classified"; decision: EffortDecision }
++	| { outcome: "timeout" | "service-error" | "schema-error" };
++
++/** Deadline cancels transport; parent cancellation rejects and is never fail-open. */
++export async function classify(config: SystemOneConfig, state: unknown, signal: AbortSignal): Promise<Classification> {
++	const controller = new AbortController();
++	let timedOut = false;
++	const cancel = () => controller.abort(signal.reason);
++	signal.addEventListener("abort", cancel, { once: true });
++	if (signal.aborted) cancel();
++	const timer = setTimeout(() => {
++		timedOut = true;
++		controller.abort();
++	}, config.timeoutMs);
++	try {
++		const response = await fetch(config.url, {
++			method: "POST",
++			headers: {
++				"content-type": "application/json",
++				authorization: `Bearer ${config.apiKey}`,
++			},
++			body: JSON.stringify({ model: config.model, state, questions }),
++			signal: controller.signal,
++		});
++		if (!response.ok) {
++			await response.body?.cancel();
++			return { outcome: "service-error" };
++		}
++		let value: unknown;
++		try {
++			value = await response.json();
++		} catch (error) {
++			if (controller.signal.aborted) throw error;
++			return { outcome: "schema-error" };
++		}
++		const decision = readDecision(value);
++		return decision ? { outcome: "classified", decision } : { outcome: "schema-error" };
++	} catch (error) {
++		if (signal.aborted) throw error;
++		return { outcome: timedOut ? "timeout" : "service-error" };
++	} finally {
++		clearTimeout(timer);
++		signal.removeEventListener("abort", cancel);
++	}
++}
+diff --git a/packages/coding-agent/test/thinking-provenance-cli.test.ts b/packages/coding-agent/test/thinking-provenance-cli.test.ts
+new file mode 100644
+index 0000000..26e4eca
+--- /dev/null
++++ b/packages/coding-agent/test/thinking-provenance-cli.test.ts
+@@ -0,0 +1,232 @@
++import { afterEach, describe, expect, it } from "vitest";
++import type { SessionEntry } from "../src/index.ts";
++import { ThinkingProvenanceCliFixture } from "./fixtures/jev-thinking-provenance/cli-fixture.ts";
++
++const task = "Please implement a careful multi-file change with tests and explain the concurrency implications";
++const independent =
++	"Please inspect this independent lengthy task and explain all relevant implementation details carefully";
++
++function userEntry(entries: SessionEntry[]): SessionEntry {
++	const entry = entries.find((entry) => entry.type === "message" && entry.message.role === "user");
++	if (!entry) throw new Error("Missing user entry");
++	return entry;
++}
++
++function lastDecision(entries: SessionEntry[]): unknown {
++	const entry = entries.findLast((entry) => entry.type === "custom" && entry.customType === "jev-pilot:effort");
++	return entry?.type === "custom" ? entry.data : undefined;
++}
++
++describe("experimental thinking provenance through the source CLI", () => {
++	let fixture: ThinkingProvenanceCliFixture;
++	afterEach(async () => {
++		await fixture?.close();
++	});
++
++	async function start(thinking?: string, reasoning = true) {
++		fixture = new ThinkingProvenanceCliFixture();
++		await fixture.start(thinking, reasoning);
++		return fixture;
++	}
++
++	it("CLI-1 / AC-1 restores medium after fork-before without a startup override", async () => {
++		await start();
++		await fixture.prompt(task);
++		const user = userEntry(await fixture.entries());
++		await fixture.command("fork", { entryId: user.id });
++		expect(await fixture.command("get_state")).toMatchObject({ thinkingLevel: "medium" });
++		fixture.noChange();
++		await fixture.prompt(independent);
++		expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
++		expect(lastDecision(await fixture.entries())).toMatchObject({ effective: "medium" });
++	});
++
++	it("CLI-2 / AC-2 honors explicit high when it equals excluded provisional high", async () => {
++		await start("high");
++		expect(await fixture.command("get_state")).toMatchObject({ thinkingLevel: "high" });
++		await fixture.command("set_thinking_level", { level: "medium" });
++		await fixture.prompt(task);
++		await fixture.command("fork", { entryId: userEntry(await fixture.entries()).id });
++		const restored = await fixture.command("get_state");
++		fixture.noChange();
++		await fixture.prompt(independent);
++		expect({
++			restored,
++			effort: fixture.generations.at(-1)?.reasoning_effort,
++			retained: lastDecision(await fixture.entries()),
++		}).toMatchObject({
++			restored: { thinkingLevel: "high" },
++			effort: "high",
++			retained: { effective: "high" },
++		});
++	});
++
++	it("CLI-3 / AC-3 tree navigation replays retained manual low instead of startup high", async () => {
++		await start("high");
++		await fixture.prompt(task);
++		await fixture.command("set_thinking_level", { level: "low" });
++		const manual = (await fixture.entries()).findLast(
++			(entry) => entry.type === "thinking_level_change" && entry.thinkingLevel === "low",
++		)!;
++		await fixture.prompt(task);
++		await fixture.command("prompt", { message: `/fixture-tree ${manual.id}` });
++		expect(await fixture.command("get_state")).toMatchObject({ thinkingLevel: "low" });
++		fixture.noChange();
++		await fixture.prompt(independent);
++		expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
++	});
++
++	it("CLI-4 / AC-4 reload keeps manual low without reapplying the startup option", async () => {
++		await start("high");
++		await fixture.prompt(task);
++		await fixture.command("set_thinking_level", { level: "low" });
++		await fixture.command("prompt", { message: "/fixture-reload" });
++		expect(await fixture.command("get_state")).toMatchObject({ thinkingLevel: "low" });
++		fixture.noChange();
++		await fixture.prompt(independent);
++		expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
++		expect((await fixture.starts()).at(-1)).toEqual({ type: "session_start", reason: "reload" });
++	});
++
++	it("CLI-5 / AC-5 fork-at retains its owner and reusable high decision", async () => {
++		await start();
++		await fixture.prompt(task);
++		await fixture.command("prompt", { message: `/fixture-fork-at ${userEntry(await fixture.entries()).id}` });
++		expect(await fixture.command("get_state")).toMatchObject({ thinkingLevel: "high" });
++		fixture.noChange();
++		await fixture.prompt("continue");
++		expect(fixture.classifications).toHaveLength(1);
++		expect(fixture.generations.at(-1)?.reasoning_effort).toBe("high");
++		expect(lastDecision(await fixture.entries())).toMatchObject({ outcome: "reused", effective: "high" });
++	});
++
++	it.each([
++		["steering", "set_steering_mode", "steer"],
++		["follow-up", "set_follow_up_mode", "follow_up"],
++	])("CLI-6 / AC-6 %s all reuses the immediately preceding low lookup", async (_name, setMode, enqueue) => {
++		await start();
++		await fixture.prompt(task);
++		await fixture.command(setMode, { mode: "all" });
++		fixture.modelDelay = 300;
++		const offset = fixture.records.length;
++		await fixture.command("prompt", { message: task });
++		await fixture.wait(() => fixture.generations.length === 2);
++		fixture.response.answers.effort = { choice: "low", confidence: 0.99 };
++		await fixture.command(enqueue, {
++			message: "What is the ordinary low effort lookup for this exact independent question?",
++		});
++		await fixture.command(enqueue, { message: "continue" });
++		await fixture.wait(() => fixture.records.slice(offset).some((record) => record.type === "agent_settled"));
++		expect(fixture.generations.map((request) => request.reasoning_effort)).toEqual(["high", "high", "low"]);
++		expect(fixture.classifications).toHaveLength(3);
++		const entries = await fixture.entries();
++		const users = entries.filter((entry) => entry.type === "message" && entry.message.role === "user").slice(-2);
++		const receipts = entries
++			.filter((entry) => entry.type === "custom" && entry.customType === "jev-pilot:effort")
++			.slice(-2);
++		expect(receipts.map((entry) => (entry.type === "custom" ? entry.data : undefined))).toMatchObject([
++			{
++				ownerEntryId: users[0].id,
++				outcome: "classified",
++				effective: "low",
++				decision: { effort: 0, effortConfidence: 0.99 },
++			},
++			{
++				ownerEntryId: users[1].id,
++				outcome: "reused",
++				effective: "low",
++				decision: { effort: 0, effortConfidence: 0.99 },
++			},
++		]);
++		expect(users[0].id).not.toBe(users[1].id);
++	});
++
++	it("CLI-7 / AC-7 active abort cancels classifier HTTP without applying fallback", async () => {
++		await start();
++		fixture.classifierDelay = 500;
++		const offset = fixture.records.length;
++		await fixture.command("prompt", { message: task });
++		await fixture.wait(() => fixture.classifications.length === 1);
++		await fixture.command("abort");
++		await fixture.wait(() => fixture.records.slice(offset).some((record) => record.type === "agent_settled"));
++		await fixture.wait(() => fixture.classifierAborts === 1);
++		expect(fixture.generations).toHaveLength(0);
++		expect(
++			(await fixture.entries()).filter(
++				(entry) =>
++					entry.type === "custom" &&
++					["jev-pilot:effort", "jev-pilot:effort-application"].includes(entry.customType),
++			),
++		).toHaveLength(0);
++		expect(await fixture.command("get_state")).toMatchObject({ thinkingLevel: "medium" });
++		fixture.classifierDelay = 0;
++		await fixture.prompt(task);
++		expect(fixture.generations).toHaveLength(1);
++		expect(fixture.generations[0].reasoning_effort).toBe("high");
++	});
++
++	it("CLI-8 / AC-8 session effort and replacement never mutate global defaults", async () => {
++		await start("high");
++		await fixture.command("set_thinking_level", { level: "medium" });
++		await fixture.prompt(task);
++		await fixture.command("fork", { entryId: userEntry(await fixture.entries()).id });
++		expect(await fixture.settings()).toBe(fixture.settingsBefore);
++	});
++
++	it("CLI-9 / AC-9 explicit off remains authoritative rather than meaning absent", async () => {
++		await start("off");
++		await fixture.command("set_thinking_level", { level: "medium" });
++		await fixture.prompt(task);
++		await fixture.command("fork", { entryId: userEntry(await fixture.entries()).id });
++		expect(await fixture.command("get_state")).toMatchObject({ thinkingLevel: "off" });
++		fixture.noChange();
++		await fixture.prompt(independent);
++		expect(fixture.generations.at(-1)?.reasoning_effort).toBe("none");
++		expect((await fixture.starts()).at(-1)).toMatchObject({ reason: "fork", thinkingLevelOverride: "off" });
++	});
++
++	it("CLI-10 / AC-10 raw max override is distinguished from effective high", async () => {
++		await start("max");
++		expect(await fixture.command("get_state")).toMatchObject({ thinkingLevel: "high" });
++		await fixture.command("set_thinking_level", { level: "medium" });
++		await fixture.prompt(task);
++		await fixture.command("fork", { entryId: userEntry(await fixture.entries()).id });
++		expect(await fixture.command("get_state")).toMatchObject({ thinkingLevel: "high" });
++		fixture.noChange();
++		await fixture.prompt(independent);
++		expect(fixture.generations.at(-1)?.reasoning_effort).toBe("high");
++		expect((await fixture.starts()).at(-1)).toMatchObject({ thinkingLevelOverride: "max" });
++	});
++
++	it("CLI-11 / AC-11 new resume and clone use replacement factory provenance", async () => {
++		await start("high");
++		fixture.noChange();
++		await fixture.prompt(independent);
++		const original = await fixture.command<{ sessionFile: string }>("get_state");
++		await fixture.command("set_thinking_level", { level: "low" });
++		await fixture.command("new_session");
++		expect((await fixture.starts()).at(-1)).toMatchObject({ reason: "new", thinkingLevelOverride: "high" });
++		await fixture.prompt(independent);
++		await fixture.command("switch_session", { sessionPath: original.sessionFile });
++		expect((await fixture.starts()).at(-1)).toMatchObject({ reason: "resume", thinkingLevelOverride: "high" });
++		await fixture.prompt(independent);
++		await fixture.command("clone");
++		expect((await fixture.starts()).at(-1)).toMatchObject({ reason: "fork", thinkingLevelOverride: "high" });
++		await fixture.prompt(independent);
++		expect(fixture.generations.map((request) => request.reasoning_effort)).toEqual(["high", "high", "high", "high"]);
++	});
++
++	it("CLI-13 / AC-13 orphan applications cannot acquire a later ineligible owner", async () => {
++		await start();
++		await fixture.prompt(task);
++		await fixture.command("fork", { entryId: userEntry(await fixture.entries()).id });
++		await fixture.prompt("/unregistered-command");
++		const fork = await fixture.command<{ sessionFile: string }>("get_state");
++		await fixture.command("new_session");
++		await fixture.command("switch_session", { sessionPath: fork.sessionFile });
++		fixture.noChange();
++		await fixture.prompt("continue");
++		expect(fixture.classifications).toHaveLength(2);
++		expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
++	});
++});
+diff --git a/packages/coding-agent/test/thinking-provenance-sdk.test.ts b/packages/coding-agent/test/thinking-provenance-sdk.test.ts
+new file mode 100644
+index 0000000..3a0d27f
+--- /dev/null
++++ b/packages/coding-agent/test/thinking-provenance-sdk.test.ts
+@@ -0,0 +1,145 @@
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
++import { fauxAssistantMessage, registerFauxProvider } from "@earendil-works/pi-ai/compat";
++import { afterEach, describe, expect, it } from "vitest";
++import { createAgentSessionRuntime } from "../src/core/agent-session-runtime.ts";
++import { AuthStorage } from "../src/core/auth-storage.ts";
++import { ModelRuntime } from "../src/core/model-runtime.ts";
++import { createAgentSession } from "../src/core/sdk.ts";
++import { SessionManager } from "../src/core/session-manager.ts";
++import { SettingsManager } from "../src/core/settings-manager.ts";
++import type { SessionStartEvent } from "../src/index.ts";
++import { createTestExtensionsResult, createTestResourceLoader } from "./utilities.ts";
++
++describe("experimental SDK startup thinking provenance", () => {
++	const cleanups: Array<() => void | Promise<void>> = [];
++	afterEach(async () => {
++		while (cleanups.length) await cleanups.pop()?.();
++	});
++
++	async function create(thinkingLevel?: ThinkingLevel, reasoning = true, suppliedOverride?: ThinkingLevel) {
++		const directory = await mkdtemp(join(tmpdir(), "pi-thinking-sdk-"));
++		cleanups.push(() => rm(directory, { recursive: true, force: true }));
++		const faux = registerFauxProvider({ models: [{ id: "thinking-fixture", reasoning }] });
++		cleanups.push(() => faux.unregister());
++		faux.setResponses([fauxAssistantMessage("source SDK response")]);
++		const model = faux.getModel();
++		const auth = AuthStorage.inMemory();
++		await auth.modify(model.provider, async () => ({ type: "api_key", key: "faux-key" }));
++		const modelRuntime = await ModelRuntime.create({ credentials: auth, modelsPath: join(directory, "models.json") });
++		modelRuntime.registerProvider(model.provider, {
++			baseUrl: model.baseUrl,
++			api: model.api,
++			apiKey: "faux-key",
++			models: [
++				{
++					id: model.id,
++					name: model.name,
++					api: model.api,
++					reasoning: model.reasoning,
++					input: model.input,
++					cost: model.cost,
++					contextWindow: model.contextWindow,
++					maxTokens: model.maxTokens,
++					baseUrl: model.baseUrl,
++				},
++			],
++		});
++		const events: SessionStartEvent[] = [];
++		const sessionManager = SessionManager.create(directory, join(directory, "sessions"));
++		sessionManager.appendThinkingLevelChange("high");
++		sessionManager.appendMessage({ role: "user", content: "Existing SDK history", timestamp: 1 });
++		const runtime = await createAgentSessionRuntime(
++			async ({ cwd, sessionManager, sessionStartEvent }) => {
++				const extensionsResult = await createTestExtensionsResult(
++					[
++						(pi) => {
++							pi.on("session_start", (event) => {
++								events.push(event);
++							});
++						},
++					],
++					directory,
++				);
++				const services = {
++					cwd,
++					agentDir: directory,
++					modelRuntime,
++					settingsManager: SettingsManager.inMemory({
++						defaultThinkingLevel: "medium",
++						compaction: { enabled: false },
++					}),
++					resourceLoader: createTestResourceLoader({ extensionsResult }),
++					diagnostics: [],
++				};
++				return {
++					...(await createAgentSession({
++						...services,
++						sessionManager,
++						model,
++						thinkingLevel,
++						noTools: "all",
++						sessionStartEvent,
++					})),
++					services,
++					diagnostics: [],
++				};
++			},
++			{
++				cwd: directory,
++				agentDir: directory,
++				sessionManager,
++				sessionStartEvent: { type: "session_start", reason: "fork", thinkingLevelOverride: suppliedOverride },
++			},
++		);
++		cleanups.push(() => runtime.dispose());
++		await runtime.session.bindExtensions({});
++		return { session: runtime.session, runtime, events, faux };
++	}
++
++	it("SDK-12 / AC-12 distinguishes equal explicit high from restored high", async () => {
++		const restored = await create(undefined, true, "low");
++		expect(restored.session.thinkingLevel).toBe("high");
++		expect(restored.events[0].thinkingLevelOverride).toBeUndefined();
++		const explicit = await create("high", true, "low");
++		expect(explicit.session.thinkingLevel).toBe("high");
++		expect(explicit.events[0].thinkingLevelOverride).toBe("high");
++		await explicit.session.prompt("Observe explicit SDK generation");
++		const response = explicit.session.messages.findLast((message) => message.role === "assistant");
++		expect(response).toMatchObject({ stopReason: "stop", thinkingLevel: "high" });
++	});
++
++	it("SDK-11 / AC-11 import replacement uses its factory's actual option", async () => {
++		const { runtime, events, faux } = await create("high");
++		await runtime.session.prompt("Persist source SDK history");
++		const sourceFile = runtime.session.sessionFile!;
++		runtime.session.setThinkingLevel("low");
++		expect(await runtime.importFromJsonl(sourceFile)).toEqual({ cancelled: false });
++		await runtime.session.bindExtensions({});
++		expect(runtime.session.thinkingLevel).toBe("high");
++		expect(events.at(-1)).toMatchObject({
++			reason: "resume",
++			thinkingLevelOverride: "high",
++			previousSessionFile: sourceFile,
++		});
++		faux.setResponses([fauxAssistantMessage("Imported SDK response")]);
++		await runtime.session.prompt("Observe imported SDK generation");
++		expect(runtime.session.messages.findLast((message) => message.role === "assistant")).toMatchObject({
++			stopReason: "stop",
++			thinkingLevel: "high",
++		});
++	});
++
++	it("SDK-10 / AC-10 preserves raw high provenance on a non-reasoning model", async () => {
++		const { session, events } = await create("high", false);
++		expect(session.thinkingLevel).toBe("off");
++		expect(events[0].thinkingLevelOverride).toBe("high");
++		await session.prompt("Observe clamped SDK generation");
++		expect(session.messages.findLast((message) => message.role === "assistant")).toMatchObject({
++			stopReason: "stop",
++			thinkingLevel: "off",
++		});
++	});
++});
