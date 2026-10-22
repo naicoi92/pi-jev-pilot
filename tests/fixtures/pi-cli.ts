@@ -33,6 +33,9 @@ export class PiFixture {
   modelAborts = 0;
   modelText = "Fixture answer. Shall I implement the proposed multi-file change?";
   nextReadPath: string | undefined;
+  toolCalls: { name: string; input: RecordData }[] = [];
+  tools = "read";
+  useGuidanceDefaults = false;
   modelFailures = 0;
   reasoning = true;
   startupModel = "fixture-model";
@@ -88,17 +91,20 @@ export class PiFixture {
         if (this.modelDelay) await Bun.sleep(this.modelDelay);
         const readPath = this.nextReadPath;
         this.nextReadPath = undefined;
-        const delta = readPath
+        const tool =
+          this.toolCalls.shift() ??
+          (readPath ? { name: "read", input: { path: readPath } } : undefined);
+        const delta = tool
           ? {
               role: "assistant",
               tool_calls: [
                 {
                   index: 0,
-                  id: "fixture-read",
+                  id: `fixture-tool-${this.generations.length}`,
                   type: "function",
                   function: {
-                    name: "read",
-                    arguments: JSON.stringify({ path: readPath }),
+                    name: tool.name,
+                    arguments: JSON.stringify(tool.input),
                   },
                 },
               ],
@@ -117,7 +123,7 @@ export class PiFixture {
             {
               index: 0,
               delta: {},
-              finish_reason: readPath ? "tool_calls" : "stop",
+              finish_reason: tool ? "tool_calls" : "stop",
             },
           ],
           usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 },
@@ -248,6 +254,9 @@ export default function (pi: ExtensionAPI) {
       PI_TELEMETRY: "0",
       JEV_SYSTEM_ONE_URL: `${this.server.url}systemone`,
       JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
+      ...(this.useGuidanceDefaults
+        ? {}
+        : { JEV_STRATEGY_ENABLED: "false", JEV_QUALITY_ENABLED: "false" }),
       ...env,
     };
     const install = Bun.spawn([process.execPath, "run", cli, "install", root], {
@@ -280,7 +289,7 @@ export default function (pi: ExtensionAPI) {
       "--no-themes",
       "--no-context-files",
       "--tools",
-      "read",
+      this.tools,
       "--offline",
       "--no-approve",
       "--model",

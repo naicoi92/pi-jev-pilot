@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { parseFrontmatter, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isContinuation } from "./effort-policy.ts";
+import { guidanceEnabled, qualityAdvice, strategyAdvice } from "./guidance-policy.ts";
 import {
   classify,
   systemOneConfig,
@@ -57,12 +58,31 @@ export async function decideMain(
   state: () => Promise<unknown>,
   signal: AbortSignal,
   enabled: DecisionQuestions,
-): Promise<{ result: Classification | null; skill?: SkillCandidate }> {
+): Promise<{ result: Classification | null; skill?: SkillCandidate; advice?: string }> {
   const skills = await eligibleSkills(pi, prompt);
-  if (!enabled.tier && !enabled.effort && !skills.length) return { result: null };
+  const quality = !isContinuation(prompt) && guidanceEnabled("QUALITY");
+  const strategy = !isContinuation(prompt) && guidanceEnabled("STRATEGY");
+  const finish = (result: Classification | null, skill?: SkillCandidate) => {
+    const adviceDecision = result?.adviceDecision;
+    return {
+      result,
+      skill,
+      advice: adviceDecision
+        ? [
+            strategy ? strategyAdvice(adviceDecision) : null,
+            quality ? qualityAdvice(adviceDecision) : null,
+          ]
+            .filter(Boolean)
+            .join("\n\n") || undefined
+        : undefined,
+    };
+  };
+  if (!enabled.tier && !enabled.effort && !skills.length && !quality && !strategy)
+    return { result: null };
   const config = systemOneConfig();
   const context = await state();
-  if (!skills.length) return { result: await classify(config, context, signal, enabled) };
+  if (!skills.length)
+    return finish(await classify(config, context, signal, { ...enabled, quality, strategy }));
   const rerank = flag("JEV_SKILL_RERANK", "false");
   const batches = skillBatches(skills);
   const answers = await Promise.all(
@@ -71,7 +91,7 @@ export async function decideMain(
         config,
         context,
         signal,
-        index === 0 ? enabled : { tier: false, effort: false },
+        index === 0 ? { ...enabled, quality, strategy } : { tier: false, effort: false },
         skillQuestions(batch, index === 0, rerank),
       ),
     ),
@@ -93,7 +113,7 @@ export async function decideMain(
       if (answer.outcome === "classified") skill = pickReranked(answer.value, candidates);
     }
   } else skill = pickSkill(parts, skills);
-  return { result: answers[0]!, skill };
+  return finish(answers[0]!, skill);
 }
 
 export function skillBlock(skill: SkillCandidate, alreadyLoaded = false): string {
