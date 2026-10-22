@@ -186,10 +186,11 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
         Object.entries(distribution).some(
           ([key, value]) => !TIER_ORDER.includes(key as Tier) || !probability(value),
         ) ||
-        Math.abs(
-          Object.values(distribution).reduce<number>((sum, value) => sum + (value as number), 0) -
-            1,
-        ) > 0.02)
+        (enabled.tier &&
+          Math.abs(
+            Object.values(distribution).reduce<number>((sum, value) => sum + (value as number), 0) -
+              1,
+          ) > 0.02))
     )
       return null;
     decision.tier = tier.choice as Tier;
@@ -232,9 +233,10 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
   return decision;
 }
 
-export type Classification =
+export type Classification = (
   | { outcome: "classified"; decision: Decision; value?: unknown }
-  | { outcome: "timeout" | "service-error" | "schema-error" };
+  | { outcome: "timeout" | "service-error" | "schema-error" }
+) & { adviceDecision?: Decision };
 
 /** Deadline cancels transport; parent cancellation rejects and is never fail-open. */
 export async function classify(
@@ -307,7 +309,20 @@ export async function classify(
       return { outcome: "schema-error" };
     }
     const decision = readAnswers(value, enabled);
-    return decision ? { outcome: "classified", decision, value } : { outcome: "schema-error" };
+    // Advice reads raw task tier; routing keeps its stricter complete-distribution
+    // contract. Rejected routing must neither apply its selections nor erase advice.
+    const adviceDecision =
+      enabled.strategy || enabled.quality
+        ? (readAnswers(value, {
+            tier: false,
+            effort: false,
+            strategy: enabled.strategy,
+            quality: enabled.quality,
+          }) ?? undefined)
+        : undefined;
+    return decision
+      ? { outcome: "classified", decision, value, adviceDecision }
+      : { outcome: "schema-error", adviceDecision };
   } catch (error) {
     if (signal.aborted) throw error;
     return { outcome: timedOut ? "timeout" : "service-error" };

@@ -753,3 +753,72 @@ test("G16-branch abandoned failures cannot carry counters to another branch", as
   expect(text(f, f.generations.length - 1)).not.toContain("may be going in circles");
   expect(f.classifications).toHaveLength(2);
 }, 20000);
+
+for (const virtual of [false, true]) {
+  test(`G15-partial-tier-${virtual ? "virtual" : "physical"} advice does not relax routing validation`, async () => {
+    const f = await start(
+      {
+        JEV_STRATEGY_ENABLED: "true",
+        JEV_QUALITY_ENABLED: "false",
+        ...(virtual ? { JEV_EFFORT_ENABLED: "true" } : {}),
+      },
+      virtual,
+    );
+    f.response = {
+      answers: {
+        tier: {
+          choice: virtual ? "deep" : "balanced",
+          probabilities: { [virtual ? "deep" : "balanced"]: 0.6 },
+        },
+        strategy: { choice: "delegate", confidence: 0.8 },
+        ...(virtual ? { effort: { choice: "high", confidence: 0.99 }, risky: { noul: 0 } } : {}),
+      },
+    };
+    await f.prompt("Perform the fully specified broad mechanical investigation");
+    expect(f.classifications).toHaveLength(1);
+    expect(text(f).split("as: delegate.")).toHaveLength(2);
+    expect(f.generations[0]).toMatchObject({ model: "fixture-model", reasoning_effort: "medium" });
+    if (virtual) {
+      const entries = (
+        (await f.command("get_entries")).data as {
+          entries: { customType?: string; data?: unknown }[];
+        }
+      ).entries;
+      const route = entries.findLast((e) => e.customType === "pi.virtual-model-state");
+      expect(JSON.stringify(route)).toContain("schema-error");
+      expect(JSON.stringify(route)).not.toContain('"source":"decision"');
+    }
+  }, 20000);
+}
+for (const virtual of [false, true]) {
+  for (const tier of [
+    { choice: "balanced", probabilities: { balanced: 1.2 } },
+    { choice: "unknown", probabilities: { balanced: 0.6 } },
+  ]) {
+    test(`G15-invalid-tier-values ${virtual}/${JSON.stringify(tier)} cannot create advice`, async () => {
+      const f = await start(
+        {
+          JEV_STRATEGY_ENABLED: "true",
+          JEV_QUALITY_ENABLED: "false",
+          ...(virtual ? { JEV_EFFORT_ENABLED: "true" } : {}),
+        },
+        virtual,
+      );
+      f.response = {
+        answers: {
+          tier,
+          strategy: { choice: "delegate", confidence: 0.8 },
+          effort: { choice: "high", confidence: 0.99 },
+          risky: { noul: 0 },
+        },
+      };
+      await f.prompt("Perform the fully specified broad mechanical investigation");
+      expect(f.classifications).toHaveLength(1);
+      expect(text(f)).not.toContain("<execution_strategy>");
+      expect(f.generations[0]).toMatchObject({
+        model: "fixture-model",
+        reasoning_effort: "medium",
+      });
+    }, 20000);
+  }
+}

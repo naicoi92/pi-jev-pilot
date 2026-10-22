@@ -35,6 +35,12 @@ Each test has exactly one AC prefix. Expected values below are source literals, 
 | AC-16     | G16-no-escalation                                     | Actual edits/failed commands preserve provider reasoning effort, classifier count, selected model and absence of dispatch receipts. Scope exclusion overrides upstream raise/Fable tail.                   |
 | AC-27     | G27-exclusions                                        | Provider context contains no pet, external-review requirement, escalation, invented mandatory review gates, crew/design/ledger claims or transparent workflow interception. Source/scope review.           |
 
+### P1 review regression (recorded before test code)
+
+- G15-partial-tier-physical: tier `{choice:balanced, probabilities:{balanced:.6}}` and delegate confidence .8 produce advice with exactly one request and unchanged physical model/medium thinking. Pinned readDecision 454–483 and confidenceOf 515–519 impose no complete distribution on raw advice tier.
+- G15-partial-tier-virtual: the same raw-tier rule independently produces advice on a combined request, while rejected routing retains configured balanced/medium baseline, schema-error routing status and no application of selected deep/high from malformed routing. Supervisor approved internal adviceDecision separation, same response/no extra call.
+- G15-invalid-tier-values: unknown tier names and invalid individual tier probabilities do not produce advice; combined routing keeps its existing fail-open baseline. Transport failure/cancel remains covered by existing G15-cancel cases and cannot create adviceDecision.
+
 ### Additional source-derived cases (recorded before their tests)
 
 - G09-defaults: without either new environment switch, production sends tier/strategy plus four quality nouls (upstream features.ts true defaults), while effort/skills disabled remain absent.

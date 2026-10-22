@@ -62,19 +62,21 @@ export async function decideMain(
   const skills = await eligibleSkills(pi, prompt);
   const quality = !isContinuation(prompt) && guidanceEnabled("QUALITY");
   const strategy = !isContinuation(prompt) && guidanceEnabled("STRATEGY");
-  const finish = (result: Classification | null, skill?: SkillCandidate) => ({
-    result,
-    skill,
-    advice:
-      result?.outcome === "classified"
+  const finish = (result: Classification | null, skill?: SkillCandidate) => {
+    const adviceDecision = result?.adviceDecision;
+    return {
+      result,
+      skill,
+      advice: adviceDecision
         ? [
-            strategy ? strategyAdvice(result.decision) : null,
-            quality ? qualityAdvice(result.decision) : null,
+            strategy ? strategyAdvice(adviceDecision) : null,
+            quality ? qualityAdvice(adviceDecision) : null,
           ]
             .filter(Boolean)
             .join("\n\n") || undefined
         : undefined,
-  });
+    };
+  };
   if (!enabled.tier && !enabled.effort && !skills.length && !quality && !strategy)
     return { result: null };
   const config = systemOneConfig();
