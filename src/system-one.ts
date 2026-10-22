@@ -1,4 +1,5 @@
 // Effort and risk questions adapted from pinned Jev Pilot; see NOTICE.md.
+import { DESIGN_QUESTION, readDesign } from "./design-policy.ts";
 import { EFFORT_ORDER, type EffortDecision } from "./effort-policy.ts";
 import { TIER_ORDER, type Tier } from "./tier-policy.ts";
 
@@ -18,6 +19,7 @@ export interface DecisionQuestions {
   effort: boolean;
   quality?: boolean;
   strategy?: boolean;
+  design?: boolean;
 }
 
 export function mainRoutingEnabled(): boolean {
@@ -236,7 +238,7 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
 export type Classification = (
   | { outcome: "classified"; decision: Decision; value?: unknown }
   | { outcome: "timeout" | "service-error" | "schema-error" }
-) & { adviceDecision?: Decision };
+) & { adviceDecision?: Decision; designScore?: number | null };
 
 /** Deadline cancels transport; parent cancellation rejects and is never fail-open. */
 export async function classify(
@@ -251,6 +253,7 @@ export async function classify(
     !enabled.effort &&
     !enabled.strategy &&
     !enabled.quality &&
+    !enabled.design &&
     !Object.keys(additionalQuestions).length
   )
     throw new Error("No applicable Jev questions.");
@@ -274,6 +277,7 @@ export async function classify(
           ]),
         )
       : {}),
+    ...(enabled.design ? { ui_design: DESIGN_QUESTION } : {}),
     ...(enabled.effort ? { effort: questions.effort } : {}),
     ...(enabled.tier || enabled.effort ? { risky: questions.risky } : {}),
     ...additionalQuestions,
@@ -320,9 +324,10 @@ export async function classify(
             quality: enabled.quality,
           }) ?? undefined)
         : undefined;
+    const designScore = enabled.design ? readDesign(value) : undefined;
     return decision
-      ? { outcome: "classified", decision, value, adviceDecision }
-      : { outcome: "schema-error", adviceDecision };
+      ? { outcome: "classified", decision, value, adviceDecision, designScore }
+      : { outcome: "schema-error", adviceDecision, designScore };
   } catch (error) {
     if (signal.aborted) throw error;
     return { outcome: timedOut ? "timeout" : "service-error" };

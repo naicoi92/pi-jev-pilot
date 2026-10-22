@@ -345,7 +345,9 @@ export default function (pi: ExtensionAPI): void {
       if (
         (skills.length ||
           (!isContinuation(prompt) &&
-            (guidanceEnabled("QUALITY") || guidanceEnabled("STRATEGY")))) &&
+            (guidanceEnabled("QUALITY") ||
+              guidanceEnabled("STRATEGY") ||
+              guidanceEnabled("DESIGN")))) &&
         !ctx.signal?.aborted &&
         session === ctx.sessionManager.getSessionId() &&
         revision === selectionRevision &&

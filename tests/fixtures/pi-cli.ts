@@ -36,6 +36,9 @@ export class PiFixture {
   toolCalls: { name: string; input: RecordData }[] = [];
   tools = "read";
   useGuidanceDefaults = false;
+  useDesignDefaults = false;
+  referenceTools: { name: string; active: boolean }[] = [];
+  projectContext: string | undefined;
   modelFailures = 0;
   reasoning = true;
   startupModel = "fixture-model";
@@ -58,6 +61,8 @@ export class PiFixture {
     this.directory = await mkdtemp(join(tmpdir(), "pi-jev-ticket01-"));
     const agent = join(this.directory, "agent");
     await mkdir(agent);
+    if (this.projectContext)
+      await writeFile(join(this.directory, "AGENTS.md"), this.projectContext);
     for (const skill of this.skills) {
       const directory = join(agent, "skills", skill.name);
       await mkdir(directory, { recursive: true });
@@ -220,7 +225,18 @@ export class PiFixture {
       controls,
       `import type { ExtensionAPI } from ${JSON.stringify(join(root, "node_modules/@earendil-works/pi-coding-agent/dist/index.js"))};
 import { appendFileSync } from "node:fs";
+import { Type } from ${JSON.stringify(join(root, "node_modules/@earendil-works/pi-ai/dist/index.js"))};
 export default function (pi: ExtensionAPI) {
+  const referenceTools = ${JSON.stringify(this.referenceTools)};
+  for (const { name } of referenceTools) pi.registerTool({
+    name, label: name, description: "Disposable reference library fixture", defaultActive: false,
+    parameters: Type.Object({}),
+    async execute() { throw new Error("Reference tools must not be invoked by design advice."); }
+  });
+  pi.on("session_start", () => {
+    pi.setActiveTools([...pi.getActiveTools().filter((name) => !referenceTools.some((tool) => tool.name === name)), ...referenceTools.filter((tool) => tool.active).map((tool) => tool.name)]);
+  });
+  pi.registerCommand("fixture-tools", { handler: async () => { log({ fixtureTools: pi.getAllTools().map((tool) => tool.name), active: pi.getActiveTools() }); } });
   pi.registerCommand("fixture-reload", { handler: async (_args, ctx) => { await ctx.reload(); } });
   pi.registerCommand("fixture-tree", { handler: async (id, ctx) => { await ctx.navigateTree(id, { summarize: false }); } });
   pi.registerCommand("fixture-fork-at", { handler: async (id, ctx) => { await ctx.fork(id, { position: "at" }); } });
@@ -254,6 +270,7 @@ export default function (pi: ExtensionAPI) {
       PI_TELEMETRY: "0",
       JEV_SYSTEM_ONE_URL: `${this.server.url}systemone`,
       JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
+      ...(this.useDesignDefaults ? {} : { JEV_DESIGN_ENABLED: "false" }),
       ...(this.useGuidanceDefaults
         ? {}
         : { JEV_STRATEGY_ENABLED: "false", JEV_QUALITY_ENABLED: "false" }),
@@ -287,9 +304,9 @@ export default function (pi: ExtensionAPI) {
       ...(this.skills.length ? [] : ["--no-skills"]),
       "--no-prompt-templates",
       "--no-themes",
-      "--no-context-files",
+      ...(this.projectContext ? [] : ["--no-context-files"]),
       "--tools",
-      this.tools,
+      [this.tools, ...this.referenceTools.map((tool) => tool.name)].join(","),
       "--offline",
       "--no-approve",
       "--model",

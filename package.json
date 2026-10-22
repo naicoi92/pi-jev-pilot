@@ -1,7 +1,7 @@
 {
   "name": "pi-jev-pilot",
   "version": "0.1.0",
-  "description": "Jev Pilot effort, optional main-model routing, skill matching and strategy/quality advice for Pi",
+  "description": "Jev Pilot effort, optional main-model routing, skill matching and strategy/quality/design advice for Pi",
   "keywords": [
     "pi-package"
   ],
@@ -20,7 +20,7 @@
     "fmt:check": "oxfmt --check src tests package.json tsconfig.json README.md NOTICE.md docs/testing",
     "test": "bun test tests",
     "typecheck": "bun check",
-    "test:e2e": "bun test tests/pi-cli.test.ts tests/main-routing.test.ts tests/skill-matching.test.ts tests/guidance.test.ts"
+    "test:e2e": "bun test tests/pi-cli.test.ts tests/main-routing.test.ts tests/skill-matching.test.ts tests/guidance.test.ts tests/design-pack.test.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.4.0",
