@@ -17,6 +17,12 @@ This addendum takes precedence over earlier effort behavior where they conflict.
 
 The operator explicitly requires Jev to overwrite models supplied in ordinary worker calls: call model A, valid policy selection B means child B. This supersedes earlier caller-pin preservation in the spec, ticket 06 and research. It does not authorize automatic replacement of the main physical model or removal of manual-change cancellation guards. Enabled/applicable gates, confidence/risk policy, supported effort adaptation and failure/cancellation contracts remain. Distinguishing caller pins from agent defaults is no longer an acceptance blocker; discovery is required only where a concrete routing/baseline/applicability contract needs it. Historical checkpoint findings remain evidence, not proof that a new API is required.
 
+### Ordinary-worker model baseline
+
+Use the pinned upstream caller-or-parent model policy baseline (`call.model ?? parentModel`), not an implicitly resolved agent override. A valid policy selection may overwrite either caller input or executor defaults. Example: no caller model, parent fast, agent override deep, balanced confidence .45/risk 0 is a fast-to-balanced upgrade and selects balanced under the .3 threshold. Earlier research requiring the effective configured worker model as the policy baseline is superseded. This is not a local-only restriction.
+
+Policy baseline is not failure fallback: disabled routing, classifier error or timeout preserve the original envelope so the executor retains its own default/override resolution. Cancellation stops work. Trace effort baseline independently and adapt effort against the final selected physical model. Virtual parent identities require supported physical-route context, not guessed physical identities.
+
 ## Evidence gate before implementation
 
 Verify ordinary official stable Pi dispatch and ownership using local fixtures. Do not infer provenance from value equality, private state or extension-side argv parsing. Automatic native-intent detection and preserving native startup-equality precedence on runtime replacement are no longer acceptance blockers. Historical RED evidence remains historical, not a claimed fix. The experimental host patch remains research only. No persistent lock, extra opt-in mode, default-off change or host dependency is approved.
