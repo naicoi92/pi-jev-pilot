@@ -22,6 +22,18 @@ CLI-26i now compares the full role/content/timestamp/UUID before fork-at and aft
 
 Focused spike verification: **9 pass, 0 fail, 50 assertions**; captures in `/tmp/pi-jev-ticket-01-ownership/{ownership-red,strip-history-red,spike-focused-green}.log`. Parent's unchanged repro is also retained under that directory. This is version-tested evidence for parent/reviewer evaluation, **not** production approval of undocumented metadata persistence. The earlier candidate's claimed orphan closure by restore markers was incomplete across gated phases and is superseded by this review.
 
+## Review follow-up: fixture child lifecycle
+
+Accepted P2 was reproduced without retries or timeout increases. A real child exiting 23 with a stderr sentinel made the old fixture wait the full 12 seconds and report only `records=[]`. A real child ignoring EOF and SIGTERM showed `close()` returning before child termination and removing its directory; the RED run reported one dangling process (PID 71652, explicitly killed during cleanup). Captures: `/tmp/pi-jev-ticket-01-ownership/fixture-red.log`.
+
+The fixture now subscribes to child error/exit/close immediately, includes PID/exitCode/signal/error/stderr/recent records in failures, and stops failed startups before rethrowing. Installer stdout/stderr are drained concurrently with exit. Teardown waits for close: 5 seconds after EOF, 1 second after SIGTERM, then SIGKILL and a final bounded 1-second close wait. If the child cannot be reaped, teardown throws and **retains the directory** instead of deleting files beneath a live child. It clears timer races and supports repeated stop/close, including signal exits where `exitCode` stays null. The existing 12-second RPC deadline is unchanged.
+
+`tests/pi-cli-fixture.test.ts` uses real children for early exit, ENOENT and forced reap. All three are GREEN (16 assertions): exit diagnostics in about 0.3 seconds, spawn errors caught, resistant child reaped with SIGKILL before directory deletion in about 6.2 seconds. No host patch, startup retry or extended timeout masks environmental failures.
+
+After code stabilized, **two consecutive full `bun test` runs passed: 80 pass / 0 fail / 252 assertions**, 38.45 and 38.49 seconds (57 actual CLI cases, 20 policy examples, 3 fixture lifecycle tests). Read-only oxlint, oxfmt check and Bun check pass (15 authored files / 8 TypeScript files). Post-run `pgrep` and `ps` checks found no fixture children or official CLI processes. Captures: `/tmp/pi-jev-ticket-01-ownership/{fixture-green,full-run-1,full-run-2}.log`.
+
+**Residual startup evidence:** the reviewer's earlier official CLI `records=[]` startup failure was not reproduced on these two full runs. This work proves known child exit/error fail promptly and teardown reaps boundedly; it does not identify the environmental cause of the prior silent startup, nor hide a still-live child behind retries. A live-but-silent startup still fails at the unchanged deadline, now with process diagnostics and guaranteed teardown attempt.
+
 ## Prior candidate: approved auto-effort authority
 
 Integration `38d02aaccf422463129c1942d7cd3f1c4bd86569` supersedes native startup-pin/provenance acceptance. Installing/enabling auto-effort authorizes upstream-policy selection over default/current thinking; it does not authorize unconditional effort changes or override confidence/risk/ceiling/follow-up exceptions. The earlier blocker and RED results remain [historical evidence](ticket-01-startup-provenance-blocker.md), not a claim that native startup provenance was implemented.

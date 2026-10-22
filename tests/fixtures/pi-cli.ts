@@ -40,6 +40,12 @@ export class PiFixture {
   sawClassifierBearer = false;
   classifierHeaderChecks = 0;
   private sequence = 0;
+  private processError: Error | undefined;
+  private didExit = false;
+  private closed = false;
+  private exited: Promise<void> | undefined;
+
+  constructor(private readonly commandLine?: string[]) {}
 
   async start(env: Record<string, string> = {}, thinkingOverride?: string): Promise<this> {
     this.directory = await mkdtemp(join(tmpdir(), "pi-jev-ticket01-"));
@@ -199,35 +205,57 @@ export default function (pi: ExtensionAPI) {
       stdout: "pipe",
       stderr: "pipe",
     });
-    const installOutput = await new Response(install.stderr).text();
-    if ((await install.exited) !== 0)
-      throw new Error(`Local Pi package install failed: ${installOutput}`);
-    this.process = spawn(
+    const [installCode, installStdout, installStderr] = await Promise.all([
+      install.exited,
+      new Response(install.stdout).text(),
+      new Response(install.stderr).text(),
+    ]);
+    if (installCode !== 0)
+      throw new Error(
+        `Local Pi package install failed: pid=${install.pid}; exitCode=${installCode}; signal=${install.signalCode}; stdout=${installStdout}; stderr=${installStderr}`,
+      );
+    const [executable, ...args] = this.commandLine ?? [
       process.execPath,
-      [
-        "run",
-        cli,
-        "-e",
-        root,
-        "-e",
-        controls,
-        "--mode",
-        "rpc",
-        "--no-mcp",
-        "--no-skills",
-        "--no-prompt-templates",
-        "--no-themes",
-        "--no-context-files",
-        "--tools",
-        "read",
-        "--offline",
-        "--no-approve",
-        "--model",
-        `fixture/${this.startupModel}`,
-        ...(thinkingOverride ? ["--thinking", thinkingOverride] : []),
-      ],
-      { cwd: this.directory, env: childEnv },
-    );
+      "run",
+      cli,
+      "-e",
+      root,
+      "-e",
+      controls,
+      "--mode",
+      "rpc",
+      "--no-mcp",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-themes",
+      "--no-context-files",
+      "--tools",
+      "read",
+      "--offline",
+      "--no-approve",
+      "--model",
+      `fixture/${this.startupModel}`,
+      ...(thinkingOverride ? ["--thinking", thinkingOverride] : []),
+    ];
+    this.processError = undefined;
+    this.didExit = false;
+    this.closed = false;
+    this.process = spawn(executable!, args, { cwd: this.directory, env: childEnv });
+    this.exited = new Promise((resolve) => {
+      this.process.once("close", () => {
+        this.closed = true;
+        resolve();
+      });
+    });
+    this.process.on("error", (error) => {
+      this.processError = error;
+    });
+    this.process.once("exit", () => {
+      this.didExit = true;
+    });
+    this.process.stdin.on("error", (error) => {
+      this.processError = error;
+    });
     let pending = "";
     this.process.stdout.on("data", (data: Buffer) => {
       pending += data.toString();
@@ -243,22 +271,35 @@ export default function (pi: ExtensionAPI) {
       }
     });
     this.process.stderr.on("data", (data: Buffer) => (this.stderr += data.toString()));
-    await this.command("get_state");
-    return this;
+    try {
+      await this.command("get_state");
+      return this;
+    } catch (error) {
+      await this.close();
+      throw error;
+    }
   }
 
   async wait(predicate: () => boolean, timeout = 12000): Promise<void> {
     const until = Date.now() + timeout;
     while (!predicate()) {
-      if (Date.now() > until)
-        throw new Error(
-          `Fixture deadline. stderr=${this.stderr}; records=${JSON.stringify(this.records.slice(-8))}`,
-        );
+      this.checkProcess();
+      if (Date.now() > until) throw new Error(`Fixture deadline. ${this.diagnostics()}`);
       await Bun.sleep(10);
     }
   }
 
+  private diagnostics(): string {
+    return `pid=${this.process?.pid}; exitCode=${this.process?.exitCode}; signal=${this.process?.signalCode}; error=${this.processError?.message ?? "none"}; stderr=${this.stderr}; records=${JSON.stringify(this.records.slice(-8))}`;
+  }
+
+  private checkProcess(): void {
+    if (this.processError || this.didExit || this.closed)
+      throw new Error(`Fixture child stopped. ${this.diagnostics()}`);
+  }
+
   async command(type: string, data: RecordData = {}): Promise<RecordData> {
+    this.checkProcess();
     const id = `command-${++this.sequence}`;
     this.process.stdin.write(`${JSON.stringify({ id, type, ...data })}\n`);
     await this.wait(() => this.records.some((entry) => entry.id === id));
@@ -275,11 +316,33 @@ export default function (pi: ExtensionAPI) {
     );
   }
 
-  async stop(): Promise<void> {
-    if (this.process && this.process.exitCode === null) {
-      this.process.stdin.end();
-      await this.wait(() => this.process.exitCode !== null, 5000).catch(() => this.process.kill());
+  private async awaitClose(timeout: number): Promise<boolean> {
+    if (this.closed) return true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        this.exited!.then(() => true),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), timeout);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
     }
+  }
+
+  async stop(): Promise<void> {
+    if (!this.process || this.closed) return;
+    this.process.stdin.end();
+    if (await this.awaitClose(5000)) return;
+    this.process.kill("SIGTERM");
+    if (await this.awaitClose(1000)) return;
+    this.process.kill("SIGKILL");
+    if (!(await this.awaitClose(1000)))
+      throw new Error(
+        `Fixture child did not close after SIGKILL; retaining directory. ${this.diagnostics()}`,
+      );
+    await this.exited;
   }
 
   async close(): Promise<void> {
