@@ -633,3 +633,64 @@ test("SK14-owned-user physical combined uses one persisted identity without raw 
   expect(JSON.stringify(f.generations)).not.toContain(id as string);
   expect(JSON.stringify(f.classifications)).not.toContain(id as string);
 }, 20000);
+
+for (const virtual of [false, true]) {
+  test(`SK14-native-auto ${virtual ? "virtual" : "physical"} exact visible native resource needs reference only`, async () => {
+    const f = await start({}, virtual);
+    await f.prompt("/skill:debugging run procedure");
+    await f.prompt(task);
+    expect(f.classifications).toHaveLength(1);
+    expect(providerText(f, 1).split(body)).toHaveLength(2);
+    expect(providerText(f, 1)).toContain("already loaded above; instructions unchanged");
+  }, 20000);
+}
+
+for (const virtual of [false, true]) {
+  test(`SK14-native-changed ${virtual ? "virtual" : "physical"} changed body must be injected fully`, async () => {
+    const f = await start({}, virtual);
+    await f.prompt("/skill:debugging run procedure");
+    const path = `${f.directory}/agent/skills/debugging/SKILL.md`;
+    const original = await readFile(path, "utf8");
+    const changed = `${body}\nCHANGED_BODY_SENTINEL`;
+    await writeFile(path, original.replace(body, changed));
+    await f.prompt(task);
+    expect(providerText(f, 1).split(changed)).toHaveLength(2);
+    expect(providerText(f, 1)).not.toContain("already loaded above; instructions unchanged");
+    expect(await readFile(path, "utf8")).toBe(original.replace(body, changed));
+  }, 20000);
+
+  test(`SK14-native-other ${virtual ? "virtual" : "physical"} identical body at different resource path does not suppress selection`, async () => {
+    fixture = new PiFixture();
+    fixture.skills = [
+      { name: "debugging", body },
+      { name: "other-debugging", body },
+    ];
+    fixture.response = response();
+    if (virtual) {
+      fixture.startupProvider = "jev";
+      fixture.startupModel = "auto";
+    }
+    const f = await fixture.start(virtual ? routing : {});
+    await f.prompt("/skill:other-debugging run procedure");
+    await f.prompt(task);
+    expect(providerText(f, 1).split(body)).toHaveLength(3);
+    expect(providerText(f, 1)).not.toContain("already loaded above; instructions unchanged");
+  }, 20000);
+
+  test(`SK14-native-compacted ${virtual ? "virtual" : "physical"} absent native body cannot suppress fresh selection`, async () => {
+    const f = await start({}, virtual);
+    await f.prompt("/skill:debugging run procedure");
+    f.response = response("(none)");
+    f.modelText = "Compaction context. ".repeat(200);
+    for (let i = 0; i < 6; i++) await f.prompt(`Please investigate distinct issue ${i} carefully`);
+    await f.command("compact");
+    await f.prompt("continue");
+    expect(providerText(f, f.generations.length - 1)).not.toContain(body);
+    f.response = response();
+    await f.prompt(task);
+    expect(providerText(f, f.generations.length - 1).split(body)).toHaveLength(2);
+    expect(providerText(f, f.generations.length - 1)).not.toContain(
+      "already loaded above; instructions unchanged",
+    );
+  }, 20000);
+}

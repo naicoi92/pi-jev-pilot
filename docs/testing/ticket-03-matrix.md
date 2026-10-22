@@ -2,6 +2,10 @@
 
 Authority: ticket 03, parent spec AC-09/10/14, `PORT-SCOPE.md`, approved decision gating, pinned Jev Pilot `5d27135b34edf81b40c0bf1df01ae401f6b72ea7` (`hooks/skill-suggestion.policy.ts`, `hooks/jev-skill-suggestion.ts`, `tests/skill-suggestion.spec.ts`). No quality/design/worker capability is implemented by this slice.
 
+## Reviewer P2 regression (recorded before test code)
+
+AC-14: SK14-native-auto physical/virtual loads `/skill:debugging` through official CLI, then auto-selects the same resource. Exact visible native resource path + name + directory + body must yield one full body and a reference-only block, with one classifier call. Source: accepted reviewer P2 and parent `explicit-auto-repro.ts` capture at candidate4007a9e. SK14-native-changed requires full injection after resource body changes; SK14-native-other requires full injection for a different resource even with identical body; SK14-native-compacted requires full injection if public compaction removed the native body. Existing auto→auto coverage remains mandatory. No ownership, persisted content or catalog change.
+
 ## Approved seams
 
 The existing installed Pi package boundary is authoritative: official Pi 1.4.0 RPC CLI, disposable real skill resources, captured local System One and provider HTTP. No extension-internal mocks. Public `getCommands()` supplies the effective resource catalog and `sourceInfo.path`; exported `parseFrontmatter` supplies eligibility. Supported `context` projects selected content into the provider transcript without mutating resources or suppressing Pi's system catalog. Branch-owned custom entries and the existing version-tested user input identity seam associate physical selections with their originating user. Virtual routing associates selections with persisted native user entries. Shared decision orchestration owns batching/transport/policy in both paths.

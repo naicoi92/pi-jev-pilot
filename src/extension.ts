@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   clampThinkingLevel,
@@ -260,7 +261,15 @@ export default function (pi: ExtensionAPI): void {
     const loaded = new Map<string, string>();
     return {
       messages: event.messages.map((message) => {
-        if (message.role !== "user" || !("jevPilotInputId" in message)) return message;
+        if (message.role !== "user") return message;
+        const text = userText(message.content);
+        for (const skill of selections.values()) {
+          // Match Pi 1.4.0's complete native expansion, not a name/body substring.
+          const native = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${dirname(skill.filePath)}.\n\n${skill.body}\n</skill>`;
+          if (text === native || text.startsWith(`${native}\n\n`))
+            loaded.set(skill.filePath, skill.body);
+        }
+        if (!("jevPilotInputId" in message)) return message;
         const skill = selections.get(message.jevPilotInputId as string);
         if (!skill) return message;
         const content =

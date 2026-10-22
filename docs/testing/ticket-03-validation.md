@@ -57,6 +57,16 @@ Oxc lint/format and Bun check pass without disabled rules or unsafe autofix. No 
 
 An earlier `test:e2e` command was interrupted by the orchestration run's 1,800,000 ms lifetime limit, not a test failure. On resume, process inspection found no surviving test/Pi child; the same writer preserved all edits and reran the full E2E command successfully (93.79 seconds). The interrupted partial log is not used as passing evidence.
 
+## Reviewer P2 correction: native explicit load before automatic selection
+
+The accepted review of candidate `4007a9e7818c11d5806ba7a2e748ba0dde7ca6b7` found that native `/skill:debugging` followed by automatic selection inserted the same full body twice. This is duplicate context, not a classifier privacy failure or an exclusive-catalog requirement.
+
+Before changing production code, the matrix recorded SK14-native-auto/changed/other/compacted. Parent repro `/tmp/pi-jev-ticket-03-review-4007a9e/explicit-auto-repro.ts` was run unchanged: request2 had two full bodies/two sentinels, with one classifier call. Two new actual installed CLI regressions (physical/virtual) were RED with duplicate full bodies, then GREEN after the context traversal recognized Pi 1.4.0's complete native expansion before skipping users without UUID. Matching requires exact resource name, file path, reference directory and full body with the native wrapper boundary; it is not a prompt hash, name-only or body-substring heuristic. Loaded state is rebuilt chronologically from the current visible context only. No ownership or persisted content change was made.
+
+Eight added AC-14 CLI cases cover native→auto physical/virtual, changed resource body, identical body at another resource, and native body removed by real public compaction. Changed/different/compacted cases still inject full content. Existing auto→auto cases remain passing. The unchanged parent repro now yields request1/request2 full-body counts **1/1**, sentinel counts **1/1**, request2 relevance **1**, classifier count **1**; separate assertions verify those exact values. Captures are `explicit-auto-before-fix.json` and `explicit-auto-after-fix.json` beside the repro.
+
+Final full suite after this correction: **218 pass, 0 fail, 641 assertions** (original 210 plus eight new CLI tests). Focused native/repeated-content suite: **10 pass, 28 assertions**. `bun run lint`, `bun run fmt:check`, `bun check`, and integration sync (`Already up to date`, tip `762d8d6`) pass. The native wrapper remains a version-tested official Pi 1.4.0 representation and must be revalidated on upgrade.
+
 ## Approved ownership adaptation and residual limits
 
 Public route results cannot return context; `context` receives cloned messages without entry IDs. The supervisor approved expanding the existing ticket 01 **version-tested UUID seam** for skill ownership within official Pi **1.4.0**. Effort and skills share one originating identity, allocated only for an applicable consumer. Context injection does not mutate persisted user content/role/timestamp, fabricate user messages, or send UUID metadata to the provider. A branch-owned custom entry stores the selected resource snapshot and UUID. Active signal, selection revision, session and branch leaf guard asynchronous commits.
