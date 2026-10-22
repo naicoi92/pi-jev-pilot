@@ -28,3 +28,6 @@ Run Pi CLI contract smokes with the real execution package and deterministic loc
 Before writing tests, map each test to exactly one parent acceptance criterion and an independent expected-value source. Tests and verification belong to this slice, not a later horizontal testing ticket.
 
 ## Comments
+
+Implementation remains incomplete, blocked on supported effective-executor discovery/provenance. Clean feasibility checkpoint `ddae716c2957154a1103217b680c6221e1391684` on the ticket branch is NOT an accepted implementation and is not merged. See that worktree's `docs/testing/ticket-06-contract-gap.md`. Official Pi 1.4.0 / pi-subagents 0.80.0 direct and async fixtures prove mutation/suffix execution; machine and runtime-registration fixtures expose preflight/executor mismatches. 344 passing tests characterize feasibility/gaps, not ticket completion. Production source is unchanged. Independent contract review pending before any scope/API decision; no narrowed compatibility scope approved.
+
