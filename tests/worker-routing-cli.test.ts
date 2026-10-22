@@ -188,7 +188,12 @@ for (const scenario of cases)
           return Response.json({
             answers: {
               tier: {
-                choice: name === "async-noop-cancel" ? "deep" : retained ? "fast" : "balanced",
+                choice:
+                  name === "async-noop-cancel"
+                    ? "deep"
+                    : retained && name !== "rejected-tier" && name !== "retained-clamp"
+                      ? "fast"
+                      : "balanced",
                 confidence:
                   name === "rejected-tier" ||
                   name === "retained-clamp" ||
