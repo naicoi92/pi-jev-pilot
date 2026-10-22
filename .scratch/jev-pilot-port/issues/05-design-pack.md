@@ -5,6 +5,7 @@
 **Blocked by:** 03: Match Pi skills in the combined classification request
 
 **Status:** ready-for-agent
+**Implementation:** in-progress
 
 **Parent:** Jev Pilot for Pi — Faithful Port (local feature spec).
 
