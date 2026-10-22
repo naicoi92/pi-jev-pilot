@@ -16,7 +16,11 @@ No remote or PR. Research raw benchmark excerpts are ignored, not committed or b
 
 Parent owns tracker statuses and integration checkout. Future ready tickets get separate worktrees after dependency merge and verification. No implementation worker owns this board or integration branch.
 
-## Progress
+## Current authority update
+
+Operator clarified auto-effort ownership: installing/enabling it authorizes routing over default/current thinking under original policy. Native automatic-intent detection and startup-equality precedence are superseded blockers, not unresolved requirements. Preserve actual branch/queue ownership, in-flight manual-change invalidation and enabled/applicable zero-call gating. Keep original ticket graph/defaults; do not introduce lock/opt-in modes, defer effort or depend on host prototype. Resume ticket01 writer against updated spec/decision-gating and transparently retire superseded regression expectations; no merge accepted yet.
+
+## Progress (historical checkpoints follow)
 
 - 07: resolved (operator decision recorded).
 - 01: isolated worker `896ba5ec-bc03-4eb9-885c-6acd9ab7d46f` interrupted by provider 429 quota during workflow `5443a5c0-f4a2-49d6-9b65-3e0d59a8fd43`; workflow terminal failed, review never started. User requested continuation. Retained child is resumable; resume the same writer, not a replacement.

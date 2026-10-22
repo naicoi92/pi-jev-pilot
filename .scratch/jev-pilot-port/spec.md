@@ -66,6 +66,10 @@ Included feature IDs are 01, 03, 04, 05, 06, 07, 08, 09, 10, 13 and 14 from the 
 44. As a Pi user, I want session resume, branching, compaction and extension reload to preserve or reset state correctly, so that decisions from another branch or session do not leak into current work.
 45. As a package maintainer, I want provenance, license attribution and documented host differences, so that the public port remains traceable and maintainable.
 
+## Approved decision gating clarification
+
+The operator approved [decision gating](decision-gating.md), then clarified effort authority: installing/enabling auto-effort permits Jev to select effort over default/current thinking according to upstream policy. Existing named thinking is not a persistent lock; automatic native-intent detection and native startup-equality precedence are not required. Discard in-flight classification invalidated by manual model/thinking changes. Only enabled and applicable capabilities contribute classifier questions; no questions means zero classifier calls. Existing capability scope/defaults and task graph remain intact. Advice is not execution enforcement. No new persistent lock, opt-in mode, host patch or heuristic provenance is approved.
+
 ## Implementation Decisions
 
 ### Authority and module boundaries

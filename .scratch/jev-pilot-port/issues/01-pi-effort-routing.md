@@ -19,6 +19,10 @@
 - [ ] Timeout aborts classification and allows fail-open; parent cancellation stops work without fallback generation.
 - [ ] Exercise startup, reload/shutdown and session replacement ownership with deterministic offline fixtures.
 
+## Approved gating clarification
+
+Read [decision-gating.md](../decision-gating.md) before further implementation. Operator clarified that installing/enabling auto-effort permits upstream-policy effort selection over default/current thinking; named thinking is not a persistent lock. Drop automatic-intent/startup-equality acceptance, not real branch ownership. Discard stale in-flight classifications after manual model/thinking changes. No applicable questions means zero classifier requests. Retain the effort-only vertical slice and original dependency graph; no extra opt-in/default-off, host patch or persistent lock. Candidate must be revised and independently accepted, including real timeout/cancel/privacy/ownership/queue tests.
+
 ## Verification
 
 Run a real Pi CLI prompt with a deterministic local System One fixture and a local fake model provider; assert dispatched thinking, unchanged model, captured payload, cancellation and fault outcomes. Map policy cases to independent pinned upstream expectations.
