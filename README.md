@@ -1,6 +1,6 @@
 # Jev Pilot for Pi — routing, skills and advice preview
 
-A regular [Pi package](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/packages.md) that asks Jev how much reasoning each user task needs and matches an eligible installed skill. **By default, the selected physical model and configured defaults stay unchanged:** session thinking may change and selected skill instructions enter the model context. Optional main-model routing uses an explicitly selected virtual model and configurable physical tiers. This preview implements tickets 01–04: effort, optional main routing, skills, and strategy/quality advice. It does not implement design guidance, worker routing, reporting or tuning.
+A regular [Pi package](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/packages.md) that asks Jev how much reasoning each user task needs and matches an eligible installed skill. **By default, the selected physical model and configured defaults stay unchanged:** session thinking may change and selected skill instructions enter the model context. Optional main-model routing uses an explicitly selected virtual model and configurable physical tiers. This preview implements tickets 01–05: effort, optional main routing, skills, strategy/quality advice and the upstream design pack. It does not implement worker routing, reporting or tuning.
 
 ## Install and configure
 
@@ -17,19 +17,21 @@ pi --model provider/model-id
 
 Do not commit credentials. Configuration is read from the Pi process environment for each eligible user message:
 
-| Variable                 | Default / meaning                                                                |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| `JEV_EFFORT_ENABLED`     | `true`; only `true`/`false` accepted; false disables effort questions and writes |
-| `JEV_SKILLS_ENABLED`     | `true`; only `true`/`false` accepted; false disables new skill matching          |
-| `JEV_SKILL_RERANK`       | `false`; optional upstream shortlist recheck; only `true`/`false`                |
-| `JEV_STRATEGY_ENABLED`   | `true`; only `true`/`false`; strategy advice, never worker dispatch              |
-| `JEV_QUALITY_ENABLED`    | `true`; only `true`/`false`; request quality reads and loop observation advice   |
-| `JEV_SYSTEM_ONE_URL`     | `https://api.typesafe.ai/v1/systemone`; complete TypeSafe-compatible endpoint    |
-| `JEV_SYSTEM_ONE_API_KEY` | Bearer key; falls back to `TYPESAFE_API_KEY` when unset                          |
-| `JEV_SYSTEM_ONE_MODEL`   | `jev-latest`                                                                     |
-| `JEV_TIMEOUT_MS`         | `1500`; positive integer milliseconds                                            |
+| Variable                 | Default / meaning                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `JEV_EFFORT_ENABLED`     | `true`; only `true`/`false` accepted; false disables effort questions and writes                      |
+| `JEV_SKILLS_ENABLED`     | `true`; only `true`/`false` accepted; false disables new skill matching                               |
+| `JEV_SKILL_RERANK`       | `false`; optional upstream shortlist recheck; only `true`/`false`                                     |
+| `JEV_STRATEGY_ENABLED`   | `true`; only `true`/`false`; strategy advice, never worker dispatch                                   |
+| `JEV_QUALITY_ENABLED`    | `true`; only `true`/`false`; request quality reads and loop observation advice                        |
+| `JEV_DESIGN_ENABLED`     | `true`; only `true`/`false`; upstream design-pack context advice                                      |
+| `JEV_DESIGN_SKILLS`      | `design-taste-frontend, impeccable, web-design-guidelines`; comma-separated configured resource names |
+| `JEV_SYSTEM_ONE_URL`     | `https://api.typesafe.ai/v1/systemone`; complete TypeSafe-compatible endpoint                         |
+| `JEV_SYSTEM_ONE_API_KEY` | Bearer key; falls back to `TYPESAFE_API_KEY` when unset                                               |
+| `JEV_SYSTEM_ONE_MODEL`   | `jev-latest`                                                                                          |
+| `JEV_TIMEOUT_MS`         | `1500`; positive integer milliseconds                                                                 |
 
-An empty/malformed setting is a configuration error, not permission to choose another service or model. The endpoint must use HTTP(S), without embedded username/password. Use HTTPS for hosted services; HTTP is supported for local fixtures. No automatic classifier-backend fallback is performed.
+An empty/malformed boolean or backend setting is a configuration error, not permission to choose another service or model. An explicitly empty `JEV_DESIGN_SKILLS` list names no skills; comma-separated names are trimmed, deduplicated and empty entries ignored, as upstream. The endpoint must use HTTP(S), without embedded username/password. Use HTTPS for hosted services; HTTP is supported for local fixtures. No automatic classifier-backend fallback is performed.
 
 ## Enable optional main-model routing
 
@@ -87,6 +89,18 @@ Strategy is **advice, not execution authority**: user/project delegation constra
 
 Public Pi `tool_result` outcomes observe top-level built-in `edit`/`write` by path and failed `bash` commands. The fourth same-file modification or third same normalized failed command attaches the common upstream step-back note once per user work period. A successful instance resets that command's failure counter; new user input/session/branch work resets observations. Tool input/result text is not sent to System One. Loop observation creates no classifier request, model switch, thinking write or dispatch. The tool-result annotation persists with that result, without altering user content. Nested tools, custom wrappers and instruction enforcement are not universally monitored. Host difference: upstream's Claude-specific high-effort/Fable tail is omitted; no substitute model suggestion or mid-turn escalation is added.
 
+## Receive the upstream design pack
+
+Design advice is **on by default**, independently of ordinary skill matching, effort and routing. Eligible input adds the original `ui_design` noul to the same initial System One request, only in the first skill batch and never the optional rerank. A finite probability **at least .8** attaches `<jev_design>`; missing/malformed answers, non-design work and purely wiring UI bugs do not. This is the classifier's read, not a local keyword detector or a guarantee of design quality.
+
+The pack names only configured design skills present in Pi's effective public resource catalog and readable with model invocation enabled. Names match exactly first, then the upstream `:name` suffix using catalog order; no Pi aliases or separate filesystem discovery are invented. Defaults are the upstream `design-taste-frontend`, `impeccable` and `web-design-guidelines`, not similarly named local alternatives. `JEV_SKILLS_ENABLED=false` disables ordinary matching, not design advice. The design pack can reference several resources independently of the **one ordinary selected skill**; it does not inject their full bodies.
+
+The project's existing design system/tokens take priority. Only if absent does the pack suggest the original [awesome-design-md references](https://github.com/VoltAgent/awesome-design-md/tree/main/design-md) or connected reference libraries. The port does not fetch a DESIGN.md, create assets, call tools, write models/settings or launch workers automatically. User/project instructions remain authoritative.
+
+**Pi substitutions:** there is no invented Claude Skill tool. A resource reference includes its exact catalog file path with `read` only when public `pi.getActiveTools()` declares `read`; otherwise it merely names the installed resource. Mobbin/Inspo guidance appears only for active tool names with upstream `mcp__mobbin__`/`mcp__inspo__` prefixes and lists those exact names. Prefix recognition does not prove a particular search operation, schema or argument contract; consult the available tool schemas. Registered but inactive tools are not advertised by this pack. Other library names are not guessed.
+
+The pack shares `jev-pilot:advice` context projection and the same existing input UUID, including virtual/queued requests. It never rewrites persisted user content or attaches old guidance to a newer unidentified user. This remains a **version-tested Pi 1.4.0 ownership dependency**, not a documented arbitrary metadata guarantee. Reload/resume/fork keep only included owners; compacted/removed owners cannot resurrect advice. Cancellation/manual selection discard pending packs; timeout aborts classification and fail-opens without new guidance. Independently valid design advice may survive routing schema rejection, but cannot change that routing status or fallback model/thinking. Pi's normal catalog is not suppressed and guidance is not exclusive enforcement.
+
 ## Understand effort decisions
 
 Installing/enabling auto-effort authorizes Jev to choose over default/current session thinking under the pinned upstream policy. A named current level, including a startup selection, is **not a persistent user pin**. A manual model/thinking change during an outstanding classification aborts/discards that stale result without a late effort write; it does not lock future eligible prompts. Before the first eligible decision, startup/reload does not invent effort.
@@ -137,4 +151,4 @@ Use `bun run fmt` to apply formatting. Linting is read-only (`--deny-warnings`);
 
 The CLI suite installs the local package into a temporary agent directory and starts the **actual official Pi CLI** in RPC mode under Bun. Local deterministic System One and OpenAI-compatible HTTP fixtures capture payloads, dispatched model/effort, real tool continuations, deadlines, cancellation, faults, retries and lifecycle operations. It uses no paid APIs or real credentials and changes no user/global settings. Pure-policy tests are not described as E2E.
 
-See the [strategy/quality matrix](docs/testing/ticket-04-matrix.md), [strategy/quality evidence](docs/testing/ticket-04-validation.md), [skill matching matrix](docs/testing/ticket-03-matrix.md), [skill matching evidence](docs/testing/ticket-03-validation.md), [effort AC-to-test matrix](docs/testing/ticket-01-matrix.md), [main-routing matrix](docs/testing/ticket-02-matrix.md), [main-routing evidence](docs/testing/ticket-02-validation.md), [compatibility evidence](docs/testing/ticket-01-validation.md), and [MIT attribution](NOTICE.md). Local fixtures verify host behavior, not hosted Jev availability, real-provider compatibility or routing quality.
+See the [design-pack matrix](docs/testing/ticket-05-matrix.md), [design-pack evidence](docs/testing/ticket-05-validation.md), [strategy/quality matrix](docs/testing/ticket-04-matrix.md), [strategy/quality evidence](docs/testing/ticket-04-validation.md), [skill matching matrix](docs/testing/ticket-03-matrix.md), [skill matching evidence](docs/testing/ticket-03-validation.md), [effort AC-to-test matrix](docs/testing/ticket-01-matrix.md), [main-routing matrix](docs/testing/ticket-02-matrix.md), [main-routing evidence](docs/testing/ticket-02-validation.md), [compatibility evidence](docs/testing/ticket-01-validation.md), and [MIT attribution](NOTICE.md). Local fixtures verify host behavior, not hosted Jev availability, real-provider compatibility or routing quality.

@@ -64,7 +64,7 @@ export function qualityAdvice(decision: QualityReads): string | null {
     : null;
 }
 
-export function guidanceEnabled(name: "STRATEGY" | "QUALITY"): boolean {
+export function guidanceEnabled(name: "STRATEGY" | "QUALITY" | "DESIGN"): boolean {
   const key = `JEV_${name}_ENABLED`;
   const value = process.env[key] ?? "true";
   if (value !== "true" && value !== "false")
