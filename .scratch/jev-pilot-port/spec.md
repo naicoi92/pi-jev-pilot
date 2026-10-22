@@ -66,6 +66,10 @@ Included feature IDs are 01, 03, 04, 05, 06, 07, 08, 09, 10, 13 and 14 from the 
 44. As a Pi user, I want session resume, branching, compaction and extension reload to preserve or reset state correctly, so that decisions from another branch or session do not leak into current work.
 45. As a package maintainer, I want provenance, license attribution and documented host differences, so that the public port remains traceable and maintainable.
 
+## Approved decision gating clarification
+
+The operator approved [decision gating](decision-gating.md): explicit user thinking is not selected or overwritten by Jev; only enabled and applicable capabilities contribute classifier questions; no questions means zero classifier calls. Existing capability scope remains intact. Advice is not execution enforcement. Supported explicit-intent detection must be verified before implementation; no implicit value heuristic or unapproved opt-in/lock mechanism is allowed. This clarification supersedes conflicting unconditional effort behavior without treating the agent-added startup-equality interpretation as an independently approved product requirement.
+
 ## Implementation Decisions
 
 ### Authority and module boundaries

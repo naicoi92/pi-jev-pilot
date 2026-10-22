@@ -19,6 +19,10 @@
 - [ ] Timeout aborts classification and allows fail-open; parent cancellation stops work without fallback generation.
 - [ ] Exercise startup, reload/shutdown and session replacement ownership with deterministic offline fixtures.
 
+## Approved gating clarification
+
+Read [decision-gating.md](../decision-gating.md) before further implementation. Package/config/classifier foundation must not require unconditional auto-effort. Explicit user thinking disables Jev effort selection; no enabled/applicable questions means zero classifier requests. Verify supported intent detection first; if unavailable, escalate for approval of a concrete mechanism. Existing candidate is historical, not accepted under this clarification. Retain timeout/cancel/privacy/ownership requirements; review dependencies before resuming implementation.
+
 ## Verification
 
 Run a real Pi CLI prompt with a deterministic local System One fixture and a local fake model provider; assert dispatched thinking, unchanged model, captured payload, cancellation and fault outcomes. Map policy cases to independent pinned upstream expectations.
