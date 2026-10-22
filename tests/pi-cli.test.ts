@@ -791,6 +791,7 @@ for (const gate of ["disabled", "inapplicable"]) {
 test("CLI-26r later replacement dropping originating identity fails closed across fork and reload", async () => {
   fixture = new PiFixture();
   fixture.dropInputIdentity = true;
+  fixture.jevBeforeControls = true;
   await fixture.start();
   await fixture.prompt(task);
   const original = (await fixture.command("get_entries")).data as {
@@ -815,6 +816,7 @@ test("CLI-26r later replacement dropping originating identity fails closed acros
 
 test("CLI-26r stripped new identity cannot fall back to an older valid owned decision", async () => {
   fixture = new PiFixture();
+  fixture.jevBeforeControls = true;
   await fixture.start();
   await fixture.prompt(task);
   const previous = await lastDecision(fixture);
@@ -957,6 +959,15 @@ test("CLI-01 ordinary installed local package loads in official Pi", async () =>
   await fixture.prompt(task);
   expect(fixture.classifications).toHaveLength(1);
   expect(fixture.classifications[0]?.model).toBe("jev-latest");
+  expect(fixture.generations).toHaveLength(1);
+  expect(fixture.generations[0]).toMatchObject({
+    model: "fixture-model",
+    reasoning_effort: "high",
+  });
+  expect((await fixture.command("get_state")).data).toMatchObject({
+    model: { provider: "fixture", id: "fixture-model" },
+    thinkingLevel: "high",
+  });
   expect(fixture.stderr).not.toContain("Failed to load extension");
 }, 20000);
 

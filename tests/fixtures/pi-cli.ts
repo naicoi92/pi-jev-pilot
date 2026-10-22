@@ -35,6 +35,7 @@ export class PiFixture {
   reasoning = true;
   startupModel = "fixture-model";
   dropInputIdentity = false;
+  jevBeforeControls = false;
   singleThinkingLevel = false;
   configuredModelKey = true;
   sawClassifierBearer = false;
@@ -218,8 +219,7 @@ export default function (pi: ExtensionAPI) {
       process.execPath,
       "run",
       cli,
-      "-e",
-      root,
+      ...(this.jevBeforeControls ? ["-e", root] : []),
       "-e",
       controls,
       "--mode",
