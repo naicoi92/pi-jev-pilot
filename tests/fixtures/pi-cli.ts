@@ -34,6 +34,7 @@ export class PiFixture {
   modelFailures = 0;
   reasoning = true;
   startupModel = "fixture-model";
+  startupProvider = "fixture";
   dropInputIdentity = false;
   jevBeforeControls = false;
   singleThinkingLevel = false;
@@ -158,6 +159,43 @@ export class PiFixture {
               },
             ],
           },
+          "fixture-fast": {
+            baseUrl: `${this.server.url}v1`,
+            api: "openai-completions",
+            apiKey: "fixture-not-a-credential",
+            models: [
+              {
+                id: "lookup",
+                reasoning: true,
+                input: ["text"],
+                contextWindow: 32000,
+                maxTokens: 512,
+              },
+            ],
+          },
+          "fixture-deep": {
+            baseUrl: `${this.server.url}v1`,
+            api: "openai-completions",
+            apiKey: "fixture-not-a-credential",
+            models: [
+              {
+                id: "judgment",
+                reasoning: true,
+                input: ["text"],
+                contextWindow: 32000,
+                maxTokens: 512,
+                thinkingLevelMap: {
+                  off: "none",
+                  minimal: null,
+                  low: "low",
+                  medium: "medium",
+                  high: "high",
+                  xhigh: null,
+                  max: null,
+                },
+              },
+            ],
+          },
         },
       }),
     );
@@ -171,6 +209,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("fixture-tree", { handler: async (id, ctx) => { await ctx.navigateTree(id, { summarize: false }); } });
   pi.registerCommand("fixture-fork-at", { handler: async (id, ctx) => { await ctx.fork(id, { position: "at" }); } });
   pi.registerCommand("fixture-effort", { handler: async (value) => { process.env.JEV_EFFORT_ENABLED = value; } });
+  pi.registerCommand("fixture-tier-deep", { handler: async (value) => { process.env.JEV_TIER_DEEP = value; } });
+  pi.registerCommand("fixture-model-refresh", { handler: async (_args, ctx) => { await ctx.modelRegistry.refresh(); } });
   let dropInputIdentity = ${this.dropInputIdentity};
   pi.registerCommand("fixture-drop-input-identity", { handler: async () => { dropInputIdentity = true; } });
   const log = (event: unknown) => appendFileSync(${JSON.stringify(join(this.directory, "lifecycle.jsonl"))}, JSON.stringify(event) + "\\n");
@@ -234,7 +274,7 @@ export default function (pi: ExtensionAPI) {
       "--offline",
       "--no-approve",
       "--model",
-      `fixture/${this.startupModel}`,
+      `${this.startupProvider}/${this.startupModel}`,
       ...(thinkingOverride ? ["--thinking", thinkingOverride] : []),
     ];
     this.processError = undefined;
