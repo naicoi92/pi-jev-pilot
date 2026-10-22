@@ -1,7 +1,11 @@
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
-import { clampThinkingLevel, type ModelThinkingLevel } from "@earendil-works/pi-ai";
+import {
+  clampThinkingLevel,
+  getSupportedThinkingLevels,
+  type ModelThinkingLevel,
+} from "@earendil-works/pi-ai";
 import { isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
-import { classify, systemOneConfig } from "./system-one.ts";
+import { classify, effortEnabled, systemOneConfig } from "./system-one.ts";
 import { classifierState } from "./classifier-context.ts";
 
 const STATE_TYPE = "jev-pilot:effort";
@@ -11,7 +15,17 @@ const RESTORED_TYPE = "jev-pilot:effort-restored";
 /** Effort-only adapter: never replaces the selected model or writes global defaults. */
 export default function (pi: ExtensionAPI): void {
   let active: AbortController | undefined;
+  let selectionRevision = 0;
   let pending: PendingEffort[] = [];
+  const invalidateSelection = () => {
+    selectionRevision++;
+    active?.abort();
+    active = undefined;
+  };
+  // Selection events invalidate only outstanding work, never future prompts.
+  // Our completed write clears active first so its notification cannot cancel it.
+  pi.on("model_select", invalidateSelection);
+  pi.on("thinking_level_select", invalidateSelection);
   const dispose = () => {
     active?.abort();
     active = undefined;
@@ -30,28 +44,34 @@ export default function (pi: ExtensionAPI): void {
     }
     pending = [];
   };
-  const restoreThinking = (ctx: ExtensionContext, fromTree: boolean) => {
+  const applicable = (ctx: ExtensionContext) =>
+    !!ctx.model?.reasoning && getSupportedThinkingLevels(ctx.model).length > 1;
+  const restoreThinking = (ctx: ExtensionContext, fromTree = false) => {
+    // Inapplicable/disabled effort has no consumer and must not create diagnostics
+    // or setter writes, including when retained history contains old decisions.
+    try {
+      if (!effortEnabled() || !applicable(ctx)) return;
+    } catch {
+      return; // Eligible input reports invalid feature configuration actionably.
+    }
     const branch = ctx.sessionManager.getBranch();
+    // Before the first eligible application, leave native startup thinking alone.
+    if (
+      !fromTree &&
+      !branch.some((entry) => entry.type === "custom" && entry.customType === APPLICATION_TYPE)
+    )
+      return;
     const desired = ownedThinking(branch);
     if (!desired) return;
-    const recorded = branch.findLast((entry) => entry.type === "thinking_level_change");
-    // A startup CLI/user override differs from recorded history and remains authoritative.
-    // Tree navigation does not restore thinking in Pi 1.3.0, so restore its owned prefix.
-    const restored =
-      fromTree ||
-      (recorded?.type === "thinking_level_change" &&
-        pi.getThinkingLevel() === recorded.thinkingLevel)
-        ? desired
-        : pi.getThinkingLevel();
-    // Close any application whose user was excluded, including when an explicit
-    // startup override wins. A future unrelated user must never become its owner.
-    pi.appendEntry(RESTORED_TYPE, { thinkingLevel: restored });
-    pi.setThinkingLevel(restored);
+    // Enabled auto-effort owns its branch state; a re-applied startup value is not
+    // a persistent lock. Close excluded applications before unrelated users arrive.
+    pi.appendEntry(RESTORED_TYPE, { thinkingLevel: desired });
+    pi.setThinkingLevel(desired);
   };
   pi.on("session_shutdown", dispose);
   pi.on("session_start", (_event, ctx) => {
     dispose();
-    restoreThinking(ctx, false);
+    restoreThinking(ctx);
   });
   pi.on("session_tree", (_event, ctx) => {
     dispose();
@@ -64,8 +84,8 @@ export default function (pi: ExtensionAPI): void {
     commitPending(ctx);
   });
 
-  // before_agent_start has no active agent signal in Pi 1.3.0. User message_start
-  // is awaited before request preparation, includes queued input, and owns cancellation.
+  // User message_start is awaited before request preparation, includes queued
+  // input, and supplies the active cancellation signal unlike before_agent_start.
   pi.on("message_start", async (event, ctx) => {
     if (event.message.role !== "user") return;
     // Pi persisted the preceding queued user at message_end. Commit it before a
@@ -81,6 +101,7 @@ export default function (pi: ExtensionAPI): void {
     if (!prompt.trim() || /^\/\S/.test(prompt.trim())) return;
     let config;
     try {
+      if (!effortEnabled() || (ctx.model && !applicable(ctx))) return;
       config = systemOneConfig();
       if (!ctx.model || !ctx.modelRegistry.hasConfiguredAuth(ctx.model))
         throw new Error(
@@ -94,8 +115,13 @@ export default function (pi: ExtensionAPI): void {
       ctx.abort();
       return;
     }
+    active?.abort();
     const controller = new AbortController();
     active = controller;
+    const initialRevision = selectionRevision;
+    const initialModel = ctx.model;
+    const initialThinking = pi.getThinkingLevel();
+    const initialSession = ctx.sessionManager.getSessionId();
     const parentSignal = ctx.signal;
     const cancel = () => controller.abort();
     parentSignal?.addEventListener("abort", cancel, { once: true });
@@ -114,7 +140,16 @@ export default function (pi: ExtensionAPI): void {
             ),
             controller.signal,
           );
-      if (controller.signal.aborted) return;
+      if (
+        controller.signal.aborted ||
+        initialRevision !== selectionRevision ||
+        initialSession !== ctx.sessionManager.getSessionId() ||
+        initialModel?.provider !== ctx.model?.provider ||
+        initialModel?.id !== ctx.model?.id ||
+        initialThinking !== pi.getThinkingLevel()
+      )
+        return;
+      active = undefined;
       const current = pi.getThinkingLevel();
       const decision = result.outcome === "classified" ? result.decision : null;
       const requested = decision ? (selectEffort(decision, current, prompt) ?? current) : current;

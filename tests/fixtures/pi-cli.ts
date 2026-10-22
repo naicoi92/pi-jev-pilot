@@ -33,6 +33,7 @@ export class PiFixture {
   nextReadPath: string | undefined;
   modelFailures = 0;
   reasoning = true;
+  singleThinkingLevel = false;
   configuredModelKey = true;
   sawClassifierBearer = false;
   classifierHeaderChecks = 0;
@@ -123,14 +124,28 @@ export class PiFixture {
                 contextWindow: 32000,
                 maxTokens: 512,
                 thinkingLevelMap: {
-                  off: "none",
+                  off: this.singleThinkingLevel ? null : "none",
                   minimal: null,
-                  low: "low",
-                  medium: "medium",
+                  low: this.singleThinkingLevel ? null : "low",
+                  medium: this.singleThinkingLevel ? null : "medium",
                   high: "high",
                   xhigh: null,
                   max: null,
                 },
+              },
+              {
+                id: "fixture-other-model",
+                reasoning: true,
+                input: ["text"],
+                contextWindow: 32000,
+                maxTokens: 512,
+              },
+              {
+                id: "fixture-plain-model",
+                reasoning: false,
+                input: ["text"],
+                contextWindow: 32000,
+                maxTokens: 512,
               },
             ],
           },
@@ -146,6 +161,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("fixture-reload", { handler: async (_args, ctx) => { await ctx.reload(); } });
   pi.registerCommand("fixture-tree", { handler: async (id, ctx) => { await ctx.navigateTree(id, { summarize: false }); } });
   pi.registerCommand("fixture-fork-at", { handler: async (id, ctx) => { await ctx.fork(id, { position: "at" }); } });
+  pi.registerCommand("fixture-effort", { handler: async (value) => { process.env.JEV_EFFORT_ENABLED = value; } });
   const log = (event: unknown) => appendFileSync(${JSON.stringify(join(this.directory, "lifecycle.jsonl"))}, JSON.stringify(event) + "\\n");
   pi.on("session_start", log);
   pi.on("session_shutdown", log);

@@ -16,6 +16,65 @@ afterEach(async () => {
   fixture = undefined;
 });
 
+test("CLI-26m startup and reload before eligible work do not invent effort or extension state", async () => {
+  fixture = new PiFixture();
+  await fixture.start({}, "high");
+  await fixture.command("prompt", { message: "/fixture-reload" });
+  expect((await fixture.command("get_state")).data).toMatchObject({ thinkingLevel: "high" });
+  expect(fixture.classifications).toHaveLength(0);
+  const entries = (await fixture.command("get_entries")).data as {
+    entries: { customType?: string }[];
+  };
+  expect(
+    entries.entries.filter((entry) => entry.customType?.startsWith("jev-pilot:")),
+  ).toHaveLength(0);
+}, 20000);
+
+for (const change of ["thinking", "model"]) {
+  test(`CLI-26${change === "thinking" ? "n" : "o"} manual ${change} change invalidates in-flight effort but not future prompts`, async () => {
+    fixture = new PiFixture();
+    fixture.classifierDelay = 300;
+    await fixture.start({ JEV_TIMEOUT_MS: "5000" });
+    const offset = fixture.records.length;
+    await fixture.command("prompt", { message: task });
+    await fixture.wait(() => fixture!.classifications.length === 1);
+    if (change === "thinking") {
+      await fixture.command("set_thinking_level", { level: "low" });
+    } else {
+      await fixture.command("set_model", { provider: "fixture", modelId: "fixture-other-model" });
+    }
+    await fixture.wait(() =>
+      fixture!.records.slice(offset).some((entry) => entry.type === "agent_settled"),
+    );
+    await Bun.sleep(350);
+    const selectedModel = change === "model" ? "fixture-other-model" : "fixture-model";
+    const manualThinking = change === "thinking" ? "low" : "medium";
+    expect(fixture.generations[0]).toMatchObject({
+      model: selectedModel,
+      reasoning_effort: manualThinking,
+    });
+    expect((await fixture.command("get_state")).data).toMatchObject({
+      model: { id: selectedModel },
+      thinkingLevel: manualThinking,
+    });
+    expect(await lastDecision(fixture)).toBeUndefined();
+    const discardedEntries = (await fixture.command("get_entries")).data as {
+      entries: { customType?: string }[];
+    };
+    expect(
+      discardedEntries.entries.filter((entry) => entry.customType?.startsWith("jev-pilot:")),
+    ).toHaveLength(0);
+    fixture.classifierDelay = 0;
+    await fixture.prompt(task);
+    expect(fixture.classifications).toHaveLength(2);
+    expect(fixture.generations.at(-1)).toMatchObject({
+      model: selectedModel,
+      reasoning_effort: "high",
+    });
+    expect(await lastDecision(fixture)).toMatchObject({ outcome: "classified", effective: "high" });
+  }, 20000);
+}
+
 for (const fault of [
   {
     name: "HTTP error",
@@ -71,6 +130,7 @@ for (const env of [
   { JEV_SYSTEM_ONE_URL: "not-a-url" },
   { JEV_SYSTEM_ONE_API_KEY: "" },
   { JEV_SYSTEM_ONE_MODEL: "" },
+  { JEV_EFFORT_ENABLED: "invalid" },
 ] as Record<string, string>[]) {
   test(`CLI-13 invalid ${Object.keys(env)[0]} stops generation with an actionable error`, async () => {
     fixture = new PiFixture();
@@ -216,17 +276,103 @@ test("CLI-01b configured classifier model and bearer auth reach the endpoint", a
   );
 }, 20000);
 
-test("CLI-06b non-reasoning model adapts high to off visibly", async () => {
+test("CLI-09b non-reasoning model has no applicable effort questions or extension writes", async () => {
   fixture = new PiFixture();
   fixture.reasoning = false;
-  await fixture.start();
+  await fixture.start({ JEV_SYSTEM_ONE_API_KEY: "" });
   await fixture.prompt(task);
-  expect(await lastDecision(fixture)).toMatchObject({
-    requested: "high",
-    effective: "off",
-  });
+  await fixture.prompt("continue");
+  await fixture.command("prompt", { message: "/fixture-reload" });
+  expect(fixture.classifications).toHaveLength(0);
+  expect(fixture.generations).toHaveLength(2);
   expect(fixture.generations[0]?.reasoning_effort).toBeUndefined();
+  const entries = (await fixture.command("get_entries")).data as {
+    entries: { customType?: string }[];
+  };
+  expect(
+    entries.entries.filter((entry) => entry.customType?.startsWith("jev-pilot:")),
+  ).toHaveLength(0);
 }, 20000);
+
+test("CLI-09b single-supported-level reasoning model has zero applicable effort calls or writes", async () => {
+  fixture = new PiFixture();
+  fixture.singleThinkingLevel = true;
+  await fixture.start({ JEV_SYSTEM_ONE_API_KEY: "" });
+  await fixture.prompt(task);
+  expect(fixture.classifications).toHaveLength(0);
+  expect(fixture.generations[0]?.reasoning_effort).toBe("high");
+  const entries = (await fixture.command("get_entries")).data as {
+    entries: { customType?: string }[];
+  };
+  expect(
+    entries.entries.filter((entry) => entry.customType?.startsWith("jev-pilot:")),
+  ).toHaveLength(0);
+}, 20000);
+
+test("CLI-09a disabled effort has zero classifier requests and writes across owned-history reload", async () => {
+  fixture = new PiFixture();
+  await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_SYSTEM_ONE_API_KEY: "" });
+  await fixture.prompt(task);
+  await fixture.prompt("continue");
+  await fixture.command("prompt", { message: "/fixture-reload" });
+  expect(fixture.classifications).toHaveLength(0);
+  expect(fixture.generations.map((entry) => entry.reasoning_effort)).toEqual(["medium", "medium"]);
+  const entries = (await fixture.command("get_entries")).data as {
+    entries: { customType?: string }[];
+  };
+  expect(
+    entries.entries.filter((entry) => entry.customType?.startsWith("jev-pilot:")),
+  ).toHaveLength(0);
+}, 20000);
+
+test("CLI-09c empty and command-like inputs have zero effort questions or writes", async () => {
+  fixture = new PiFixture();
+  await fixture.start();
+  await fixture.prompt("   ");
+  await fixture.prompt("/unregistered-command");
+  expect(fixture.classifications).toHaveLength(0);
+  expect(await lastDecision(fixture)).toBeUndefined();
+}, 20000);
+
+for (const gate of ["disabled", "non-reasoning"]) {
+  test(`CLI-09${gate === "disabled" ? "a" : "b"} retained history is not replayed when effort is ${gate}`, async () => {
+    fixture = new PiFixture();
+    await fixture.start();
+    await fixture.prompt(task);
+    if (gate === "disabled") {
+      await fixture.command("prompt", { message: "/fixture-effort false" });
+    } else {
+      await fixture.command("set_model", { provider: "fixture", modelId: "fixture-plain-model" });
+    }
+    const before = (await fixture.command("get_entries")).data as {
+      entries: { customType?: string; type: string }[];
+    };
+    const writes = (entries: typeof before.entries) =>
+      entries.filter(
+        (entry) =>
+          entry.customType?.startsWith("jev-pilot:") || entry.type === "thinking_level_change",
+      ).length;
+    await fixture.command("prompt", { message: "/fixture-reload" });
+    await fixture.prompt("continue");
+    const after = (await fixture.command("get_entries")).data as typeof before;
+    expect(fixture.classifications).toHaveLength(1);
+    expect(writes(after.entries)).toBe(writes(before.entries));
+    expect(fixture.generations.at(-1)?.reasoning_effort).toBe(
+      gate === "disabled" ? "high" : undefined,
+    );
+  }, 20000);
+}
+
+for (const level of ["low", "off"]) {
+  test(`CLI-03b eligible named ${level} thinking is not a persistent lock`, async () => {
+    fixture = new PiFixture();
+    await fixture.start({}, level);
+    await fixture.prompt(task);
+    expect(fixture.classifications).toHaveLength(1);
+    expect(fixture.generations[0]?.reasoning_effort).toBe("high");
+    expect(await lastDecision(fixture)).toMatchObject({ requested: "high", effective: "high" });
+  }, 20000);
+}
 
 test("CLI-13b missing model authentication never invents a route", async () => {
   fixture = new PiFixture();
@@ -398,6 +544,24 @@ test("CLI-26h restoring an excluded application preserves manual user thinking",
   expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
 }, 20000);
 
+test("CLI-26h tree restores a manual prefix before the first eligible application", async () => {
+  fixture = new PiFixture();
+  await fixture.start({}, "high");
+  await fixture.command("set_thinking_level", { level: "low" });
+  const before = (await fixture.command("get_entries")).data as {
+    entries: { id: string; type: string; thinkingLevel?: string }[];
+  };
+  const manual = before.entries.findLast(
+    (entry) => entry.type === "thinking_level_change" && entry.thinkingLevel === "low",
+  )!;
+  await fixture.prompt(task);
+  await fixture.command("prompt", { message: `/fixture-tree ${manual.id}` });
+  expect((await fixture.command("get_state")).data).toMatchObject({ thinkingLevel: "low" });
+  fixture.response = answer("low", 0);
+  await fixture.prompt(task);
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
+}, 20000);
+
 test("CLI-08c steering all continuation retains the immediately preceding lookup decision", async () => {
   fixture = new PiFixture();
   await fixture.start();
@@ -478,7 +642,7 @@ test("CLI-26i fork including the owning user retains its effort and reusable dec
   });
 }, 20000);
 
-test("CLI-26j explicit startup thinking override survives fork replacement without a new decision", async () => {
+test("CLI-26j included branch decision overrides a re-applied unequal startup value", async () => {
   fixture = new PiFixture();
   await fixture.start({}, "low");
   await fixture.prompt(task);
@@ -488,18 +652,18 @@ test("CLI-26j explicit startup thinking override survives fork replacement witho
     }
   ).entries;
   const user = entries.find((entry) => entry.message?.role === "user")!;
-  await fixture.command("fork", { entryId: user.id });
+  await fixture.command("prompt", { message: `/fixture-fork-at ${user.id}` });
   expect((await fixture.command("get_state")).data).toMatchObject({
-    thinkingLevel: "low",
+    thinkingLevel: "high",
   });
   fixture.response = answer("low", 0);
   await fixture.prompt(
     "Please inspect this independent lengthy task and explain all relevant implementation details carefully",
   );
-  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("high");
 }, 20000);
 
-test("CLI-26l explicit startup override wins when it equals the excluded provisional thinking", async () => {
+test("CLI-26l excluded owner restores branch baseline despite equal startup thinking", async () => {
   fixture = new PiFixture();
   await fixture.start({}, "high");
   expect((await fixture.command("get_state")).data).toMatchObject({
@@ -527,9 +691,9 @@ test("CLI-26l explicit startup override wins when it equals the excluded provisi
     providerEffort: fixture.generations.at(-1)?.reasoning_effort,
     retained: await lastDecision(fixture),
   }).toMatchObject({
-    restored: { thinkingLevel: "high" },
-    providerEffort: "high",
-    retained: { effective: "high", decision: { effort: 0, effortConfidence: 0 } },
+    restored: { thinkingLevel: "medium" },
+    providerEffort: "medium",
+    retained: { effective: "medium", decision: { effort: 0, effortConfidence: 0 } },
   });
 }, 20000);
 

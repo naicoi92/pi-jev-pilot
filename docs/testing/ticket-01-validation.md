@@ -2,7 +2,33 @@
 
 This is an effort-only package-boundary implementation. The approved single seam remains prompt/configuration → System One → actual Pi dispatch. No tracker/spec status is changed by this implementation.
 
-## Compatibility and official contracts
+## Current candidate: approved auto-effort authority
+
+Integration `38d02aaccf422463129c1942d7cd3f1c4bd86569` supersedes native startup-pin/provenance acceptance. Installing/enabling auto-effort authorizes upstream-policy selection over default/current thinking; it does not authorize unconditional effort changes or override confidence/risk/ceiling/follow-up exceptions. The earlier blocker and RED results remain [historical evidence](ticket-01-startup-provenance-blocker.md), not a claim that native startup provenance was implemented.
+
+- Restoration is deterministic from the active branch. Before/at-owner fork, manual tree prefix, orphan ownership, resume/reload/compaction and queued predecessor cases remain actual CLI acceptance.
+- `model_select`/`thinking_level_select` invalidate outstanding classification, abort nested HTTP and discard results before any application/receipt/setter write. Revision plus model/session/thinking snapshots guard the write; completed own writes detach the active selection first. This guard does not establish persistent native pins and does not block future prompts.
+- Minimal `JEV_EFFORT_ENABLED` defaults true; false means zero effort questions/HTTP/writes. Model metadata, not current `off`, gates applicability. Non-reasoning/single-supported-level models have no useful effort consumer. Only effort+risk questions are sent together in one request here; future independent consumers are not implemented by this ticket.
+- Initial startup/reload before eligible application leaves native thinking and extension history untouched. Retained-history disabled/non-reasoning reload also makes no effort writes.
+
+**Superseded tests:** old CLI-26l/high-preservation became branch-baseline medium acceptance; old CLI-26j/startup-low priority became included-owner high acceptance. Old CLI-06b/high→off diagnostics became CLI-09b/non-reasoning zero-call/no-write acceptance. No old RED is relabelled fixed. AC-06 still verifies real requested xhigh→effective high adaptation.
+
+## Tested stable Pi 1.4.0 contract
+
+Rechecked npm `latest` for both official host packages: **1.4.0**, matching the published installed CLI and [official v1.4.0 release](https://github.com/earendil-works/pi/releases/tag/v1.4.0) (not draft/prerelease). Exact devDependencies and lockfile now pin **1.4.0**. Peer dependencies remain `"*"` as the released package documentation prescribes. Historical Pi 1.3.0 results below are not a current compatibility claim.
+
+Read the complete installed 1.4.0 relevant extension/package/model/custom-provider/virtual-model/RPC/compaction documentation and linked configuration/settings contracts; rechecked released session start/shutdown/tree, message, model/thinking-selection declarations, session-local setter and supported-thinking helpers. The 1.4.0 release changes classifier image support and compaction output limits but does not require changing this text-only System One backend or approved session ownership design. No experimental host prototype is used.
+
+New RED→GREEN slices at the same actual CLI seam:
+
+- Deterministic restoration/initial-state tests: 2 RED (included-owner unequal startup, speculative startup state), 1 already passing revised collision case; then 3 GREEN.
+- Applicability: disabled and non-reasoning RED because configuration validation still blocked generation, then zero-call/no-write GREEN without requiring unused classifier credentials.
+- Stale manual thinking/model: 2 RED (late high write), then GREEN with guards; each checks no extension decision metadata and next-prompt routing.
+- Manual tree prefix before the first application: RED high instead of manual low, then GREEN; initial startup non-mutation remains separately covered.
+
+Current full-suite result: **73 pass / 0 fail / 197 assertions**, comprising **53 actual CLI cases + 20 policy examples**. oxlint, oxfmt and bun check remain the only current tooling gates. The original branch and queue repros still produce medium/medium and `[high, high, low]`. The unchanged startup-equality script now produces medium/medium, matching the newly authorized branch baseline; that script only prints observations. Its former high-priority assertion would test a superseded contract and is not represented as fixed. Final candidate SHA and rerun captures are recorded in the implementation artifact; independent acceptance is still required.
+
+## Historical Pi 1.3.0 compatibility and official contracts
 
 Verified stable target: **official Pi 1.3.0**, published as `@earendil-works/pi-coding-agent` and `@earendil-works/pi-ai`. The npm `latest` metadata and [official v1.3.0 release](https://github.com/earendil-works/pi/releases/tag/v1.3.0) agree. The installed CLI prints `1.3.0`. The legacy `@mariozechner` namespace and Pi-Bolt are not the target.
 
@@ -15,9 +41,9 @@ Complete official documents read before implementation:
 
 Exact released declarations checked: `ExtensionAPI`, `ExtensionContext`, `MessageStartEvent`, `SessionStartEvent`, `SessionShutdownEvent`, `ModelRegistry`, `ReadonlySessionManager`, `SessionProjection`, `SessionEntry`, and Pi's session-local `setThinkingLevel()` contract. TypeScript checks against the pinned published packages, not inferred Pi-Bolt types.
 
-**Important host adaptation:** `before_agent_start` runs before Pi creates its agent abort signal. An initial real CLI cancellation test failed there: classifier work finished instead of aborting promptly. Classification now runs on the supported, awaited user `message_start` event. It has the active `ctx.signal`, covers queued steering messages, and completes before request preparation reads session thinking. No private API, monkey patch, virtual-model selection, or provider wrapper is required. The original candidate deferred only the custom state until `context`, which did not prevent Pi's earlier physical thinking entry from leaking into an excluded prompt prefix. The corrected adapter records a baseline/decision application marker before `setThinkingLevel`, recognizes ownership only when the corresponding following user is present, and reconciles physical thinking at `session_start`/`session_tree` through supported APIs. Manual thinking entries are replayed; an explicit startup override takes precedence over restored history. A restore marker closes excluded applications so a later unrelated user cannot claim them. Each queued predecessor receipt is committed after its user is persisted and before the following user is classified; the last receipt is committed at `context`.
+**Important host adaptation:** `before_agent_start` runs before Pi creates its agent abort signal. An initial real CLI cancellation test failed there: classifier work finished instead of aborting promptly. Classification now runs on the supported, awaited user `message_start` event. It has the active `ctx.signal`, covers queued steering messages, and completes before request preparation reads session thinking. No private API, monkey patch, virtual-model selection, or provider wrapper is required. The original candidate deferred only the custom state until `context`, which did not prevent Pi's earlier physical thinking entry from leaking into an excluded prompt prefix. The corrected adapter records a baseline/decision application marker before `setThinkingLevel`, recognizes ownership only when the corresponding following user is present, and reconciles physical thinking at `session_start`/`session_tree` through supported APIs. At that historical checkpoint, manual thinking entries were replayed and explicit startup priority was claimed; the equality-collision review below superseded that claim, then the operator changed the acceptance contract as recorded above. A restore marker closes excluded applications so a later unrelated user cannot claim them. Each queued predecessor receipt is committed after its user is persisted and before the following user is classified; the last receipt is committed at `context`.
 
-## Commands and results
+## Historical commands and results
 
 Environment: Bun `1.4.3`; official Pi `1.3.0`. Commands run from the dedicated `ticket/01-pi-effort-routing` worktree:
 
@@ -65,7 +91,7 @@ The correction changes only effort ownership at the existing Pi package seam. Po
 All **10 ticket-selected parent ACs** have executable evidence: AC-01, AC-03, AC-04, AC-06, AC-08, AC-10, AC-11, AC-12, AC-13, AC-26, plus the ticket's additional compatibility/attribution checklist requirement. See the [matrix](ticket-01-matrix.md) for exact test names and independent expected-value sources.
 
 - Policy fixtures preserve upgrade/downgrade/high bars, missing confidence, close ties, very-hard mass, ceiling, short approvals/questions, CJK questions and strict risk boundary. Five additional CLI parity cases verify actual effort dispatch and captured upstream questions.
-- CLI receipts verify the same physical provider/model, session-only thinking, xhigh→high and high→off visibility, and unchanged default thinking.
+- Current CLI receipts verify the same physical provider/model, session-only thinking, xhigh→high visibility and unchanged default thinking. Historical high→off diagnostics are superseded by non-reasoning zero-call/no-write gating.
 - Actual `read` execution followed by tool continuation verifies that tool arguments/results are absent from classifier payloads, and no new classification or mid-turn escalation occurs.
 - Local delayed HTTP requests verify server-observed classifier disconnect at both the configured deadline and default 1,500 ms; parent abort produces **zero generation requests**. Parent abort during generation disconnects provider transport.
 - Real RPC lifecycle exercises startup, reload, new session, resume, fork before the owning prompt, tree navigation before that prompt, compaction, provider retry, queued steering, and orderly shutdown with exit code zero.

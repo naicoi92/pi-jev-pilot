@@ -8,6 +8,13 @@ export interface SystemOneConfig {
   timeoutMs: number;
 }
 
+export function effortEnabled(): boolean {
+  const value = process.env.JEV_EFFORT_ENABLED ?? "true";
+  if (value !== "true" && value !== "false")
+    throw new Error("Set JEV_EFFORT_ENABLED to true or false (default: true).");
+  return value === "true";
+}
+
 export function systemOneConfig(): SystemOneConfig {
   const url = process.env.JEV_SYSTEM_ONE_URL ?? "https://api.typesafe.ai/v1/systemone";
   let parsed: URL;

@@ -1,6 +1,19 @@
-# Ticket 01 blocker: startup thinking provenance
+# Historical ticket 01 blocker: startup thinking provenance
 
-**Merge status: BLOCK.** The bounded re-review of candidate `917ec659422e05243d3eb66ab1d82f61f54c4bd6` confirmed both original ownership P1 scenarios resolved, but reproduced a distinct startup-override collision. This checkpoint adds a named **expected-failing regression**, not a fix or an accepted contract change. Implementation is stopped pending a parent/operator host/API decision.
+**Superseded by operator decision — not a current startup-provenance blocker.** Integration `38d02aaccf422463129c1942d7cd3f1c4bd86569` records that installing/enabling auto-effort authorizes policy-based selection over default/current thinking. Native startup priority is not a persistent effort lock. No host patch, opt-in/default-off mode, capability deferral or automatic native-intent detection is required. The historical RED below remains valid evidence against the old high-preservation requirement; it is **not claimed fixed** under that superseded requirement.
+
+Current dispositions:
+
+- `CLI-26l` retains the collision scenario but now asserts branch baseline medium after fork-before; a no-change decision dispatches medium. This is an explicitly changed acceptance expectation.
+- `CLI-26j` now verifies included-owner high survives a re-applied unequal startup low; no equality-based heuristic remains.
+- `CLI-26m` protects initial startup/reload before any eligible decision; `CLI-26n/o` protect manual model/thinking changes during outstanding classification and prove the next prompt can route again.
+- The original excluded-owner branch and steering-all predecessor regressions remain required. See the current [matrix](ticket-01-matrix.md) and [validation](ticket-01-validation.md).
+
+## Historical checkpoint (unchanged evidence)
+
+The following status/options/expectations describe the earlier checkpoint, not current instructions or a pending host decision.
+
+**Historical merge status: BLOCK.** The bounded re-review of candidate `917ec659422e05243d3eb66ab1d82f61f54c4bd6` confirmed both original ownership P1 scenarios resolved, but reproduced a distinct startup-override collision. This checkpoint adds a named **expected-failing regression**, not a fix or an accepted contract change. Implementation is stopped pending a parent/operator host/API decision.
 
 The scope remains the official Pi 1.3.0 package boundary. No private state, built-in argv parsing, monkey patch, value-based provenance workaround, provider-specific payload patch, new feature, or changed precedence is authorized.
 
