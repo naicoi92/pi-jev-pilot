@@ -9,6 +9,17 @@ interface ContextMessage {
   tools: { name: string; failed: boolean }[];
 }
 
+// Native explicit skill expansion is resource content, not conversation history.
+function historyText(text: string): string {
+  const expanded = /^<skill name="([^"]+)" location="[^"]+">\nReferences are relative to /.exec(
+    text,
+  );
+  const end = expanded ? text.lastIndexOf("\n</skill>") : -1;
+  return expanded && end >= 0
+    ? `/skill:${expanded[1]} ${text.slice(end + "\n</skill>".length).trim()}`.trim()
+    : text;
+}
+
 function messagesOf(ctx: ExtensionContext): ContextMessage[] {
   const source = ctx.sessionManager.buildSessionProjection().messages;
   const failed = new Set(
@@ -22,13 +33,14 @@ function messagesOf(ctx: ExtensionContext): ContextMessage[] {
     return [
       {
         role: message.role,
-        text:
+        text: historyText(
           typeof content === "string"
             ? content
             : content
                 .filter((part) => part.type === "text")
                 .map((part) => part.text)
                 .join("\n"),
+        ),
         tools:
           typeof content === "string"
             ? []
