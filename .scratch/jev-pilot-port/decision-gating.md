@@ -21,7 +21,13 @@ The operator explicitly requires Jev to overwrite models supplied in ordinary wo
 
 Use the pinned upstream caller-or-parent model policy baseline (`call.model ?? parentModel`), not an implicitly resolved agent override. A valid policy selection may overwrite either caller input or executor defaults. Example: no caller model, parent fast, agent override deep, balanced confidence .45/risk 0 is a fast-to-balanced upgrade and selects balanced under the .3 threshold. Earlier research requiring the effective configured worker model as the policy baseline is superseded. This is not a local-only restriction.
 
-Policy baseline is not failure fallback: disabled routing, classifier error or timeout preserve the original envelope so the executor retains its own default/override resolution. Cancellation stops work. Trace effort baseline independently and adapt effort against the final selected physical model. Virtual parent identities require supported physical-route context, not guessed physical identities.
+Policy baseline is not failure fallback: disabled routing, classifier error or timeout preserve the original envelope so the executor retains its own default/override resolution. Cancellation stops work. For worker effort, the superseding authority below replaces any requirement to preserve configured child thinking. Adapt the Jev-selected effort against the final selected physical model. Virtual parent identities require supported physical-route context, not guessed physical identities.
+
+### Ordinary-worker effort authority — superseding child-default preservation
+
+The operator requires Jev to decide worker effort and use that decision. Configured agent/executor thinking, including max, is a default, not a veto or protected ceiling against a valid applicable Jev choice. If Jev selects medium, a child configured max or low must run supported medium. This supersedes the proposed max-to-max requirement and first-child-request baseline/transport blocker; those probes remain historical observations, not fixed bugs. Caller model and configured worker effort must not bypass a valid Jev selection.
+
+Use the documented parent tool-call model/effort suffix where supported; no child numeric decision transport, internal binding ENV or extra classification is required merely to preserve executor defaults. Retain confidence/risk rules where not conflicting with this worker authority; do not introduce a hidden default-effort veto. Disabled routing or classifier error/timeout preserves the original envelope; cancellation stops work. This worker clarification does not change accepted main-session effort policy.
 
 ## Evidence gate before implementation
 
@@ -32,7 +38,7 @@ Verify ordinary official stable Pi dispatch and ownership using local fixtures. 
 | Case | Expected observable outcome |
 | --- | --- |
 | Ordinary direct/async call supplies model A; applicable valid Jev policy chooses B | Child receipt confirms B and supported chosen effort; caller A does not bypass routing |
-| Worker routing disabled | Preserve original worker input under executor behavior |
+| Worker configured max or low; valid applicable Jev effort selects medium | Actual direct/async child uses supported medium; configured thinking does not veto Jev |\n| Worker routing disabled | Preserve original worker input under executor behavior |
 | Default/current named thinking, eligible effort path | Classify and apply upstream policy; existing value is not a lock |
 | Manual model/thinking change during classification | Discard stale result, no late overwrite |
 | Initial startup before eligible prompt | No speculative effort change |
