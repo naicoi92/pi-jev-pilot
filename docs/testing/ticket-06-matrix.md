@@ -19,7 +19,7 @@ Superseding worker effort authority at integration `a13d38c`: configured max/low
 | AC-06     | WORKER-06-runtime-max-baseline | Runtime child configured max, caller physical model without suffix, actually starts at max without production routing. No policy expectation is inferred. | Historical executor characterization; configured defaults are superseded as policy vetoes by a13d38c.     |
 | AC-06     | WORKER-06-runtime-low-baseline | Same model/parent/envelope with child low starts at low without production routing.                                                                       | Historical executor characterization only; no remaining child transport requirement.                      |
 
-## Production routing cases — not yet implemented
+## Production routing contract
 
 | Criterion | Test ID                          | Observable behavior                                                                                                                           | Independent expected-value source                                     |
 | --------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -59,4 +59,26 @@ Historical six feasibility/characterization tests are not production routing pro
 | AC-13 | worker-routing-cli: coexistence | Existing host required-child owner is preserved; helper registration collision fails actionably before worker classifier/mutation/launch. Defensive negative, not coexistence support or acceptance waiver. |
 | AC-26 | worker-main-isolation: user fork | Exact fake active_agent project prose does not suppress user-fork main classification; static executor-loaded helper alone identifies execution children. |
 
-Completion requires final full suite and real direct/async terminal receipts, not historical fixed-suffix success. Current helper has a concrete public one-owner coexistence limitation; parent decision required before completion claim.
+## Independent review corrective matrix (before regression tests)
+
+| Criterion | Regression ID                               | Independent expected-value source                                                                                                                                                                                |
+| --------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-12     | F1 async error/timeout/rejected/noop cancel | Decision-gating cancellation contract: allowed original-envelope launches remain owned and stop exactly once; parent actual packed RED reproduced complete instead of stopped.                                   |
+| AC-20     | F2 direct/async omitted/noop/rejected       | Pinned hook1168 adds model only when selection nonnull: configured deep retains deep while medium applies; balanced .45 upgrade remains balanced.                                                                |
+| AC-06     | F2 retained-target clamp                    | AC06 clamps requested medium against retained actual non-reasoning target, not parent comparison identity.                                                                                                       |
+| AC-20     | F3 topfresh / scope-user                    | Public tool-reference70–82 alias/scope contracts; actual explicit fresh and user-scoped fresh must classify and route despite fork defaults elsewhere.                                                           |
+| AC-13     | F3 profile                                  | Public preflight only fresh/fork; executor-only profile ignores global context. Adapter reports accurate supported-projection limitation before worker classification/mutation/launch, not fake profile routing. |
+| AC-21     | F4 workflow model guidance                  | Existing STRATEGY_HOW/advice: fast lookup, balanced specified implementation, workflow default for judgment, visible in actual provider messages; no toast/deep overwrite.                                       |
+| AC-26     | Ownership release / stale work              | Completion releases exact ID; model/thinking/session/tree invalidation blocks pending decision; unrelated calls never enroll.                                                                                    |
+| AC-13     | Required-child registration both orders     | Public singleton register/dispose contract: repeated own calls reuse handle, host-first and Jev-first conflicts preserve original owner; dispose idempotent, session reload re-registers.                        |
+| AC-20     | Runtime agent                               | Installed owner registered runtime agent with explicit fresh+model routes through actual child; missing disk preflight alone is no blocker.                                                                      |
+| AC-13     | Runtime unknown effort-only target          | No selection + no public actual target => accurate fail-closed, never guess parent model.                                                                                                                        |
+| AC-26     | Retained resume helper                      | Supported resume retains required child helper and does not reclassify child; no duplicate worker decision.                                                                                                      |
+
+Concrete regression IDs: packed `omitted-direct`, `omitted-async`, `rejected-tier`, `retained-clamp`, `omitted-upgrade`, `top-fresh`, `scope-user`, `profile`, `profile-executor`, `runtime`, `runtime-unknown`, `coexistence`, `coexistence-jev-first`, `lifecycle` (repeat + actual reload), `resume`, `workflow-guidance`, `pending-model`, `pending-thinking`, `pending-session`; unit completion-release and all six pending transition events. Each row above owns its corresponding test; `pending-*` are AC26, registration negatives AC13, workflow guidance AC21. Profile/runtime-unknown are negative compatibility coverage, not successful routing claims.
+
+## Fixture capacity and evidence
+
+The interrupted regression batch is not final validation: 5 passed / 10 failed, including ENOSPC install/mkdtemp failures and a separate no-op fixture identity error. Before every dependency-installing fixture, require at least 2 GiB free. After the parent process closes and any async child has an observed terminal receipt, persist trace, command/error logs, configuration, source and runtime receipts to `JEV_WORKER_EVIDENCE_DIR` (or the retained compact fixture directory). Remove only that fixture's generated `node_modules`, private `.bun/install/cache` and package tarballs. Never remove project dependencies, global caches, sessions, source or receipts. Preserve setup failures through `afterEach` as well as normal-case `finally`.
+
+Completion requires final full suite and actual receipts, then independent parent review. Singleton collision is an actionable compatibility error under AC13, not a blanket blocker or universal coexistence guarantee.

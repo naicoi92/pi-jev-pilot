@@ -66,7 +66,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
     childExtension = undefined;
   });
   const active = new Set<AbortController>();
-  const routed = new Set<string>();
+  const allowedLaunches = new Set<string>();
   const owned = new Map<string, { signal?: AbortSignal; cancel: () => void }>();
   const stop = (id: string) =>
     pi.events.emit("subagents:rpc:v1:request", {
@@ -78,7 +78,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
   const clear = () => {
     for (const controller of active) controller.abort();
     active.clear();
-    routed.clear();
+    allowedLaunches.clear();
     for (const [id, run] of owned) {
       run.signal?.removeEventListener("abort", run.cancel);
       stop(id);
@@ -91,7 +91,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
     childExtension = undefined;
   });
   pi.on("agent_settled", (event) => {
-    routed.clear();
+    allowedLaunches.clear();
     if (event.aborted) clear();
   });
   const leaveSession = () => {
@@ -124,7 +124,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
   pi.on("tool_result", (event, ctx) => {
     if (
       event.toolName !== "subagent" ||
-      !routed.delete(event.toolCallId) ||
+      !allowedLaunches.delete(event.toolCallId) ||
       !event.details ||
       typeof event.details !== "object" ||
       !("asyncId" in event.details) ||
@@ -161,19 +161,38 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
       }
     }
     if (!routing) return;
-    if (input.workflow) {
-      ctx.ui.notify(
-        "Jev workflow advice: use fast for mechanical work, balanced for ordinary changes, deep for design or risky work; set each inner launch model and supported effort explicitly. Inner launches remain workflow-owned.",
-        "info",
-      );
-      return;
-    }
+    if (input.workflow) return;
     if (typeof input.agent !== "string") return;
     const options =
       input.options && typeof input.options === "object"
         ? (input.options as Record<string, unknown>)
         : {};
-    if ((options.context ?? input.context) === "fork") return;
+    const field = (name: string) => {
+      if (input[name] !== undefined && options[name] !== undefined && input[name] !== options[name])
+        throw new Error(`Conflicting subagent ${name} values at top level and options.`);
+      return options[name] ?? input[name];
+    };
+    const context = field("context");
+    const agentScope = field("agentScope");
+    if (context === "fork") return;
+    if (context === "profile")
+      return {
+        block: true,
+        reason:
+          "Jev adapter cannot resolve context: profile through the public preflight API in Pi 1.4 / pi-subagents 0.80; original input is unchanged and no child launched.",
+      };
+    if (context !== undefined && context !== "fresh")
+      return {
+        block: true,
+        reason: "Invalid subagent context; use fresh, fork or a supported executor profile path.",
+      };
+    if (
+      agentScope !== undefined &&
+      agentScope !== "user" &&
+      agentScope !== "project" &&
+      agentScope !== "both"
+    )
+      return { block: true, reason: "Invalid subagent agentScope; use user, project or both." };
     if (typeof input.task !== "string" || !input.task.trim()) return;
     const tiers = Object.fromEntries(
       TIER_ORDER.map((tier) => [tier, process.env[`JEV_TIER_${tier.toUpperCase()}`] ?? ""]),
@@ -189,7 +208,8 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
         agent: input.agent,
         task: input.task,
         cwd: typeof input.cwd === "string" ? input.cwd : ctx.cwd,
-        context: options.context === "fresh" ? "fresh" : undefined,
+        context,
+        agentScope,
         model: typeof input.model === "string" ? input.model : undefined,
         parentModel: ctx.model?.api !== "pi-virtual" ? ctx.model : undefined,
         availableModels: ctx.modelRegistry.getAvailable(),
@@ -214,6 +234,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
         if (controller.signal.aborted)
           return { block: true, reason: "Jev worker classification cancelled; no child launched." };
         input.model = specialized;
+        allowedLaunches.add(event.toolCallId);
         return;
       }
       const baseline =
@@ -238,7 +259,10 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
       );
       if (controller.signal.aborted)
         return { block: true, reason: "Jev worker classification cancelled; no child launched." };
-      if (result.outcome !== "classified") return;
+      if (result.outcome !== "classified") {
+        allowedLaunches.add(event.toolCallId);
+        return;
+      }
       const selected = result.decision.tier
         ? selectTier(
             {
@@ -250,16 +274,31 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
             tiers,
           )
         : null;
-      const finalIdentity = selected ?? baseline;
-      const model = physical(ctx, finalIdentity);
-      // No executor default is a veto. Unknown current effort permits upgrades only.
+      // Policy comparison is not authority to replace an omitted executor default.
       const requested = selectEffort(result.decision, "", input.task);
-      if (!selected && !requested) return;
+      if (!selected && !requested) {
+        allowedLaunches.add(event.toolCallId);
+        return;
+      }
+      const retained =
+        typeof input.model === "string"
+          ? input.model
+          : preview.ok
+            ? preview.contract.model
+            : undefined;
+      const finalIdentity = selected ?? (retained ? identity(retained) : undefined);
+      if (!finalIdentity)
+        return {
+          block: true,
+          reason:
+            "Jev cannot resolve the retained worker target for an effort-only decision through public preflight; supply an exact worker model. Original input is unchanged and no child launched.",
+        };
+      const model = physical(ctx, finalIdentity);
       const effective = requested ? clampThinkingLevel(model, requested) : undefined;
       if (controller.signal.aborted)
         return { block: true, reason: "Jev worker classification cancelled; no child launched." };
       input.model = `${finalIdentity}${effective ? `:${effective}` : ""}`;
-      routed.add(event.toolCallId);
+      allowedLaunches.add(event.toolCallId);
       pi.appendEntry("jev-pilot:worker-route", {
         toolCallId: event.toolCallId,
         physical: finalIdentity,

@@ -3,25 +3,22 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { WorkerEvidence, reapWorkerCli } from "./fixtures/worker-evidence.ts";
 
 // Feasibility fixtures only: this is not the production worker adapter.
 const root = resolve(import.meta.dir, "..");
 let process: ChildProcessWithoutNullStreams | undefined;
+let closed: Promise<void> | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
+let evidence: WorkerEvidence | undefined;
 afterEach(async () => {
-  if (process && process.exitCode === null) {
-    process.stdin.end();
-    await new Promise<void>((done) => {
-      const timer = setTimeout(() => process?.kill("SIGTERM"), 5000);
-      process!.once("close", () => {
-        clearTimeout(timer);
-        done();
-      });
-    });
-  }
+  if (process && closed) await reapWorkerCli(process, closed);
+  closed = undefined;
   process = undefined;
   server?.stop(true);
   server = undefined;
+  await evidence?.finish();
+  evidence = undefined;
 });
 
 for (const mode of [
@@ -46,6 +43,8 @@ for (const mode of [
       const runtimeProbe = mode === "runtime-gap" || effortProbe;
       const baseline = mode === "effort-max" ? "max" : "low";
       const directory = await mkdtemp(join(tmpdir(), "pi-jev-worker-feasibility-"));
+      evidence = new WorkerEvidence(directory);
+      await evidence.checkCapacity();
       const agentDir = join(directory, "agent");
       await mkdir(join(agentDir, "agents"), { recursive: true });
       await writeFile(
@@ -68,7 +67,13 @@ for (const mode of [
       });
       const installLog =
         (await new Response(install.stdout).text()) + (await new Response(install.stderr).text());
-      expect(await install.exited, installLog).toBe(0);
+      const installCode = await install.exited;
+      evidence.commands.push({
+        command: ["bun", "install"],
+        exitCode: installCode,
+        output: installLog,
+      });
+      expect(installCode, installLog).toBe(0);
       const requests: Record<string, unknown>[] = [];
       const original = {
         agent: runtimeProbe ? "runtime-receipt" : "receipt-worker",
@@ -249,6 +254,7 @@ export default function(pi) {
       ];
       commands.push([Bun.which("node")!, ...args]);
       process = spawn(Bun.which("node")!, args, { cwd: directory, env });
+      closed = new Promise<void>((done) => process!.once("close", () => done()));
       const records: Record<string, unknown>[] = [];
       let stderr = "";
       let pending = "";
