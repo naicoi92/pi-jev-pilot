@@ -50,7 +50,7 @@ All following file/line references are to the published `pi-subagents@0.80.0` pa
 | `docs/extension-api.md:172–211`                                 | Documents installed-owner runtime registration; the runtime-gap fixture uses exactly this public event.                                                                                                                                                                |
 | `docs/agents.md:262–284`                                        | Native Pi agents may select a saved machine from frontmatter/settings/launch options, so a native model alone does not establish local execution.                                                                                                                      |
 
-A missing description alone is a fidelity gap, not proof that all ordinary routing is impossible. Likewise, `missing_agent` does not classify an agent as an unsupported runner, and absent preflight model does not characterize every runner. The critical unresolved requirement is **matching the actual executor's effective discovery/configuration and proving local runner/placement before assigning a model** without private imports or duplicated precedence.
+A missing description alone is a fidelity gap, not proof that all ordinary routing is impossible. Likewise, `missing_agent` does not classify an agent as an unsupported runner, and absent preflight model does not characterize every runner. At this historical checkpoint, the unresolved concern was **effective runner/placement and route/registry applicability where the routing contract actually needs them**, without private imports or duplicated precedence. Native is not synonymous with local; a native saved-machine launch is not excluded by the project contract. These projection gaps alone do not prove that ordinary routing is impossible or that a new API is required.
 
 ## RED / GREEN history and remaining gates
 
@@ -60,7 +60,13 @@ A missing description alone is a fidelity gap, not proof that all ordinary routi
 - The implementation matrix remains incomplete. No System One routing, worker policy injection, caller-pin preservation, inherited/default/override matrix, timeout/cancellation, isolated lifecycle cleanup, workflow advice, packed-artifact installation, or final adapter compatibility has been implemented or accepted.
 - Existing main effort/routing/skills/advice/design code is unchanged. Final `bun test tests`: **344 pass, 0 fail, 1,134 assertions across 9 files** (231.38 s), preserving all 340 baseline tests / 1,102 assertions and adding four feasibility/characterization tests / 32 assertions. `bun run lint`, `bun run typecheck` (19 files), `bun run fmt:check`, and `git diff --check` pass. This is a clean checkpoint, not completion of the gated adapter.
 
-## Bounded next options — no decision applied
+## Superseding authority and minimum-data reassessment
+
+Integration `576dbc7fdcfcb4212dc33bfef938046c19a8cd5f` authorizes Jev to overwrite ordinary caller models according to valid policy. Caller-pin versus agent-default provenance is no longer required. The supervisor additionally approved the pinned hook's model-policy baseline `call.model ?? parentModel` (`hooks/jev-model-router.ts:1133–1137`), not the executor's configured agent default: parent fast, no caller model, configured deep, balanced confidence 0.45 / risk 0 means balanced. Failure/timeout/disabled routing must instead preserve the original envelope, allowing the executor's configured deep default to remain authoritative.
+
+The effort-policy baseline is distinct. Pinned `hooks/jev-model-router.ts:651–671` waits for the child's first request and uses the effort the execution engine built it with; unset effort is not replaced. Supported thinking adaptation must use the final physical model. Neither missing model-origin metadata nor missing description alone is a blanket blocker. Remaining API questions must be demonstrated against a concrete policy outcome before stopping implementation.
+
+## Historical bounded next options — no decision applied
 
 1. **Public API addition upstream:** a supported read-only effective-agent/launch projection owned by the active executor (including runtime agents, configured placement/runner, description, provenance and live configuration), callable before ordinary tool execution. This project must not patch dependency caches or import internals to manufacture it.
 2. **Explicit operator-approved scope restriction:** a changed contract limited to a publicly verifiable subset, with machine/runtime exclusions and a reliable way to enforce them. The supervisor has **not** approved this reduction; merely documenting assumptions is insufficient.

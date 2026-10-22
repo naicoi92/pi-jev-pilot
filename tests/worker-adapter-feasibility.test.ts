@@ -24,15 +24,27 @@ afterEach(async () => {
   server = undefined;
 });
 
-for (const mode of ["direct", "async", "machine-gap", "runtime-gap"] as const)
+for (const mode of [
+  "direct",
+  "async",
+  "machine-gap",
+  "runtime-gap",
+  "effort-max",
+  "effort-low",
+] as const)
   test(
     mode === "machine-gap"
       ? "WORKER-13-machine public preflight omits configured machine that real execution rejects"
       : mode === "runtime-gap"
         ? "WORKER-13-runtime installed owner can execute a registered agent missing from public preflight"
-        : `WORKER-21-${mode} public tool mutation reaches an installed real native worker`,
+        : mode.startsWith("effort-")
+          ? `WORKER-06-runtime-${mode.slice(7)}-baseline actual child thinking is distinct from parent thinking`
+          : `WORKER-21-${mode} public tool mutation reaches an installed real native worker`,
     async () => {
       const background = mode === "async";
+      const effortProbe = mode === "effort-max" || mode === "effort-low";
+      const runtimeProbe = mode === "runtime-gap" || effortProbe;
+      const baseline = mode === "effort-max" ? "max" : "low";
       const directory = await mkdtemp(join(tmpdir(), "pi-jev-worker-feasibility-"));
       const agentDir = join(directory, "agent");
       await mkdir(join(agentDir, "agents"), { recursive: true });
@@ -59,7 +71,8 @@ for (const mode of ["direct", "async", "machine-gap", "runtime-gap"] as const)
       expect(await install.exited, installLog).toBe(0);
       const requests: Record<string, unknown>[] = [];
       const original = {
-        agent: mode === "runtime-gap" ? "runtime-receipt" : "receipt-worker",
+        agent: runtimeProbe ? "runtime-receipt" : "receipt-worker",
+        ...(effortProbe ? { model: "local/selected" } : {}),
         task: "Return CHILD_RECEIPT_OK.",
         async: background,
         options: { context: "fresh", acceptance: false },
@@ -118,6 +131,19 @@ for (const mode of ["direct", "async", "machine-gap", "runtime-gap"] as const)
                 input: ["text"],
                 contextWindow: 32000,
                 maxTokens: 512,
+                ...(effortProbe
+                  ? {
+                      thinkingLevelMap: {
+                        off: "none",
+                        minimal: "minimal",
+                        low: "low",
+                        medium: "medium",
+                        high: "high",
+                        xhigh: "xhigh",
+                        max: "max",
+                      },
+                    }
+                  : {}),
               })),
             },
           },
@@ -137,7 +163,15 @@ for (const mode of ["direct", "async", "machine-gap", "runtime-gap"] as const)
           }),
         );
       const required = join(directory, "required.ts");
-      await writeFile(required, "export default function () {}\n");
+      await writeFile(
+        required,
+        `import { appendFileSync } from "node:fs";
+export default function (pi) {
+ pi.on("before_provider_request", (_event, ctx) => {
+  appendFileSync(${JSON.stringify(join(directory, "child-baseline.jsonl"))}, JSON.stringify({model:ctx.model?.provider+"/"+ctx.model?.id,thinking:ctx.thinkingLevel})+"\\n");
+ });
+}\n`,
+      );
       const adapter = join(directory, "adapter.ts");
       await writeFile(
         adapter,
@@ -148,21 +182,21 @@ export default function(pi) {
  let required;
  let runtimeAgent;
  pi.on("session_start", (_event, ctx) => {
-  if (${mode === "runtime-gap"}) {
-   const registration = {version:1,name:"runtime-receipt",definition:{description:"Runtime test subject",systemPrompt:"Return CHILD_RECEIPT_OK without tools.",tools:["read"]}};
+  if (${runtimeProbe}) {
+   const registration = {version:1,name:"runtime-receipt",definition:{description:"Runtime test subject",systemPrompt:"Return CHILD_RECEIPT_OK without tools.",tools:["read"],...(${effortProbe} ? {thinking:${JSON.stringify(baseline)}} : {})}};
    pi.events.emit("pi-subagents:runtime-agent-register:v1", registration);
    if (!registration.result?.ok) throw new Error("Runtime registration failed");
    runtimeAgent = registration.result.registration;
   }
-  if (${mode === "machine-gap"}) required = registerRequiredChildExtensions({sessionId: ctx.sessionManager.getSessionId(), extensions: [{id:"local-only-safety-guard",path:${JSON.stringify(required)}}], requireForAllRunners:true});
+  if (${mode === "machine-gap" || effortProbe}) required = registerRequiredChildExtensions({sessionId: ctx.sessionManager.getSessionId(), extensions: [{id:"fixture-child-baseline",path:${JSON.stringify(required)}}], ...(${mode === "machine-gap"} ? {requireForAllRunners:true} : {})});
  });
  pi.on("session_shutdown", () => { required?.dispose(); runtimeAgent?.dispose(); });
  pi.on("tool_call", async (event, ctx) => {
   if(event.toolName !== "subagent" || event.input.action) return;
   const preflight = await resolveSubagentLaunchContract({ agent: event.input.agent, task: event.input.task, cwd: ctx.cwd, parentModel: ctx.model, availableModels: ctx.modelRegistry.getAvailable(), parentSessionId: ctx.sessionManager.getSessionId(), projectTrusted: ctx.isProjectTrusted(), context: "fresh", runtimeSnapshotHost: pi, intercomBridge: {mode:"off"} });
   appendFileSync(${JSON.stringify(join(directory, "preflight.jsonl"))}, JSON.stringify(preflight)+"\\n");
-  if(!preflight.ok && ${mode !== "runtime-gap"}) return {block:true, reason:preflight.message};
-  event.input.model = "local/selected:high";
+  if(!preflight.ok && ${!runtimeProbe}) return {block:true, reason:preflight.message};
+  if (!${effortProbe}) event.input.model = "local/selected:high";
  });
  pi.on("tool_result", event => { if(event.toolName === "subagent") appendFileSync(${JSON.stringify(join(directory, "result.jsonl"))}, JSON.stringify(event)+"\\n"); });
 }`,
@@ -258,8 +292,7 @@ export default function(pi) {
           .trim()
           .split("\n")
           .map((line) => JSON.parse(line));
-        if (mode === "runtime-gap")
-          expect(preflight[0]).toMatchObject({ ok: false, code: "missing_agent" });
+        if (runtimeProbe) expect(preflight[0]).toMatchObject({ ok: false, code: "missing_agent" });
         else
           expect(preflight[0]).toMatchObject({
             ok: true,
@@ -273,6 +306,27 @@ export default function(pi) {
           expect(result).toContain("checkpoint-machine-never-connect");
           expect(result).toContain("the host requires child extensions");
           expect(requests.some((request) => request.model === "selected")).toBe(false);
+          return;
+        }
+        if (effortProbe) {
+          const observed = (await Bun.file(join(directory, "child-baseline.jsonl")).text())
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+          expect(observed).toMatchObject([{ model: "local/selected", thinking: baseline }]);
+          expect(requests.find((request) => request.model === "selected")).toMatchObject({
+            model: "selected",
+            reasoning_effort: baseline,
+          });
+          expect(JSON.parse(result.trim()).details.results).toMatchObject([
+            {
+              model: `local/selected:${baseline}`,
+              thinking: baseline,
+              exitCode: 0,
+              finalOutput: "CHILD_RECEIPT_OK",
+              usage: { input: 10, output: 4 },
+            },
+          ]);
           return;
         }
         if (background) await wait(() => requests.some((request) => request.model === "selected"));
