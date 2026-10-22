@@ -159,11 +159,11 @@ const tierQuestion = {
 function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | null {
   const answers = object(object(value)?.answers);
   const risk = object(answers?.risky);
-  const risky = risk?.noul ?? risk?.probability;
-  if (!probability(risky)) return null;
+  const risky = enabled.tier || enabled.effort ? (risk?.noul ?? risk?.probability) : null;
+  if ((enabled.tier || enabled.effort) && !probability(risky)) return null;
   const decision: Decision | null = enabled.effort
     ? readDecision(value)
-    : { effort: null, effortConfidence: null, risky };
+    : { effort: null, effortConfidence: null, risky: risky as number | null };
   if (!decision) return null;
   if (enabled.tier) {
     const tier = object(answers?.tier);
@@ -192,7 +192,7 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
 }
 
 export type Classification =
-  | { outcome: "classified"; decision: Decision }
+  | { outcome: "classified"; decision: Decision; value?: unknown }
   | { outcome: "timeout" | "service-error" | "schema-error" };
 
 /** Deadline cancels transport; parent cancellation rejects and is never fail-open. */
@@ -201,12 +201,15 @@ export async function classify(
   state: unknown,
   signal: AbortSignal,
   enabled: DecisionQuestions = { tier: false, effort: true },
+  additionalQuestions: Record<string, unknown> = {},
 ): Promise<Classification> {
-  if (!enabled.tier && !enabled.effort) throw new Error("No applicable Jev questions.");
+  if (!enabled.tier && !enabled.effort && !Object.keys(additionalQuestions).length)
+    throw new Error("No applicable Jev questions.");
   const asked = {
     ...(enabled.tier ? { tier: tierQuestion } : {}),
     ...(enabled.effort ? { effort: questions.effort } : {}),
-    risky: questions.risky,
+    ...(enabled.tier || enabled.effort ? { risky: questions.risky } : {}),
+    ...additionalQuestions,
   };
   const controller = new AbortController();
   let timedOut = false;
@@ -239,7 +242,7 @@ export async function classify(
       return { outcome: "schema-error" };
     }
     const decision = readAnswers(value, enabled);
-    return decision ? { outcome: "classified", decision } : { outcome: "schema-error" };
+    return decision ? { outcome: "classified", decision, value } : { outcome: "schema-error" };
   } catch (error) {
     if (signal.aborted) throw error;
     return { outcome: timedOut ? "timeout" : "service-error" };

@@ -24,6 +24,8 @@ export class PiFixture {
   generations: RecordData[] = [];
   stderr = "";
   response: unknown = answer();
+  classifierResponse: ((body: RecordData) => unknown) | undefined;
+  skills: { name: string; body: string; description?: string; disabled?: boolean }[] = [];
   status = 200;
   classifierDelay = 0;
   modelDelay = 0;
@@ -53,6 +55,14 @@ export class PiFixture {
     this.directory = await mkdtemp(join(tmpdir(), "pi-jev-ticket01-"));
     const agent = join(this.directory, "agent");
     await mkdir(agent);
+    for (const skill of this.skills) {
+      const directory = join(agent, "skills", skill.name);
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        join(directory, "SKILL.md"),
+        `---\nname: ${skill.name}\ndescription: ${skill.description ?? `Procedure for ${skill.name}`}\n${skill.disabled ? "disable-model-invocation: true\n" : ""}---\n${skill.body}\n`,
+      );
+    }
     this.server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -65,10 +75,10 @@ export class PiFixture {
             request.headers.get("authorization") === "Bearer fixture-not-a-credential";
           request.signal.addEventListener("abort", () => this.classifierAborts++, { once: true });
           if (this.classifierDelay) await Bun.sleep(this.classifierDelay);
-          return new Response(
-            typeof this.response === "string" ? this.response : JSON.stringify(this.response),
-            { status: this.status },
-          );
+          const response = this.classifierResponse ? this.classifierResponse(body) : this.response;
+          return new Response(typeof response === "string" ? response : JSON.stringify(response), {
+            status: this.status,
+          });
         }
         this.generations.push(body);
         if (this.modelFailures-- > 0) return new Response("temporary failure", { status: 503 });
@@ -265,7 +275,7 @@ export default function (pi: ExtensionAPI) {
       "--mode",
       "rpc",
       "--no-mcp",
-      "--no-skills",
+      ...(this.skills.length ? [] : ["--no-skills"]),
       "--no-prompt-templates",
       "--no-themes",
       "--no-context-files",

@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   clampThinkingLevel,
@@ -5,15 +6,13 @@ import {
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import { isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
-import {
-  classify,
-  effortEnabled,
-  mainRoutingEnabled,
-  systemOneConfig,
-  type Decision,
-} from "./system-one.ts";
+import { effortEnabled, mainRoutingEnabled, type Decision } from "./system-one.ts";
 import { TIER_ORDER, selectTier, type TierDecision, type Tiers } from "./tier-policy.ts";
 import { classifierState } from "./classifier-context.ts";
+import { decideMain, eligibleSkills, skillBlock } from "./skill-matching.ts";
+import type { SkillCandidate } from "./skill-policy.ts";
+
+const SKILL_TYPE = "jev-pilot:skill";
 
 const STATE_TYPE = "jev-pilot:effort";
 const APPLICATION_TYPE = "jev-pilot:effort-application";
@@ -90,7 +89,7 @@ export default function (pi: ExtensionAPI): void {
           );
         }
         const prompt = batch.findLast((text) => !isContinuation(text)) ?? batch.at(-1) ?? "";
-        if (!prompt.trim() || /^\/\S/.test(prompt.trim()))
+        if (!prompt.trim() || explicitCommand(prompt))
           return {
             model: baselineModel,
             thinkingLevel: clampThinkingLevel(baselineModel, baselineThinking),
@@ -99,27 +98,29 @@ export default function (pi: ExtensionAPI): void {
         const withEffort =
           effortEnabled() &&
           models.some((model) => model.reasoning && getSupportedThinkingLevels(model).length > 1);
-        const config = systemOneConfig();
         active?.abort();
         const controller = new AbortController();
         active = controller;
         const revision = selectionRevision;
         const session = ctx.sessionManager.getSessionId();
+        const leaf = ctx.sessionManager.getLeafId();
         const cancel = () => controller.abort();
         request.signal?.addEventListener("abort", cancel, { once: true });
         if (request.signal?.aborted) cancel();
         try {
           const previous = request.state?.decision ?? null;
           const reused = previous?.tier !== undefined && isContinuation(prompt);
-          const result = reused
-            ? { outcome: "classified" as const, decision: previous }
-            : await classify(
-                config,
-                await classifierState(
-                  ctx,
-                  prompt,
-                  pi.getAllTools().map((tool) => tool.name),
-                ),
+          const { result, skill } = reused
+            ? { result: { outcome: "classified" as const, decision: previous }, skill: undefined }
+            : await decideMain(
+                pi,
+                prompt,
+                () =>
+                  classifierState(
+                    ctx,
+                    prompt,
+                    pi.getAllTools().map((tool) => tool.name),
+                  ),
                 controller.signal,
                 { tier: true, effort: withEffort },
               );
@@ -127,11 +128,25 @@ export default function (pi: ExtensionAPI): void {
           if (
             controller.signal.aborted ||
             revision !== selectionRevision ||
-            session !== ctx.sessionManager.getSessionId()
+            session !== ctx.sessionManager.getSessionId() ||
+            leaf !== ctx.sessionManager.getLeafId()
           ) {
             throw new Error("Jev routing invalidated by a selection or session change.");
           }
-          const decision = result.outcome === "classified" ? result.decision : null;
+          const decision = result?.outcome === "classified" ? result.decision : null;
+          if (skill) {
+            const users = [];
+            for (const entry of ctx.sessionManager.getBranch().reverse()) {
+              if (entry.type !== "message") continue;
+              if (entry.message.role !== "user") break;
+              users.unshift(entry.message);
+            }
+            const owner =
+              users.findLast((message) => !isContinuation(userText(message.content))) ??
+              users.at(-1);
+            if (owner && "jevPilotInputId" in owner)
+              pi.appendEntry(SKILL_TYPE, { inputId: owner.jevPilotInputId, skill });
+          }
           const physical = decision?.tier
             ? (selectTier(decision as TierDecision, identity, tiers) ?? identity)
             : identity;
@@ -148,7 +163,7 @@ export default function (pi: ExtensionAPI): void {
             physical,
             requested,
             effective,
-            outcome: reused ? "reused" : result.outcome,
+            outcome: reused ? "reused" : (result?.outcome ?? "skipped"),
             source: decision ? "decision" : request.state || sticky ? "retained" : "default",
             decision: decision ?? previous,
           };
@@ -223,8 +238,52 @@ export default function (pi: ExtensionAPI): void {
   pi.on("agent_end", () => {
     pending = [];
   });
-  pi.on("context", (_event, ctx) => {
+  pi.on("context", (event, ctx) => {
     commitPending(ctx);
+    if (ctx.signal?.aborted) return;
+    const selections = new Map<string, SkillCandidate>();
+    const branch = ctx.sessionManager.getBranch();
+    const owners = new Set(
+      branch.flatMap((entry) =>
+        entry.type === "message" &&
+        entry.message.role === "user" &&
+        "jevPilotInputId" in entry.message
+          ? [entry.message.jevPilotInputId]
+          : [],
+      ),
+    );
+    for (const entry of branch) {
+      if (entry.type === "custom" && entry.customType === SKILL_TYPE) {
+        const data = entry.data as { inputId: string; skill: SkillCandidate };
+        if (owners.has(data.inputId)) selections.set(data.inputId, data.skill);
+      }
+    }
+    const loaded = new Map<string, string>();
+    return {
+      messages: event.messages.map((message) => {
+        if (message.role !== "user") return message;
+        const text = userText(message.content);
+        for (const skill of selections.values()) {
+          // Match Pi 1.4.0's complete native expansion, not a name/body substring.
+          const native = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${dirname(skill.filePath)}.\n\n${skill.body}\n</skill>`;
+          if (text === native || text.startsWith(`${native}\n\n`))
+            loaded.set(skill.filePath, skill.body);
+        }
+        if (!("jevPilotInputId" in message)) return message;
+        const skill = selections.get(message.jevPilotInputId as string);
+        if (!skill) return message;
+        const content =
+          typeof message.content === "string"
+            ? [{ type: "text" as const, text: message.content }]
+            : message.content;
+        const block = skillBlock(skill, loaded.get(skill.filePath) === skill.body);
+        loaded.set(skill.filePath, skill.body);
+        return {
+          ...message,
+          content: [...content, { type: "text" as const, text: block }],
+        };
+      }),
+    };
   });
   // Spike: same-role replacement is public; persistence of extension-owned user
   // metadata is observed on Pi 1.4.0, not a documented UserMessage field contract.
@@ -238,7 +297,27 @@ export default function (pi: ExtensionAPI): void {
   // User message_start is awaited before request preparation, includes queued
   // input, and supplies the active cancellation signal unlike before_agent_start.
   pi.on("message_start", async (event, ctx) => {
-    if (event.message.role !== "user" || isJevModel(ctx)) return;
+    if (event.message.role !== "user") return;
+    if (isJevModel(ctx)) {
+      const session = ctx.sessionManager.getSessionId();
+      const leaf = ctx.sessionManager.getLeafId();
+      const revision = selectionRevision;
+      const prompt = userText(event.message.content);
+      if (!prompt.trim() || explicitCommand(prompt)) return;
+      const skills = await eligibleSkills(pi, prompt);
+      if (
+        skills.length &&
+        !ctx.signal?.aborted &&
+        session === ctx.sessionManager.getSessionId() &&
+        revision === selectionRevision &&
+        leaf === ctx.sessionManager.getLeafId()
+      ) {
+        const existing =
+          "jevPilotInputId" in event.message ? event.message.jevPilotInputId : undefined;
+        inputIds.set(event.message, typeof existing === "string" ? existing : crypto.randomUUID());
+      }
+      return;
+    }
     // Pi persisted the preceding queued user at message_end. Commit it before a
     // following continuation reads its predecessor, even in steering mode "all".
     commitPending(ctx);
@@ -249,12 +328,11 @@ export default function (pi: ExtensionAPI): void {
             .filter((part) => part.type === "text")
             .map((part) => part.text)
             .join("\n");
-    if (!prompt.trim() || /^\/\S/.test(prompt.trim())) return;
-    let config;
+    if (!prompt.trim() || explicitCommand(prompt)) return;
+    let withEffort: boolean;
     try {
-      if (!effortEnabled() || (ctx.model && !applicable(ctx))) return;
-      config = systemOneConfig();
-      if (!ctx.model || !ctx.modelRegistry.hasConfiguredAuth(ctx.model))
+      withEffort = effortEnabled() && applicable(ctx);
+      if (withEffort && (!ctx.model || !ctx.modelRegistry.hasConfiguredAuth(ctx.model)))
         throw new Error(
           "Select a configured physical Pi model with authentication before submitting work.",
         );
@@ -273,34 +351,46 @@ export default function (pi: ExtensionAPI): void {
     const initialModel = ctx.model;
     const initialThinking = pi.getThinkingLevel();
     const initialSession = ctx.sessionManager.getSessionId();
+    const initialLeaf = ctx.sessionManager.getLeafId();
     const parentSignal = ctx.signal;
     const cancel = () => controller.abort();
     parentSignal?.addEventListener("abort", cancel, { once: true });
     if (parentSignal?.aborted) cancel();
     try {
       const previous = previousDecision(ctx);
-      const reused = previous !== null && isContinuation(prompt);
-      const result = reused
-        ? { outcome: "classified" as const, decision: previous }
-        : await classify(
-            config,
-            await classifierState(
-              ctx,
-              prompt,
-              pi.getAllTools().map((tool) => tool.name),
-            ),
+      const reused = withEffort && previous !== null && isContinuation(prompt);
+      const { result, skill } = reused
+        ? { result: { outcome: "classified" as const, decision: previous }, skill: undefined }
+        : await decideMain(
+            pi,
+            prompt,
+            () =>
+              classifierState(
+                ctx,
+                prompt,
+                pi.getAllTools().map((tool) => tool.name),
+              ),
             controller.signal,
+            { tier: false, effort: withEffort },
           );
       if (
         controller.signal.aborted ||
         initialRevision !== selectionRevision ||
         initialSession !== ctx.sessionManager.getSessionId() ||
+        initialLeaf !== ctx.sessionManager.getLeafId() ||
         initialModel?.provider !== ctx.model?.provider ||
         initialModel?.id !== ctx.model?.id ||
         initialThinking !== pi.getThinkingLevel()
       )
         return;
       active = undefined;
+      if (!result) return;
+      const existing =
+        "jevPilotInputId" in event.message ? event.message.jevPilotInputId : undefined;
+      const inputId = typeof existing === "string" ? existing : crypto.randomUUID();
+      if (skill || withEffort) inputIds.set(event.message, inputId);
+      if (skill) pi.appendEntry(SKILL_TYPE, { inputId, skill });
+      if (!withEffort) return;
       const current = pi.getThinkingLevel();
       const decision = result.outcome === "classified" ? result.decision : null;
       const requested = decision ? (selectEffort(decision, current, prompt) ?? current) : current;
@@ -313,8 +403,6 @@ export default function (pi: ExtensionAPI): void {
         outcome: reused ? "reused" : result.outcome,
         decision: decision ?? previous,
       };
-      const inputId = crypto.randomUUID();
-      inputIds.set(event.message, inputId);
       pi.appendEntry(APPLICATION_TYPE, { baseline: current, inputId, ...state });
       const applicationId = ctx.sessionManager.getLeafId()!;
       pi.setThinkingLevel(requested);
@@ -327,17 +415,36 @@ export default function (pi: ExtensionAPI): void {
         "jev-pilot",
         `jev · ${requested} → ${effective} · ${reused ? "reused" : result.outcome}`,
       );
-    } catch {
-      if (!controller.signal.aborted)
+    } catch (error) {
+      if (!controller.signal.aborted) {
         ctx.ui.notify(
-          "Jev Pilot could not classify this input; current effort is unchanged.",
-          "warning",
+          error instanceof Error ? error.message : "Invalid Jev Pilot configuration.",
+          "error",
         );
+        ctx.abort();
+      }
     } finally {
       parentSignal?.removeEventListener("abort", cancel);
       if (active === controller) active = undefined;
     }
   });
+}
+
+// Pi expands /skill:name before message_start; do not rematch or transmit its body.
+function explicitCommand(prompt: string): boolean {
+  return (
+    /^\/\S/.test(prompt.trim()) ||
+    /^<skill name="[^"]+" location="[^"]+">\nReferences are relative to /.test(prompt)
+  );
+}
+
+function userText(content: string | { type: string; text?: string }[]): string {
+  return typeof content === "string"
+    ? content
+    : content
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n");
 }
 
 interface MainRouteState {
