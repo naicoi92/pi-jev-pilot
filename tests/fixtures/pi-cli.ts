@@ -33,6 +33,8 @@ export class PiFixture {
   nextReadPath: string | undefined;
   modelFailures = 0;
   reasoning = true;
+  startupModel = "fixture-model";
+  dropInputIdentity = false;
   singleThinkingLevel = false;
   configuredModelKey = true;
   sawClassifierBearer = false;
@@ -162,7 +164,12 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("fixture-tree", { handler: async (id, ctx) => { await ctx.navigateTree(id, { summarize: false }); } });
   pi.registerCommand("fixture-fork-at", { handler: async (id, ctx) => { await ctx.fork(id, { position: "at" }); } });
   pi.registerCommand("fixture-effort", { handler: async (value) => { process.env.JEV_EFFORT_ENABLED = value; } });
+  let dropInputIdentity = ${this.dropInputIdentity};
+  pi.registerCommand("fixture-drop-input-identity", { handler: async () => { dropInputIdentity = true; } });
   const log = (event: unknown) => appendFileSync(${JSON.stringify(join(this.directory, "lifecycle.jsonl"))}, JSON.stringify(event) + "\\n");
+  pi.on("message_end", (event) => {
+    if (dropInputIdentity && event.message.role === "user") return { message: { role: "user", content: event.message.content, timestamp: event.message.timestamp } };
+  });
   pi.on("session_start", log);
   pi.on("session_shutdown", log);
 }
@@ -201,6 +208,8 @@ export default function (pi: ExtensionAPI) {
         "run",
         cli,
         "-e",
+        root,
+        "-e",
         controls,
         "--mode",
         "rpc",
@@ -214,7 +223,7 @@ export default function (pi: ExtensionAPI) {
         "--offline",
         "--no-approve",
         "--model",
-        "fixture/fixture-model",
+        `fixture/${this.startupModel}`,
         ...(thinkingOverride ? ["--thinking", thinkingOverride] : []),
       ],
       { cwd: this.directory, env: childEnv },

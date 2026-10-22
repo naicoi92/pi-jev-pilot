@@ -17,6 +17,7 @@ export default function (pi: ExtensionAPI): void {
   let active: AbortController | undefined;
   let selectionRevision = 0;
   let pending: PendingEffort[] = [];
+  const inputIds = new WeakMap<object, string>();
   const invalidateSelection = () => {
     selectionRevision++;
     active?.abort();
@@ -32,15 +33,20 @@ export default function (pi: ExtensionAPI): void {
     pending = [];
   };
   const commitPending = (ctx: ExtensionContext) => {
+    try {
+      if (!effortEnabled() || !applicable(ctx)) {
+        pending = [];
+        return;
+      }
+    } catch {
+      pending = [];
+      return;
+    }
     const branch = ctx.sessionManager.getBranch();
     for (const state of pending) {
       if (state.signal.aborted || state.sessionId !== ctx.sessionManager.getSessionId()) continue;
-      const applicationIndex = branch.findIndex((entry) => entry.id === state.data.applicationId);
-      if (applicationIndex === -1) continue;
-      const owner = branch
-        .slice(applicationIndex + 1)
-        .find((entry) => entry.type === "message" && entry.message.role === "user");
-      if (owner) pi.appendEntry(STATE_TYPE, { ...state.data, ownerEntryId: owner.id });
+      const ownerEntryId = ownedApplications(branch).get(state.data.applicationId);
+      if (ownerEntryId) pi.appendEntry(STATE_TYPE, { ...state.data, ownerEntryId });
     }
     pending = [];
   };
@@ -64,7 +70,7 @@ export default function (pi: ExtensionAPI): void {
     const desired = ownedThinking(branch);
     if (!desired) return;
     // Enabled auto-effort owns its branch state; a re-applied startup value is not
-    // a persistent lock. Close excluded applications before unrelated users arrive.
+    // a persistent lock. Record the restored baseline, never adopt another user.
     pi.appendEntry(RESTORED_TYPE, { thinkingLevel: desired });
     pi.setThinkingLevel(desired);
   };
@@ -82,6 +88,14 @@ export default function (pi: ExtensionAPI): void {
   });
   pi.on("context", (_event, ctx) => {
     commitPending(ctx);
+  });
+  // Spike: same-role replacement is public; persistence of extension-owned user
+  // metadata is observed on Pi 1.4.0, not a documented UserMessage field contract.
+  pi.on("message_end", (event) => {
+    const inputId = inputIds.get(event.message);
+    if (event.message.role !== "user" || !inputId) return;
+    inputIds.delete(event.message);
+    return { message: { ...event.message, jevPilotInputId: inputId } };
   });
 
   // User message_start is awaited before request preparation, includes queued
@@ -162,13 +176,15 @@ export default function (pi: ExtensionAPI): void {
         outcome: reused ? "reused" : result.outcome,
         decision: decision ?? previous,
       };
-      pi.appendEntry(APPLICATION_TYPE, { baseline: current, ...state });
+      const inputId = crypto.randomUUID();
+      inputIds.set(event.message, inputId);
+      pi.appendEntry(APPLICATION_TYPE, { baseline: current, inputId, ...state });
       const applicationId = ctx.sessionManager.getLeafId()!;
       pi.setThinkingLevel(requested);
       pending.push({
         sessionId: ctx.sessionManager.getSessionId(),
         signal: parentSignal ?? controller.signal,
-        data: { applicationId, ...state },
+        data: { applicationId, inputId, ...state },
       });
       ctx.ui.setStatus(
         "jev-pilot",
@@ -189,6 +205,7 @@ export default function (pi: ExtensionAPI): void {
 
 interface EffortState extends DecisionState {
   applicationId: string;
+  inputId: string;
   ownerEntryId?: string;
 }
 interface DecisionState {
@@ -204,17 +221,26 @@ interface PendingEffort {
 }
 interface EffortApplication extends DecisionState {
   baseline: ModelThinkingLevel;
+  inputId: string;
 }
 
-function ownedApplications(branch: SessionEntry[]): Set<string> {
-  const owned = new Set<string>();
-  let applicationId: string | undefined;
+function ownedApplications(branch: SessionEntry[]): Map<string, string> {
+  const owned = new Map<string, string>();
+  const applications = new Map<string, string>();
   for (const entry of branch) {
-    if (entry.type === "custom" && entry.customType === RESTORED_TYPE) applicationId = undefined;
-    if (entry.type === "custom" && entry.customType === APPLICATION_TYPE) applicationId = entry.id;
-    if (entry.type === "message" && entry.message.role === "user" && applicationId) {
-      owned.add(applicationId);
-      applicationId = undefined;
+    if (entry.type === "custom" && entry.customType === APPLICATION_TYPE) {
+      const data = entry.data;
+      if (data && typeof data === "object" && "inputId" in data && typeof data.inputId === "string")
+        applications.set(data.inputId, entry.id);
+    }
+    if (entry.type === "message" && entry.message.role === "user") {
+      const message = entry.message;
+      if (!("jevPilotInputId" in message) || typeof message.jevPilotInputId !== "string") continue;
+      const applicationId = applications.get(message.jevPilotInputId);
+      if (applicationId) {
+        owned.set(applicationId, entry.id);
+        applications.delete(message.jevPilotInputId);
+      }
     }
   }
   return owned;
@@ -252,12 +278,16 @@ function previousDecision(ctx: ExtensionContext): EffortDecision | null {
   const owned = ownedApplications(branch);
   for (const entry of branch.reverse()) {
     if (entry.type !== "custom") continue;
+    if (entry.customType !== STATE_TYPE && entry.customType !== APPLICATION_TYPE) continue;
+    const data = entry.data as EffortState | undefined;
+    // A newer unidentified application is a boundary, not permission to reuse an
+    // older decision. Missing/dropped originating metadata must fail closed.
+    if (entry.customType === APPLICATION_TYPE && !owned.has(entry.id)) return null;
     if (
-      entry.customType !== STATE_TYPE &&
-      !(entry.customType === APPLICATION_TYPE && owned.has(entry.id))
+      entry.customType === STATE_TYPE &&
+      (!data || owned.get(data.applicationId) !== data.ownerEntryId || !data.ownerEntryId)
     )
-      continue;
-    const data = entry.data as DecisionState | undefined;
+      return null;
     return data?.decision ?? null;
   }
   return null;

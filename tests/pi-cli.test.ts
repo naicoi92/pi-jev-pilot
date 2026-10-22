@@ -628,7 +628,28 @@ test("CLI-26i fork including the owning user retains its effort and reusable dec
     }
   ).entries;
   const user = entries.find((entry) => entry.message?.role === "user")!;
+  const persisted = (await fixture.command("get_entries")).data as {
+    entries: {
+      customType?: string;
+      data?: { inputId?: string };
+      message?: { role: string; content: unknown; timestamp: number; jevPilotInputId?: string };
+    }[];
+  };
+  const application = persisted.entries.find(
+    (entry) => entry.customType === "jev-pilot:effort-application",
+  )!;
+  const originating = persisted.entries.find((entry) => entry.message?.role === "user")!.message!;
+  expect(originating.jevPilotInputId).toBe(application.data?.inputId);
+  expect(originating.content).toEqual([{ type: "text", text: task }]);
+  expect(typeof originating.timestamp).toBe("number");
+  expect(JSON.stringify(fixture.generations)).not.toContain("jevPilotInputId");
+  expect(JSON.stringify(fixture.classifications)).not.toContain("jevPilotInputId");
   await fixture.command("prompt", { message: `/fixture-fork-at ${user.id}` });
+  await fixture.command("prompt", { message: "/fixture-reload" });
+  const reloaded = (await fixture.command("get_entries")).data as typeof persisted;
+  expect(reloaded.entries.find((entry) => entry.message?.role === "user")?.message).toEqual(
+    originating,
+  );
   expect((await fixture.command("get_state")).data).toMatchObject({
     thinkingLevel: "high",
   });
@@ -695,6 +716,119 @@ test("CLI-26l excluded owner restores branch baseline despite equal startup thin
     providerEffort: "medium",
     retained: { effective: "medium", decision: { effort: 0, effortConfidence: 0 } },
   });
+}, 20000);
+
+for (const gate of ["disabled", "inapplicable"]) {
+  test(`CLI-26${gate === "disabled" ? "p" : "q"} ${gate} user cannot acquire an excluded application's ownership`, async () => {
+    fixture = new PiFixture();
+    fixture.startupModel = gate === "inapplicable" ? "fixture-plain-model" : "fixture-model";
+    await fixture.start();
+    if (gate === "inapplicable")
+      await fixture.command("set_model", { provider: "fixture", modelId: "fixture-model" });
+    await fixture.prompt(task);
+    const original = (await fixture.command("get_entries")).data as {
+      entries: {
+        id: string;
+        type: string;
+        customType?: string;
+        data?: { inputId?: string };
+        message?: { role: string; jevPilotInputId?: string };
+      }[];
+    };
+    const owner = original.entries.find((entry) => entry.message?.role === "user")!;
+    if (gate === "disabled") await fixture.command("prompt", { message: "/fixture-effort false" });
+    else
+      await fixture.command("set_model", { provider: "fixture", modelId: "fixture-plain-model" });
+    await fixture.command("fork", { entryId: owner.id });
+    if (gate === "inapplicable")
+      expect((await fixture.command("get_state")).data).toMatchObject({
+        model: { id: "fixture-plain-model" },
+      });
+    const before = (await fixture.command("get_entries")).data as typeof original;
+    const writes = (entries: typeof before.entries) =>
+      entries.filter(
+        (entry) =>
+          entry.customType?.startsWith("jev-pilot:") || entry.type === "thinking_level_change",
+      ).length;
+    await fixture.prompt(
+      "Please inspect this independent gated task and describe its implementation in detail",
+    );
+    const gated = (await fixture.command("get_entries")).data as typeof original;
+    expect(fixture.classifications).toHaveLength(1);
+    expect(writes(gated.entries)).toBe(writes(before.entries));
+    expect(
+      gated.entries.findLast((entry) => entry.message?.role === "user")?.message?.jevPilotInputId,
+    ).toBeUndefined();
+    if (gate === "inapplicable")
+      expect(fixture.generations.at(-1)?.model).toBe("fixture-plain-model");
+    if (gate === "disabled") await fixture.command("prompt", { message: "/fixture-effort true" });
+    else await fixture.command("set_model", { provider: "fixture", modelId: "fixture-model" });
+    await fixture.command("prompt", { message: "/fixture-reload" });
+    if (gate === "inapplicable")
+      await fixture.command("set_model", { provider: "fixture", modelId: "fixture-model" });
+    fixture.response = answer("low", 0);
+    await fixture.prompt("continue");
+    const final = (await fixture.command("get_entries")).data as typeof original;
+    const currentOwner = final.entries.findLast((entry) => entry.message?.role === "user")!;
+    expect(fixture.classifications).toHaveLength(2);
+    expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
+    expect(await lastDecision(fixture)).toMatchObject({
+      ownerEntryId: currentOwner.id,
+      outcome: "classified",
+      effective: "medium",
+      decision: { effort: 0, effortConfidence: 0 },
+    });
+    expect(currentOwner.id).not.toBe(owner.id);
+    expect(currentOwner.message?.jevPilotInputId).toBe(
+      final.entries.findLast((entry) => entry.customType === "jev-pilot:effort-application")?.data
+        ?.inputId,
+    );
+    expect(JSON.stringify(fixture.classifications)).not.toContain("jevPilotInputId");
+    expect(JSON.stringify(fixture.generations)).not.toContain("jevPilotInputId");
+  }, 20000);
+}
+
+test("CLI-26r later replacement dropping originating identity fails closed across fork and reload", async () => {
+  fixture = new PiFixture();
+  fixture.dropInputIdentity = true;
+  await fixture.start();
+  await fixture.prompt(task);
+  const original = (await fixture.command("get_entries")).data as {
+    entries: {
+      id: string;
+      message?: { role: string; content: unknown; timestamp: number; jevPilotInputId?: string };
+    }[];
+  };
+  const owner = original.entries.find((entry) => entry.message?.role === "user")!;
+  expect(owner.message?.jevPilotInputId).toBeUndefined();
+  expect(owner.message?.content).toEqual([{ type: "text", text: task }]);
+  await fixture.command("prompt", { message: `/fixture-fork-at ${owner.id}` });
+  await fixture.command("prompt", { message: "/fixture-reload" });
+  fixture.response = answer("low", 0);
+  await fixture.prompt("continue");
+  expect(fixture.classifications).toHaveLength(2);
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
+  expect(await lastDecision(fixture)).toBeUndefined();
+  expect(JSON.stringify(fixture.classifications)).not.toContain("jevPilotInputId");
+  expect(JSON.stringify(fixture.generations)).not.toContain("jevPilotInputId");
+}, 20000);
+
+test("CLI-26r stripped new identity cannot fall back to an older valid owned decision", async () => {
+  fixture = new PiFixture();
+  await fixture.start();
+  await fixture.prompt(task);
+  const previous = await lastDecision(fixture);
+  expect(previous).toMatchObject({ outcome: "classified", effective: "high" });
+  await fixture.command("prompt", { message: "/fixture-drop-input-identity" });
+  fixture.response = answer("low");
+  await fixture.prompt(
+    "Investigate this separate low-effort task without reusing the earlier decision",
+  );
+  fixture.response = answer("medium");
+  await fixture.prompt("continue");
+  expect(fixture.classifications).toHaveLength(3);
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
+  expect(await lastDecision(fixture)).toEqual(previous);
 }, 20000);
 
 test("CLI-26k excluded applications are not reassigned to an ineligible later user", async () => {

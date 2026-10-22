@@ -2,7 +2,27 @@
 
 This is an effort-only package-boundary implementation. The approved single seam remains prompt/configuration → System One → actual Pi dispatch. No tracker/spec status is changed by this implementation.
 
-## Current candidate: approved auto-effort authority
+## Review follow-up: originating input identity spike
+
+**Status: P1 spike, not yet approved as a production seam.** The accepted review reproduced candidate `252ea036394b2a745bcfcac846dd3028c1523071`: enabled high task → disabled fork-before-owner → unrelated disabled user → enable/reload → `continue` reused orphan high with only one classifier request. The equivalent non-reasoning/applicable transition also failed once the fixture preserved the intended startup model across fork. Matrix CLI-26p/q was written before tests; both actual CLI regressions were RED (one request, expected two).
+
+The spike persists a random UUID in `jev-pilot:effort-application` and the originating user's `jevPilotInputId` through same-role `message_end` replacement, then links only exact matching identities. Missing/lost identity yields no receipt/reuse, never next-user adoption or fallback to an older valid decision. Disabled/inapplicable work receives no UUID, custom entry or setter call; pending commits are gated too. No prompt/timestamp hash, host patch, private API, cast to hide mismatch, new configuration mode or effort-policy change is used.
+
+| Evidence                                                                               | Documented public contract versus observed Pi 1.4.0 behavior                                                                                                                                                  |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/extensions.md:209–218`; `dist/core/extensions/types.d.ts:1121–1124`              | **Public:** chained `message_end` handlers may return a full same-role `AgentMessage` replacement.                                                                                                            |
+| `pi-ai/dist/types.d.ts:363–367`                                                        | **Public limitation:** `UserMessage` declares only role/content/timestamp. There is no documented arbitrary metadata slot or reserved input/entry identity before persistence.                                |
+| `dist/core/session-manager.d.ts:178`; extension `appendEntry`/`setLabel`               | **Public limitation:** extension session manager is read-only; custom entries/labels cannot reserve the future originating user entry ID. Post-user receipts alone do not survive fork-at before the receipt. |
+| `dist/core/extensions/runner.js:864–896`; `dist/core/agent-session.js:938–948,750–770` | **Observed implementation:** full replacement becomes the persisted message, not only its content.                                                                                                            |
+| `dist/core/session-manager.js:827–837,803–812,317`; `1205–1285`                        | **Observed implementation:** embeds full message, JSON serializes/parses entries and forks whole entries. Unknown user properties are retained on tested 1.4.0, not promised by host metadata documentation.  |
+| `docs/session-format.md:43–46,78–94`                                                   | Documents AgentMessage JSONL persistence and branch structure, **not** a guarantee of arbitrary user-field preservation.                                                                                      |
+| `pi-ai/dist/api/openai-completions.js:933` plus actual provider captures               | Tested provider conversion uses user role/content, omitting `jevPilotInputId`. Classifier context also omits the field. No universal-provider guarantee follows.                                              |
+
+CLI-26i now compares the full role/content/timestamp/UUID before fork-at and after reload. Existing resume/compaction, queue-all immediate-predecessor and STOP tests remain required. CLI-26r installs a later extension which rebuilds users from only public fields: no-history fork/reload classifies fresh; with an older valid owned decision, a newer stripped application also forces fresh classification. The latter was independently RED (two requests instead of three), then GREEN after treating unidentified applications as a non-reusable boundary. There is no fallback receipt falsely labelled reused.
+
+Focused spike verification: **9 pass, 0 fail, 50 assertions**; captures in `/tmp/pi-jev-ticket-01-ownership/{ownership-red,strip-history-red,spike-focused-green}.log`. Parent's unchanged repro is also retained under that directory. This is version-tested evidence for parent/reviewer evaluation, **not** production approval of undocumented metadata persistence. The earlier candidate's claimed orphan closure by restore markers was incomplete across gated phases and is superseded by this review.
+
+## Prior candidate: approved auto-effort authority
 
 Integration `38d02aaccf422463129c1942d7cd3f1c4bd86569` supersedes native startup-pin/provenance acceptance. Installing/enabling auto-effort authorizes upstream-policy selection over default/current thinking; it does not authorize unconditional effort changes or override confidence/risk/ceiling/follow-up exceptions. The earlier blocker and RED results remain [historical evidence](ticket-01-startup-provenance-blocker.md), not a claim that native startup provenance was implemented.
 

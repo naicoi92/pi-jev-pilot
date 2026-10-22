@@ -64,6 +64,18 @@ Source: operator-approved `decision-gating.md`, updated ticket 01/spec, and supe
 
 `CLI-26g/h/i/k`, `CLI-08c`, `CLI-12a/b/c/d`, and `CLI-10/10b` retain branch-before/at-owner, manual tree prefix, orphan/queue ownership, timeout ABORT versus parent STOP, and privacy coverage. Historical startup-priority expectations in CLI-26j/l are transparently superseded; see the [historical provenance investigation](ticket-01-startup-provenance-blocker.md).
 
+## Accepted review follow-up at candidate 252ea03
+
+| Parent AC | Test ID / test name                                                                                                             | Independent expected-value source                                                                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-26     | CLI-26p: disabled fork-before followed by unrelated disabled user cannot acquire excluded application's identity                | Accepted review P1; enable/reload then continue has no predecessor: total classifier calls 2, fresh low/confidence 0 decision owned only by new continue, provider medium; disabled phase zero added Jev entries/thinking changes |
+| AC-26     | CLI-26q: inapplicable fork-before then unrelated user cannot acquire excluded application's identity                            | Same accepted ownership contract, model applicability transition; zero extension writes/HTTP while non-reasoning, fresh classification after applicable-model reload                                                              |
+| AC-26     | CLI-26r: later message replacement dropping extension input metadata fails closed, including after a prior valid owned decision | Supervisor-approved identity spike: missing originating identity cannot acquire ownership; fork-at/reload then continue classifies fresh, never next-user or older-valid-decision fallback; role/content/timestamp preserved      |
+| AC-26     | FIXTURE-26a: child exits during startup reports PID/status/signal/stderr promptly                                               | Accepted review P2; no wait until generic 12s deadline after known exit/error                                                                                                                                                     |
+| AC-26     | FIXTURE-26b: teardown awaits child close after bounded terminate/force-kill escalation                                          | Accepted review P2; child ignoring EOF/SIGTERM is reaped before temp directory deletion, no dangling process                                                                                                                      |
+
+Identity transport is a bounded **spike**, pending parent evaluation of documented replacement support versus undocumented persistence of extension-owned user metadata. Random UUID only; no timestamp/content hash/next-user fallback. Disabled/inapplicable work gets no identity writes. Existing fork-at, queue, reload/resume, cancellation and privacy tests remain required.
+
 ## Verification levels
 
 - `bun test tests/effort-policy.test.ts`: offline independent policy examples; **not E2E**.
