@@ -73,6 +73,8 @@ export function guidanceEnabled(name: "STRATEGY" | "QUALITY" | "DESIGN"): boolea
 }
 
 export const STRATEGY_CRITERIA = {
+  junior:
+    "An easy coding change that is already well specified (which files, what behavior, a test or command that proves it): a cheaper junior model writes it, and the main conversation reviews the diff as the tech lead. Not for design, unclear bugs or risky changes.",
   direct:
     "The main conversation does it itself: a question, a lookup, a command, or a change to one or a few files. One job with one clear finish line. The right answer for most requests, including most follow-ups.",
   delegate:
@@ -89,6 +91,8 @@ export interface StrategyRead {
   strategyConfidence?: number | null;
 }
 const STRATEGY_HOW = {
+  junior:
+    "Junior and lead. Hand the coding to the jev-pilot:junior subagent (a cheaper model) with a self-contained brief: the files to change, the exact behavior, and the command that proves it. Do not write the code yourself first. Then review its diff; rerun tests only if its report does not show them passing or its diff goes beyond the brief. If it falls short, send findings back once or fix small things yourself.",
   delegate:
     "Send the broad, mechanical part (searching or reading across many files) to one subagent with a self-contained brief and a request for a short report, then do the rest here. Keep small lookups here: a subagent costs a fresh context.",
   parallel:
@@ -100,10 +104,12 @@ const STRATEGY_HOW = {
     "At most 4 subagents at a time. If it cannot be explained in one breath, work directly.",
   ].join("\n"),
 };
-export function strategyAdvice(decision: StrategyRead): string | null {
+export function strategyAdvice(decision: StrategyRead & { risky?: number | null }): string | null {
   const strategy = decision.strategy;
   if (!strategy || strategy === "direct" || decision.strategyConfidence == null) return null;
   if (decision.strategyConfidence < (strategy === "graph" ? 0.8 : 0.6)) return null;
+  if (strategy === "junior" && (decision.tier === "deep" || (decision.risky ?? 0) > 0.5))
+    return null;
   if (strategy === "graph" && decision.tier !== "deep") return null;
   if (strategy === "parallel" && decision.tier === "fast") return null;
   return [

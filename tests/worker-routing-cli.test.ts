@@ -21,6 +21,14 @@ afterEach(async () => {
 });
 
 const cases = [
+  { name: "slot-standard", baseline: "max", background: false },
+  { name: "slot-budget", baseline: "max", background: false },
+  { name: "slot-async", baseline: "low", background: true },
+  { name: "slot-risk", baseline: "max", background: false },
+  { name: "junior-selected", baseline: "max", background: false },
+  { name: "junior-first", baseline: "low", background: true },
+  { name: "slot-workflow", baseline: "max", background: false },
+  { name: "junior-collision", baseline: "max", background: false },
   { name: "direct-max", baseline: "max", background: false },
   { name: "direct-low", baseline: "low", background: false },
   { name: "async-max", baseline: "max", background: true },
@@ -58,8 +66,10 @@ const cases = [
   { name: "pending-session", baseline: "max", background: false },
 ] as const;
 for (const scenario of cases)
-  test(`WORKER-${scenario.name.includes("clamp") ? "06" : scenario.name.includes("coexistence") || scenario.name === "profile" || scenario.name === "runtime-unknown" ? "13" : scenario.name.includes("cancel") ? "12" : scenario.name.startsWith("pending-") || ["lifecycle", "resume"].includes(scenario.name) ? "26" : scenario.name === "workflow-guidance" ? "21" : "20"}-${scenario.name} packed production adapter actual receipt`, async () => {
+  test(`WORKER-${scenario.name.startsWith("slot-") ? "18" : scenario.name.startsWith("junior-") ? "19" : scenario.name.includes("clamp") ? "06" : scenario.name.includes("coexistence") || scenario.name === "profile" || scenario.name === "runtime-unknown" ? "13" : scenario.name.includes("cancel") ? "12" : scenario.name.startsWith("pending-") || ["lifecycle", "resume"].includes(scenario.name) ? "26" : scenario.name === "workflow-guidance" ? "21" : "20"}-${scenario.name} packed production adapter actual receipt`, async () => {
     const { name, baseline, background } = scenario;
+    const junior = name.startsWith("junior-");
+    const slot = name.startsWith("slot-");
     const directory = await mkdtemp(join(tmpdir(), "pi-jev-worker-production-"));
     evidence = new WorkerEvidence(directory);
     await evidence.checkCapacity();
@@ -87,7 +97,8 @@ for (const scenario of cases)
       JEV_EFFORT_ENABLED: "true",
       JEV_MAIN_ROUTING_ENABLED: "false",
       JEV_SKILLS_ENABLED: "false",
-      JEV_STRATEGY_ENABLED: name === "workflow-guidance" ? "true" : "false",
+      JEV_STRATEGY_ENABLED:
+        name === "workflow-guidance" || name === "slot-workflow" ? "true" : "false",
       JEV_QUALITY_ENABLED: "false",
       JEV_DESIGN_ENABLED: "false",
       JEV_WORKER_ROUTING_ENABLED:
@@ -98,6 +109,20 @@ for (const scenario of cases)
       JEV_TIER_DEEP: "local/configured",
       JEV_TIMEOUT_MS: name.includes("timeout") ? "100" : "5000",
     };
+    if (slot || junior) {
+      env.JEV_CREW_CONFIG = join(directory, "crew.json");
+      await writeFile(
+        env.JEV_CREW_CONFIG,
+        JSON.stringify({
+          mode: name === "slot-standard" ? "standard" : junior ? "junior-lead" : "budget",
+          slots: [
+            { name: "deep", model: "local/selected" },
+            { name: "alpha", model: "local/configured", when: "Read and report logs." },
+          ],
+          ...(name === "junior-selected" ? { junior: "alpha" } : {}),
+        }),
+      );
+    }
     const commands = evidence.commands;
     const run = async (args: string[], cwd = directory) => {
       const child = Bun.spawn(args, { cwd, env, stdout: "pipe", stderr: "pipe" });
@@ -141,11 +166,22 @@ for (const scenario of cases)
       name === "runtime-unknown";
     const retained = omitted && name !== "omitted-upgrade";
     const clamped = name === "clamp" || name === "retained-clamp";
-    const expectedIdentity = preserve || retained ? "configured" : "selected";
-    const expectedThinking = preserve ? baseline : clamped ? "off" : "medium";
+    const expectedIdentity =
+      preserve || retained || name === "slot-risk" || name === "junior-selected"
+        ? "configured"
+        : "selected";
+    const expectedThinking = junior
+      ? "medium"
+      : name === "slot-risk"
+        ? "high"
+        : preserve
+          ? baseline
+          : clamped
+            ? "off"
+            : "medium";
     const caller = name === "same-identity" ? "local/selected" : "local/configured";
     const original = {
-      agent: "receipt-worker",
+      agent: junior ? "jev-pilot:junior" : "receipt-worker",
       ...(!omitted ? { model: caller } : {}),
       task: "Return CHILD_RECEIPT_OK after performing the specified local implementation and tests.",
       async: background,
@@ -173,7 +209,7 @@ for (const scenario of cases)
               answers: {
                 effort: { choice: "medium", confidence: 0.95 },
                 risky: { noul: 0 },
-                ...(name === "workflow-guidance"
+                ...(name === "workflow-guidance" || name === "slot-workflow"
                   ? {
                       tier: { choice: "balanced", confidence: 0.95 },
                       strategy: { choice: "parallel", confidence: 0.95 },
@@ -190,11 +226,13 @@ for (const scenario of cases)
             answers: {
               tier: {
                 choice:
-                  name === "async-noop-cancel"
-                    ? "deep"
-                    : retained && name !== "rejected-tier" && name !== "retained-clamp"
-                      ? "fast"
-                      : "balanced",
+                  slot && name !== "slot-standard"
+                    ? "slot::deep"
+                    : name === "async-noop-cancel"
+                      ? "deep"
+                      : retained && name !== "rejected-tier" && name !== "retained-clamp"
+                        ? "fast"
+                        : "balanced",
                 confidence:
                   name === "rejected-tier" ||
                   name === "retained-clamp" ||
@@ -209,7 +247,7 @@ for (const scenario of cases)
                 confidence:
                   name === "async-noop-cancel" || name === "async-rejected-cancel" ? 0.1 : 0.95,
               },
-              risky: { noul: 0 },
+              risky: { noul: name === "slot-risk" ? 0.95 : 0 },
             },
           });
         }
@@ -324,6 +362,11 @@ for (const scenario of cases)
       await writeFile(
         join(agentDir, "settings.json"),
         JSON.stringify({ subagents: { defaultSubagentContext: "fork" } }),
+      );
+    if (name === "junior-collision")
+      await writeFile(
+        join(agentDir, "agents/jev-pilot:junior.md"),
+        "---\nname: jev-pilot:junior\ndescription: User owned junior\nmodel: local/configured\n---\nUSER_OWNED_DO_NOT_REPLACE\n",
       );
     const observer = join(directory, "observer.ts");
     await writeFile(
@@ -499,6 +542,19 @@ export default function(pi) {
         }
       }
       await wait(() => records.some((record) => record.type === "agent_settled"));
+      if (name === "slot-workflow") {
+        const visible = JSON.stringify(requests[0]!.messages);
+        expect(visible).toContain("deep: local/selected");
+        expect(visible).toContain("Never for writing or changing code");
+        expect(visible).toContain("not transparently intercepted");
+        expect(visible).toContain("User and project delegation restrictions take precedence");
+      }
+      if (name === "junior-collision") {
+        expect(childStarted).toBe(false);
+        expect(classifications).toHaveLength(0);
+        expect(JSON.stringify(records)).toMatch(/collides with configured agent|collision/);
+        return;
+      }
       if (name === "workflow-guidance") {
         const visible = JSON.stringify(requests[0]!.messages);
         expect(visible).toContain(
@@ -559,7 +615,7 @@ export default function(pi) {
             expect(status.steps).toMatchObject([
               {
                 model: `local/${expectedIdentity}`,
-                thinking: expectedThinking,
+                ...(!junior ? { thinking: expectedThinking } : {}),
                 exitCode: 0,
                 tokens: { input: 10, output: 4 },
                 recentOutput: ["CHILD_RECEIPT_OK"],
@@ -588,8 +644,8 @@ export default function(pi) {
           } else
             expect(result.details.results).toMatchObject([
               {
-                model: `local/${expectedIdentity}:${expectedThinking}`,
-                thinking: expectedThinking,
+                model: `local/${expectedIdentity}${junior ? "" : `:${expectedThinking}`}`,
+                ...(!junior ? { thinking: expectedThinking } : {}),
                 exitCode: 0,
                 finalOutput: "CHILD_RECEIPT_OK",
                 usage: { input: 10, output: 4 },
@@ -609,14 +665,16 @@ export default function(pi) {
             ...(!clamped ? { reasoning_effort: expectedThinking } : {}),
           });
           if (!preserve)
-            expect(envelope.model).toBe(`local/${expectedIdentity}:${expectedThinking}`);
+            expect(envelope.model).toBe(
+              `local/${expectedIdentity}${junior ? "" : `:${expectedThinking}`}`,
+            );
         }
       }
       expect(classifications).toHaveLength(
-        name === "disabled" || name === "profile-executor" ? 0 : 1,
+        name === "disabled" || name === "profile-executor" || junior ? 0 : 1,
       );
       if (!preserve && !classifierCancel && !childCancel) {
-        expect(allClassifications).toHaveLength(2); // Parent task plus exactly one worker decision, never a child main decision.
+        expect(allClassifications).toHaveLength(junior ? 1 : 2); // Parent plus ordinary worker decision, never a child main decision.
       }
       if (classifications.length) {
         expect(classifications[0]!.state).toEqual({
@@ -624,6 +682,18 @@ export default function(pi) {
           agentType: "receipt-worker",
         });
         expect(JSON.stringify(classifications)).not.toContain("PRIVATE_PARENT_HISTORY");
+        if (slot) {
+          const criteria = (
+            classifications[0]!.questions as Record<string, { criteria: Record<string, string> }>
+          ).tier!.criteria;
+          expect(Object.keys(criteria)).toEqual(
+            name === "slot-standard"
+              ? ["fast", "balanced", "deep"]
+              : ["balanced", "deep", "slot::deep", "slot::alpha"],
+          );
+          if (name !== "slot-standard")
+            expect(criteria["slot::deep"]).toContain("Never for writing or changing code.");
+        }
         expect(Object.keys(classifications[0]!.questions as object).sort()).toEqual([
           "effort",
           "risky",

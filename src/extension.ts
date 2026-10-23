@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import { registerWorkerAdapter } from "./worker-adapter.ts";
+import { registerCrewJunior } from "./crew-junior.ts";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   clampThinkingLevel,
@@ -33,6 +34,7 @@ export default function (pi: ExtensionAPI): void {
     )
       executionChildren.add(value.sessionId);
   });
+  registerCrewJunior(pi);
   registerWorkerAdapter(pi);
   const edits = new Map<string, number>();
   const runs = new Map<string, number>();
@@ -156,6 +158,7 @@ export default function (pi: ExtensionAPI): void {
                   ),
                 controller.signal,
                 { tier: true, effort: withEffort },
+                ctx.cwd,
               );
           if (request.signal?.aborted) throw new Error("Jev routing cancelled.");
           if (
@@ -426,6 +429,7 @@ export default function (pi: ExtensionAPI): void {
               ),
             controller.signal,
             { tier: false, effort: withEffort },
+            ctx.cwd,
           );
       if (
         controller.signal.aborted ||

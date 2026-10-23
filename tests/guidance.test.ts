@@ -822,3 +822,47 @@ for (const virtual of [false, true]) {
     }, 20000);
   }
 }
+
+for (const [tier, risky, confidence, expected] of [
+  ["balanced", 0.5, 0.6, true],
+  ["deep", 0, 0.95, false],
+  ["balanced", 0.51, 0.95, false],
+  ["balanced", 0, 0.59, false],
+] as const)
+  test(`CREW-15 eligible junior advice ${tier}/${risky}/${confidence}`, async () => {
+    const { mkdtemp, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const path = join(await mkdtemp(join(tmpdir(), "jev-crew-guidance-")), "crew.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        mode: "junior-lead",
+        slots: [{ name: "alpha", model: "fixture/fixture-model" }],
+      }),
+    );
+    const f = await start({
+      JEV_CREW_CONFIG: path,
+      JEV_STRATEGY_ENABLED: "true",
+      JEV_QUALITY_ENABLED: "false",
+    });
+    f.response = {
+      answers: {
+        tier: { choice: tier, confidence: 0.95 },
+        strategy: { choice: "junior", confidence },
+        risky: { noul: risky },
+      },
+    };
+    await f.prompt("Implement the exact one-file change; project forbids automatic dispatch.");
+    expect(text(f).includes("<execution_strategy>")).toBe(expected);
+    expect(text(f)).toContain("jev-pilot:junior is a junior developer on fixture/fixture-model");
+    expect(text(f)).toContain("User and project delegation restrictions take precedence");
+    expect(f.records.filter((r) => r.type === "tool_execution_start")).toHaveLength(0);
+    expect(
+      Object.keys((f.classifications[0]!.questions as RecordData).strategy as object),
+    ).toContain("criteria");
+    expect(JSON.stringify((f.classifications[0]!.questions as RecordData).strategy)).toContain(
+      '"junior"',
+    );
+    expect(f.classifications).toHaveLength(1);
+  }, 20000);

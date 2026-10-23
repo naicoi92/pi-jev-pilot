@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { crewConfig } from "./crew-config.ts";
+import { crewAdvice } from "./crew-guidance.ts";
 import { dirname } from "node:path";
 import { parseFrontmatter, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isContinuation } from "./effort-policy.ts";
@@ -63,7 +65,10 @@ export async function decideMain(
   state: () => Promise<unknown>,
   signal: AbortSignal,
   enabled: DecisionQuestions,
+  cwd = process.cwd(),
 ): Promise<{ result: Classification | null; skill?: SkillCandidate; advice?: string }> {
+  const crew = crewConfig(cwd);
+  enabled = { ...enabled, junior: !!crew.junior };
   const quality = !isContinuation(prompt) && guidanceEnabled("QUALITY");
   const strategy = !isContinuation(prompt) && guidanceEnabled("STRATEGY");
   const design = !isContinuation(prompt) && guidanceEnabled("DESIGN");
@@ -84,6 +89,7 @@ export async function decideMain(
       skill,
       advice:
         [
+          strategy ? crewAdvice(crew, true) : null,
           adviceDecision && strategy ? strategyAdvice(adviceDecision) : null,
           adviceDecision && quality ? qualityAdvice(adviceDecision) : null,
           design

@@ -79,7 +79,7 @@ Physical matching runs at the existing user `message_start` boundary; virtual ma
 
 Both guidance switches default to **true**, independently of effort, skills and optional main routing. Applicable questions join the same first System One request, never a second ordinary guidance call. Blank/command-like input and plain continuations do not request new guidance. Disabling all applicable consumers produces zero HTTP, including with unused invalid backend settings.
 
-Strategy asks for `direct`, `delegate`, `parallel` or `graph` plus the raw task tier used by upstream advice gates. A physical selection is **not routed** by this advice-tier answer and needs no configured tier mappings. Direct adds no strategy block. Other advice needs confidence **.6**, except graph **.8**; parallel rejects raw fast, and graph requires raw deep. These gates use the classifier's raw tier, not a risk-forced physical route. A partial raw-tier probability distribution can support advice; it does not relax the stricter routing decoder. On a combined response, independently valid advice can appear while rejected routing remains `schema-error` and uses its existing fail-open model/thinking baseline. Junior/custom crew strategies remain outside this slice. Unknown or malformed optional reads do not fabricate advice.
+Strategy asks for `direct`, `delegate`, `parallel` or `graph` plus the raw task tier used by upstream advice gates. A physical selection is **not routed** by this advice-tier answer and needs no configured tier mappings. Direct adds no strategy block. Other advice needs confidence **.6**, except graph **.8**; parallel rejects raw fast, and graph requires raw deep. These gates use the classifier's raw tier, not a risk-forced physical route. A partial raw-tier probability distribution can support advice; it does not relax the stricter routing decoder. On a combined response, independently valid advice can appear while rejected routing remains `schema-error` and uses its existing fail-open model/thinking baseline. Junior is additionally offered only with an eligible configured crew slot; see the custom crew section below. Unknown or malformed optional reads do not fabricate advice.
 
 Quality asks four nouls: ambiguity (`underspecified`, **.85**), bugfix (**.8**), costly/sensitive code (**.8**) and correction (`corrects`, **.7**). The first three can attach concise upstream `<jev_quality>` checks. Correction is read but does not invent a fourth advice line, correction ledger, tuning or escalation. These are suggestions, not proof of quality improvement or mandatory procedural review gates.
 
@@ -160,3 +160,32 @@ Use `bun run fmt` to apply formatting. Linting is read-only (`--deny-warnings`);
 The CLI suite installs the local package into a temporary agent directory and starts the **actual official Pi CLI** in RPC mode under Bun. Local deterministic System One and OpenAI-compatible HTTP fixtures capture payloads, dispatched model/effort, real tool continuations, deadlines, cancellation, faults, retries and lifecycle operations. It uses no paid APIs or real credentials and changes no user/global settings. Pure-policy tests are not described as E2E.
 
 See the [design-pack matrix](docs/testing/ticket-05-matrix.md), [design-pack evidence](docs/testing/ticket-05-validation.md), [strategy/quality matrix](docs/testing/ticket-04-matrix.md), [strategy/quality evidence](docs/testing/ticket-04-validation.md), [skill matching matrix](docs/testing/ticket-03-matrix.md), [skill matching evidence](docs/testing/ticket-03-validation.md), [effort AC-to-test matrix](docs/testing/ticket-01-matrix.md), [main-routing matrix](docs/testing/ticket-02-matrix.md), [main-routing evidence](docs/testing/ticket-02-validation.md), [compatibility evidence](docs/testing/ticket-01-validation.md), and [MIT attribution](NOTICE.md). Local fixtures verify host behavior, not hosted Jev availability, real-provider compatibility or routing quality.
+
+## Configure custom slots and junior-lead
+
+Set `JEV_CREW_CONFIG` to a persistent JSON file. Relative paths resolve against the current Pi working directory; the package never writes this file. Absence means `standard` with no slots. Each eligible main decision or worker launch reads one snapshot. Reload/restart after changing crew membership so the installed executor can refresh its registered junior.
+
+```json
+{
+  "mode": "junior-lead",
+  "slots": [
+    { "name": "alpha", "model": "provider/bulk-model" },
+    {
+      "name": "coder",
+      "model": "other-provider/coding-model",
+      "when": "Well-specified work with an exact check."
+    }
+  ],
+  "junior": "coder"
+}
+```
+
+Only `mode`, `slots`, `junior` are allowed; mode defaults to `standard`, slots to `[]`. Only `name`, `model`, optional `when` are allowed within slots. Names match `^[a-z][a-z0-9-]{0,23}$`, must be unique, and cannot be the pinned command/feature words: `effort raise subagents skills strategy quality design model pet all reset status mode models crew junior reviewer tune remove delete on off help list default set when`. At most **eight** slots are accepted. Missing or blank `when` uses the original **read-only bulk work, never writing/changing code** description. A description is not permission. Models require exact qualified physical registry identities without a thinking suffix. Malformed files/types, unknown fields, excess slots or an explicitly unknown junior name are actionable errors, not silent mode resets. Eligible targets and authentication are validated without health requests, probes or fallback workers.
+
+`standard` offers only fast/balanced/deep. `budget` and `junior-lead` offer custom slots **instead of fast**, retaining balanced/deep. Custom selection requires confidence **.6**; risk **strictly greater than .7 forces deep and cannot be overwritten by a custom slot**, the approved ticket-07 correction. Valid ordinary Jev selections override caller model and configured worker effort as described above. Main model tiers do not become custom candidates.
+
+Public names including `fast`, `balanced`, `deep` remain legal. Classifier keys use `slot::<name>` for every custom candidate to avoid collisions with the actual tier keys; returned keys map back to the configured names before policy/dispatch. Unknown keys fail open without guessing a target. Qualified model and `when` text are included in candidate descriptions sent to System One; do not put secrets there.
+
+In `junior-lead`, `jev-pilot:junior` uses the explicitly configured junior slot, or the **first configured slot** when junior is omitted. No slots/noneligible mode retains the source's balanced specialized mapping, not a health-triggered fallback. The selected slot must resolve and authenticate; no arbitrary replacement worker is invented. Like pinned Jev's specialized branch, the named junior does not issue an ordinary worker classification and retains executor/default thinking; actual provider receipts determine its effective setting. The package registers its source-backed junior prompt/tools through the **installed pi-subagents 0.80.0 owner event**; merely depending on that package does not activate its executor. Missing executor does not break main-only startup but blocks a requested configured junior actionably. Name collisions are errors, never overwrites of user agents. Repeated calls reuse the owned handle; session exit/reload disposes it. Pi's runtime definition does not support upstream `maxTurns: 40`; that source limit is not silently claimed as enforced.
+
+Eligible strategy questions additionally offer `junior`; advice requires confidence .6, raw tier other than deep and risk at most .5. The lead receives the configured junior target, a self-contained brief recommendation and diff-review guidance. Workflow-script model selection remains **advice**, naming eligible custom models for permitted bulk work, balanced for specified implementation and the workflow default for judgment. No automatic dispatch, universal inner-launch interception, review authority, extra roles/tiers, external reviewers, health/failover or broad live controls are introduced.
