@@ -27,13 +27,6 @@ export interface DecisionQuestions {
   junior?: boolean;
 }
 
-export function mainRoutingEnabled(): boolean {
-  const value = process.env.JEV_MAIN_ROUTING_ENABLED ?? "false";
-  if (value !== "true" && value !== "false")
-    throw new Error("Set JEV_MAIN_ROUTING_ENABLED to true or false (default: false).");
-  return value === "true";
-}
-
 export interface SystemOneConfig {
   url: string;
   apiKey: string;

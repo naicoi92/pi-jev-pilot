@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { classify, systemOneConfig, WORKER_EFFORT_QUESTION, effortEnabled } from "./system-one.ts";
 import { guidanceEnabled } from "./guidance-policy.ts";
 import { selectEffort } from "./effort-policy.ts";
-import { TIER_ORDER, type Tiers } from "./tier-policy.ts";
+import { TIER_ORDER } from "./tier-policy.ts";
+import { configuredTiers } from "./routing-settings.ts";
 import { crewConfig } from "./crew-config.ts";
 import { selectWorkerModel } from "./crew-policy.ts";
 
@@ -50,6 +51,7 @@ function parentIdentity(ctx: ExtensionContext): string {
 
 /** Ordinary tool envelopes only; workflow inner launches remain executor-owned. */
 export function registerWorkerAdapter(pi: ExtensionAPI): void {
+  let settings: unknown = {};
   let childExtension: RequiredChildExtensionRegistration | undefined;
   const deliverChildExtension = (_event: unknown, ctx: ExtensionContext) => {
     childExtension?.dispose();
@@ -64,6 +66,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
     });
   };
   pi.on("session_start", () => {
+    settings = pi.getSettings();
     childExtension?.dispose();
     childExtension = undefined;
   });
@@ -196,9 +199,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
     )
       return { block: true, reason: "Invalid subagent agentScope; use user, project or both." };
     if (typeof input.task !== "string" || !input.task.trim()) return;
-    const tiers = Object.fromEntries(
-      TIER_ORDER.map((tier) => [tier, process.env[`JEV_TIER_${tier.toUpperCase()}`] ?? ""]),
-    ) as Tiers;
+    const tiers = configuredTiers(settings);
     for (const tier of TIER_ORDER) physical(ctx, tiers[tier]);
     const crew = crewConfig(ctx.cwd);
     for (const slot of crew.offered) physical(ctx, slot.model);

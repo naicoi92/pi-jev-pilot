@@ -8,8 +8,9 @@ import {
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import { isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
-import { effortEnabled, mainRoutingEnabled, type Decision } from "./system-one.ts";
-import { TIER_ORDER, selectTier, type TierDecision, type Tiers } from "./tier-policy.ts";
+import { effortEnabled, type Decision } from "./system-one.ts";
+import { TIER_ORDER, selectTier, type TierDecision } from "./tier-policy.ts";
+import { configuredTiers, mainRoutingEnabled } from "./routing-settings.ts";
 import { classifierState } from "./classifier-context.ts";
 import { decideMain, eligibleSkills, skillBlock } from "./skill-matching.ts";
 import type { SkillCandidate } from "./skill-policy.ts";
@@ -68,14 +69,17 @@ export default function (pi: ExtensionAPI): void {
   // Our completed write clears active first so its notification cannot cancel it.
   pi.on("model_select", invalidateSelection);
   pi.on("thinking_level_select", invalidateSelection);
-  if (mainRoutingEnabled()) {
+  let settings: unknown = {};
+  let registered = false;
+  const registerRouter = () => {
+    if (registered) return;
     pi.registerVirtualModel<MainRouteState>({
       provider: "jev",
       id: "auto",
       name: "Jev Auto",
       thinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
       async route(request, ctx) {
-        const tiers = configuredTiers();
+        const tiers = configuredTiers(settings);
         const models = TIER_ORDER.map((tier) => physicalModel(ctx, tiers[tier]));
         const sticky = request.failed ?? request.previous;
         // Native previous/failed is a physical response on this request branch.
@@ -216,7 +220,10 @@ export default function (pi: ExtensionAPI): void {
         }
       },
     });
-  }
+    registered = true;
+  };
+  // Effective host settings are runtime-bound, never available in the factory.
+  if (mainRoutingEnabled()) registerRouter();
   const dispose = () => {
     resetLoop();
     active?.abort();
@@ -265,9 +272,32 @@ export default function (pi: ExtensionAPI): void {
     pi.appendEntry(RESTORED_TYPE, { thinkingLevel: desired });
     pi.setThinkingLevel(desired);
   };
-  pi.on("session_shutdown", dispose);
+  pi.on("session_shutdown", () => {
+    dispose();
+    if (registered) {
+      pi.unregisterVirtualModel("jev", "auto");
+      registered = false;
+    }
+  });
   pi.on("session_start", (_event, ctx) => {
     dispose();
+    settings = pi.getSettings();
+    try {
+      if (mainRoutingEnabled(settings)) registerRouter();
+      else if (registered) {
+        pi.unregisterVirtualModel("jev", "auto");
+        registered = false;
+      }
+    } catch (error) {
+      if (registered) {
+        pi.unregisterVirtualModel("jev", "auto");
+        registered = false;
+      }
+      ctx.ui.notify(
+        error instanceof Error ? error.message : "Invalid Jev routing settings.",
+        "error",
+      );
+    }
     restoreThinking(ctx);
   });
   pi.on("session_tree", (_event, ctx) => {
@@ -517,23 +547,12 @@ interface MainRouteState {
 function isJevModel(ctx: ExtensionContext): boolean {
   return ctx.model?.provider === "jev" && ctx.model.id === "auto" && ctx.model.api === "pi-virtual";
 }
-function configuredTiers(): Tiers {
-  return Object.fromEntries(
-    TIER_ORDER.map((tier) => {
-      const key = `JEV_TIER_${tier.toUpperCase()}`;
-      const value = process.env[key] ?? "";
-      if (!/^[^/\s]+\/\S+$/.test(value))
-        throw new Error(`Set ${key} to a qualified physical provider/model identity.`);
-      return [tier, value];
-    }),
-  ) as Tiers;
-}
 function physicalModel(ctx: ExtensionContext, identity: string) {
   const slash = identity.indexOf("/");
   const model = ctx.modelRegistry.find(identity.slice(0, slash), identity.slice(slash + 1));
   if (!model || model.api === "pi-virtual")
     throw new Error(
-      `Jev target ${identity} must resolve to an exact physical Pi model. Check JEV_TIER_FAST/BALANCED/DEEP and the model registry.`,
+      `Jev target ${identity} must resolve to an exact physical Pi model. Check jevPilot.tiers or JEV_TIER_FAST/BALANCED/DEEP and the model registry.`,
     );
   if (!ctx.modelRegistry.hasConfiguredAuth(model))
     throw new Error(

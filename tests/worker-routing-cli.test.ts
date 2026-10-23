@@ -38,6 +38,7 @@ afterEach(async () => {
 }, 25000);
 
 const cases = [
+  { name: "json-only", baseline: "max", background: false },
   { name: "slot-standard", baseline: "max", background: false },
   { name: "slot-budget", baseline: "max", background: false },
   { name: "slot-async", baseline: "low", background: true },
@@ -150,6 +151,25 @@ for (const scenario of cases)
       JEV_TIER_DEEP: riskOmitted ? "local/deep" : "local/configured",
       JEV_TIMEOUT_MS: name.includes("timeout") ? "100" : "5000",
     };
+    if (name === "json-only") {
+      delete env.JEV_MAIN_ROUTING_ENABLED;
+      delete env.JEV_TIER_FAST;
+      delete env.JEV_TIER_BALANCED;
+      delete env.JEV_TIER_DEEP;
+      await writeFile(
+        join(agentDir, "settings.json"),
+        JSON.stringify({
+          jevPilot: {
+            mainRoutingEnabled: true,
+            tiers: {
+              fast: "local/parent",
+              balanced: "local/selected",
+              deep: "local/configured",
+            },
+          },
+        }),
+      );
+    }
     if (slot || junior) {
       env.JEV_CREW_CONFIG = join(directory, "crew.json");
       await writeFile(

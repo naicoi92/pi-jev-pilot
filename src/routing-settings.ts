@@ -1,0 +1,49 @@
+import { TIER_ORDER, type Tiers } from "./tier-policy.ts";
+
+function object(value: unknown, path: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`Set ${path} to an object in Pi settings.`);
+  return value as Record<string, unknown>;
+}
+
+function pilot(settings: unknown): Record<string, unknown> {
+  const effective = object(settings, "effective settings");
+  return "jevPilot" in effective ? object(effective.jevPilot, "jevPilot") : {};
+}
+
+/** Explicit environment values win per field, including empty/invalid values. */
+export function mainRoutingEnabled(settings: unknown = {}): boolean {
+  const env = process.env.JEV_MAIN_ROUTING_ENABLED;
+  if (env !== undefined) {
+    if (env !== "true" && env !== "false")
+      throw new Error("Set JEV_MAIN_ROUTING_ENABLED to true or false (default: false).");
+    return env === "true";
+  }
+  const config = pilot(settings);
+  if (!("mainRoutingEnabled" in config)) return false;
+  if (typeof config.mainRoutingEnabled !== "boolean")
+    throw new Error(
+      "Set jevPilot.mainRoutingEnabled to true or false in Pi settings (default: false).",
+    );
+  return config.mainRoutingEnabled;
+}
+
+/** Resolve tiers only for an applicable main route or ordinary worker launch. */
+export function configuredTiers(settings: unknown = {}): Tiers {
+  return Object.fromEntries(
+    TIER_ORDER.map((tier) => {
+      const key = `JEV_TIER_${tier.toUpperCase()}`;
+      let value: unknown = process.env[key];
+      if (value === undefined) {
+        const config = pilot(settings);
+        const tiers = "tiers" in config ? object(config.tiers, "jevPilot.tiers") : {};
+        value = tiers[tier];
+      }
+      if (typeof value !== "string" || !/^[^/\s]+\/\S+$/.test(value))
+        throw new Error(
+          `Set ${key} or jevPilot.tiers.${tier} in Pi settings to a qualified physical provider/model identity.`,
+        );
+      return [tier, value];
+    }),
+  ) as Tiers;
+}

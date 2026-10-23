@@ -17,6 +17,7 @@ export function answer(level = "high", confidence = 0.95, risky = 0): RecordData
 
 export class PiFixture {
   directory = "";
+  settings: RecordData = {};
   server!: ReturnType<typeof Bun.serve>;
   process!: ChildProcessWithoutNullStreams;
   records: RecordData[] = [];
@@ -257,6 +258,7 @@ export default function (pi: ExtensionAPI) {
     await writeFile(
       join(agent, "settings.json"),
       JSON.stringify({
+        ...this.settings,
         defaultThinkingLevel: "medium",
         retry: { enabled: false, baseDelayMs: 20 },
         compaction: { enabled: false, keepRecentTokens: 50 },

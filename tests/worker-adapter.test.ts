@@ -38,7 +38,9 @@ async function fixture(defaultContext = "fresh") {
   const entries: unknown[] = [];
   const signal = new AbortController();
   const session = crypto.randomUUID();
+  let settings: unknown = {};
   const pi = {
+    getSettings: () => settings,
     on(name: string, handler: Function) {
       hooks.set(name, [...(hooks.get(name) ?? []), handler]);
     },
@@ -117,6 +119,9 @@ async function fixture(defaultContext = "fresh") {
   process.env.JEV_SYSTEM_ONE_URL = server.url.toString();
   return {
     call,
+    settings: (value: unknown) => {
+      settings = value;
+    },
     fire,
     pi,
     ctx,
@@ -368,4 +373,37 @@ test("CREW-13 invalid eligible target fails before classifier", async () => {
     "exact physical",
   );
   expect(f.requests()).toBe(0);
+});
+
+test("routing-settings ordinary worker consumes public effective JSON tiers after session_start", async () => {
+  const f = await fixture();
+  for (const tier of ["FAST", "BALANCED", "DEEP"]) delete process.env[`JEV_TIER_${tier}`];
+  f.settings({
+    unrelated: { preserved: true },
+    jevPilot: {
+      mainRoutingEnabled: false,
+      tiers: {
+        fast: "local/fast",
+        balanced: "local/balanced",
+        deep: "local/deep",
+      },
+    },
+  });
+  await f.fire("session_start");
+  const input = {
+    agent: "worker",
+    model: "local/deep",
+    task: "Implement specified change with tests",
+  };
+  await f.call(input);
+  expect(input.model).toBe("local/balanced:medium");
+  expect(f.requests()).toBe(1);
+  f.settings({ jevPilot: { tiers: null } });
+  await f.fire("session_start");
+  const fork = { ...input, context: "fork" };
+  await f.call(fork);
+  expect(f.requests()).toBe(1);
+  process.env.JEV_WORKER_ROUTING_ENABLED = "false";
+  await f.call({ ...input });
+  expect(f.requests()).toBe(1);
 });
