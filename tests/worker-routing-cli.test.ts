@@ -146,12 +146,19 @@ for (const scenario of cases)
           : "true",
       JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
       JEV_TIMEOUT_MS: name.includes("timeout") ? "100" : "5000",
+      ...(name === "json-only"
+        ? {
+            JEV_MAIN_ROUTING_ENABLED: "true",
+            JEV_TIER_FAST: "invalid",
+            JEV_TIER_BALANCED: "invalid",
+            JEV_TIER_DEEP: "invalid",
+          }
+        : {}),
     };
     await writeFile(
       join(agentDir, "settings.json"),
       JSON.stringify({
         jevPilot: {
-          mainRoutingEnabled: name === "json-only",
           tiers: {
             fast: "local/parent",
             balanced: "local/selected",
@@ -187,6 +194,7 @@ for (const scenario of cases)
     await run([Bun.which("bun")!, "install"]);
     const packed = join(directory, "pi-jev-pilot.tgz");
     await run([Bun.which("bun")!, "pm", "pack", "--filename", packed], root);
+    await run(["shasum", "-a", "256", packed]);
     const extract = join(directory, "packed");
     await mkdir(extract);
     await run(["tar", "-xzf", packed, "-C", extract]);

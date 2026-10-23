@@ -23,19 +23,10 @@ function text(f: PiFixture, index = 0): string {
     )
     .join("\n");
 }
-const routing = {
-  mainRoutingEnabled: true,
-  tiers: {
-    fast: "fixture-fast/lookup",
-    balanced: "fixture/fixture-model",
-    deep: "fixture-deep/judgment",
-  },
-};
-async function start(env: Record<string, string> = {}, virtual = false) {
+
+async function start(env: Record<string, string> = {}) {
   fixture = new PiFixture();
-  if (virtual) {
-    fixture.selectRouter = true;
-  }
+
   fixture.response = {
     answers: {
       bugfix: { noul: 0.8 },
@@ -44,11 +35,14 @@ async function start(env: Record<string, string> = {}, virtual = false) {
       corrects: { noul: 0.7 },
     },
   };
-  return fixture.startWithRouting(virtual ? routing : {}, {
-    JEV_EFFORT_ENABLED: "false",
-    JEV_QUALITY_ENABLED: "true",
-    ...env,
-  });
+  return fixture.startWithRouting(
+    {},
+    {
+      JEV_EFFORT_ENABLED: "false",
+      JEV_QUALITY_ENABLED: "true",
+      ...env,
+    },
+  );
 }
 test("G09-quality-only sends four nouls in one actual installed request", async () => {
   const f = await start();
@@ -151,18 +145,19 @@ for (const [name, below, at, phrase] of [
     expect(text(f, 1).includes(phrase)).toBe(name !== "corrects");
   }, 20000);
 }
-for (const virtual of [false, true]) {
-  test(`G09-combined-${virtual ? "virtual" : "physical"} all applicable questions share one request`, async () => {
+{
+  test(`G09-combined-physical all applicable questions share one request`, async () => {
     fixture = new PiFixture();
     fixture.skills = [{ name: "procedure", body: "GUIDANCE_SELECTED_SKILL" }];
-    if (virtual) {
-      fixture.selectRouter = true;
-    }
-    const f = await fixture.startWithRouting(routing, {
-      JEV_EFFORT_ENABLED: "true",
-      JEV_STRATEGY_ENABLED: "true",
-      JEV_QUALITY_ENABLED: "true",
-    });
+
+    const f = await fixture.startWithRouting(
+      {},
+      {
+        JEV_EFFORT_ENABLED: "true",
+        JEV_STRATEGY_ENABLED: "true",
+        JEV_QUALITY_ENABLED: "true",
+      },
+    );
     f.response = {
       answers: {
         tier: { choice: "deep", confidence: 0.99 },
@@ -196,12 +191,12 @@ for (const virtual of [false, true]) {
     expect(text(f).split("<jev_quality>")).toHaveLength(2);
     expect(text(f)).toContain("GUIDANCE_SELECTED_SKILL");
     expect(f.generations[0]).toMatchObject({
-      model: virtual ? "judgment" : "fixture-model",
+      model: "fixture-model",
       reasoning_effort: "high",
     });
   }, 20000);
-  test(`G15-retry-continue ${virtual} advice stays owned and appears once`, async () => {
-    const f = await start({}, virtual);
+  test(`G15-retry-continue physical advice stays owned and appears once`, async () => {
+    const f = await start({});
     f.response = {
       answers: {
         tier: { choice: "balanced", confidence: 0.99 },
@@ -218,8 +213,8 @@ for (const virtual of [false, true]) {
       expect(text(f, i).split("<jev_quality>")).toHaveLength(2);
   }, 20000);
   for (const mode of ["abort", "thinking", "model", "timeout"] as const) {
-    test(`G15-cancel ${virtual}/${mode} drops stale advice`, async () => {
-      const f = await start({ JEV_TIMEOUT_MS: mode === "timeout" ? "80" : "5000" }, virtual);
+    test(`G15-cancel physical/${mode} drops stale advice`, async () => {
+      const f = await start({ JEV_TIMEOUT_MS: mode === "timeout" ? "80" : "5000" });
       f.classifierDelay = 500;
       const offset = f.records.length;
       await f.command("prompt", { message: "Fix the concrete bug" });
@@ -232,8 +227,7 @@ for (const virtual of [false, true]) {
       await f.wait(() => f.classifierAborts === 1);
       expect(f.classifications).toHaveLength(1);
       if (f.generations.length) expect(text(f)).not.toContain("<jev_quality>");
-      if (mode === "abort" || (virtual && mode !== "timeout"))
-        expect(f.generations).toHaveLength(0);
+      if (mode === "abort") expect(f.generations).toHaveLength(0);
       const entries = (
         (await f.command("get_entries")).data as { entries: { customType?: string }[] }
       ).entries;
@@ -255,9 +249,9 @@ test("G09-continuation guidance-only has zero questions even invalid backend", a
   expect(f.generations).toHaveLength(1);
 }, 20000);
 
-for (const virtual of [false, true]) {
-  test(`G15-lifecycle ${virtual} reload resume fork retain only included owners`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`G15-lifecycle physical reload resume fork retain only included owners`, async () => {
+    const f = await start({});
     f.response = {
       answers: {
         tier: { choice: "balanced", confidence: 0.99 },
@@ -293,8 +287,8 @@ for (const virtual of [false, true]) {
     await f.prompt("continue");
     expect(text(f, 4)).not.toContain("<jev_quality>");
   }, 20000);
-  test(`G15-queued ${virtual} own the substantive user not the trailing continuation`, async () => {
-    const f = await start({}, virtual);
+  test(`G15-queued physical own the substantive user not the trailing continuation`, async () => {
+    const f = await start({});
     f.response = {
       answers: {
         tier: { choice: "balanced", confidence: 0.99 },
@@ -337,8 +331,8 @@ for (const virtual of [false, true]) {
     expect(JSON.stringify(users)).not.toContain("<jev_quality>");
     expect(JSON.stringify(f.generations)).not.toContain("jevPilotInputId");
   }, 20000);
-  test(`G15-stripped-identity ${virtual} newer missing owner never receives old or new advice`, async () => {
-    const f = await start({}, virtual);
+  test(`G15-stripped-identity physical newer missing owner never receives old or new advice`, async () => {
+    const f = await start({});
     f.response = {
       answers: {
         tier: { choice: "balanced", confidence: 0.99 },
@@ -429,17 +423,18 @@ test("G27-exclusions quality guidance has no external-review or escalation machi
   expect(f.records.filter((r) => r.type === "tool_execution_start")).toHaveLength(0);
 }, 20000);
 
-for (const virtual of [false, true]) {
-  test(`G16-failed-commands ${virtual} success resets normalized failure counter without escalation`, async () => {
+{
+  test(`G16-failed-commands physical success resets normalized failure counter without escalation`, async () => {
     fixture = new PiFixture();
     fixture.tools = "bash";
-    if (virtual) {
-      fixture.selectRouter = true;
-    }
-    const f = await fixture.startWithRouting(virtual ? routing : {}, {
-      JEV_EFFORT_ENABLED: "true",
-      JEV_QUALITY_ENABLED: "true",
-    });
+
+    const f = await fixture.startWithRouting(
+      {},
+      {
+        JEV_EFFORT_ENABLED: "true",
+        JEV_QUALITY_ENABLED: "true",
+      },
+    );
     f.response = {
       answers: {
         tier: { choice: "balanced", confidence: 0.99 },
@@ -557,9 +552,9 @@ test("G09-batches advice questions appear only in the first skill batch", async 
   expect(text(f).split("<jev_quality>")).toHaveLength(2);
 }, 20000);
 
-for (const virtual of [false, true]) {
-  test(`G15-compaction ${virtual} removed owners cannot resurrect advice`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`G15-compaction physical removed owners cannot resurrect advice`, async () => {
+    const f = await start({});
     f.response = {
       answers: {
         tier: { choice: "balanced", confidence: 0.99 },
@@ -590,8 +585,8 @@ for (const virtual of [false, true]) {
     expect(text(f, f.generations.length - 1).split("<jev_quality>")).toHaveLength(2);
   }, 20000);
 }
-test("G15-raw-tier-risk strategy gate uses raw classified tier before risk-forced routing", async () => {
-  const f = await start({ JEV_STRATEGY_ENABLED: "true", JEV_QUALITY_ENABLED: "false" }, true);
+test("G15-raw-tier-risk strategy gate uses raw classified tier without model dispatch", async () => {
+  const f = await start({ JEV_STRATEGY_ENABLED: "true", JEV_QUALITY_ENABLED: "false" });
   f.response = {
     answers: {
       tier: { choice: "balanced", confidence: 0.99 },
@@ -600,7 +595,7 @@ test("G15-raw-tier-risk strategy gate uses raw classified tier before risk-force
     },
   };
   await f.prompt("Do the specified work in waves");
-  expect(f.generations[0]!.model).toBe("judgment");
+  expect(f.generations[0]!.model).toBe("fixture-model");
   expect(text(f)).not.toContain("<execution_strategy>");
   f.response = {
     answers: {
@@ -610,7 +605,7 @@ test("G15-raw-tier-risk strategy gate uses raw classified tier before risk-force
     },
   };
   await f.prompt("Perform another independent specified task");
-  expect(f.generations[1]!.model).toBe("judgment");
+  expect(f.generations[1]!.model).toBe("fixture-model");
   expect(text(f, 1)).not.toContain("<execution_strategy>");
 }, 20000);
 
@@ -750,56 +745,37 @@ test("G16-branch abandoned failures cannot carry counters to another branch", as
   expect(f.classifications).toHaveLength(2);
 }, 20000);
 
-for (const virtual of [false, true]) {
-  test(`G15-partial-tier-${virtual ? "virtual" : "physical"} advice does not relax routing validation`, async () => {
-    const f = await start(
-      {
-        JEV_STRATEGY_ENABLED: "true",
-        JEV_QUALITY_ENABLED: "false",
-        ...(virtual ? { JEV_EFFORT_ENABLED: "true" } : {}),
-      },
-      virtual,
-    );
+{
+  test(`G15-partial-tier-physical advice uses raw tier without model dispatch`, async () => {
+    const f = await start({
+      JEV_STRATEGY_ENABLED: "true",
+      JEV_QUALITY_ENABLED: "false",
+    });
     f.response = {
       answers: {
         tier: {
-          choice: virtual ? "deep" : "balanced",
-          probabilities: { [virtual ? "deep" : "balanced"]: 0.6 },
+          choice: "balanced",
+          probabilities: { balanced: 0.6 },
         },
         strategy: { choice: "delegate", confidence: 0.8 },
-        ...(virtual ? { effort: { choice: "high", confidence: 0.99 }, risky: { noul: 0 } } : {}),
       },
     };
     await f.prompt("Perform the fully specified broad mechanical investigation");
     expect(f.classifications).toHaveLength(1);
     expect(text(f).split("as: delegate.")).toHaveLength(2);
     expect(f.generations[0]).toMatchObject({ model: "fixture-model", reasoning_effort: "medium" });
-    if (virtual) {
-      const entries = (
-        (await f.command("get_entries")).data as {
-          entries: { customType?: string; data?: unknown }[];
-        }
-      ).entries;
-      const route = entries.findLast((e) => e.customType === "pi.virtual-model-state");
-      expect(JSON.stringify(route)).toContain("schema-error");
-      expect(JSON.stringify(route)).not.toContain('"source":"decision"');
-    }
   }, 20000);
 }
-for (const virtual of [false, true]) {
+{
   for (const tier of [
     { choice: "balanced", probabilities: { balanced: 1.2 } },
     { choice: "unknown", probabilities: { balanced: 0.6 } },
   ]) {
-    test(`G15-invalid-tier-values ${virtual}/${JSON.stringify(tier)} cannot create advice`, async () => {
-      const f = await start(
-        {
-          JEV_STRATEGY_ENABLED: "true",
-          JEV_QUALITY_ENABLED: "false",
-          ...(virtual ? { JEV_EFFORT_ENABLED: "true" } : {}),
-        },
-        virtual,
-      );
+    test(`G15-invalid-tier-values physical/${JSON.stringify(tier)} cannot create advice`, async () => {
+      const f = await start({
+        JEV_STRATEGY_ENABLED: "true",
+        JEV_QUALITY_ENABLED: "false",
+      });
       f.response = {
         answers: {
           tier,

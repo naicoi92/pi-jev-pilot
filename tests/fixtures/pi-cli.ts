@@ -18,7 +18,6 @@ export function answer(level = "high", confidence = 0.95, risky = 0): RecordData
 export class PiFixture {
   directory = "";
   settings: RecordData = {};
-  selectRouter = false;
   server!: ReturnType<typeof Bun.serve>;
   process!: ChildProcessWithoutNullStreams;
   records: RecordData[] = [];
@@ -363,7 +362,6 @@ export default function (pi: ExtensionAPI) {
     this.process.stderr.on("data", (data: Buffer) => (this.stderr += data.toString()));
     try {
       await this.command("get_state");
-      if (this.selectRouter) await this.command("set_model", { provider: "jev", modelId: "auto" });
       return this;
     } catch (error) {
       await this.close();

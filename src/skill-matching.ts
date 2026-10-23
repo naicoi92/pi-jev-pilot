@@ -58,17 +58,17 @@ async function resourceSkills(pi: ExtensionAPI): Promise<SkillCandidate[]> {
   return skills;
 }
 
-/** Both physical and virtual paths use this one orchestration, including batching. */
+/** Physical main effort, skill and advice questions share one orchestration. */
 export async function decideMain(
   pi: ExtensionAPI,
   prompt: string,
   state: () => Promise<unknown>,
   signal: AbortSignal,
-  enabled: DecisionQuestions,
+  withEffort: boolean,
   cwd = process.cwd(),
 ): Promise<{ result: Classification | null; skill?: SkillCandidate; advice?: string }> {
   const crew = crewConfig(cwd);
-  enabled = { ...enabled, junior: !!crew.junior };
+  const enabled: DecisionQuestions = { tier: false, effort: withEffort, junior: !!crew.junior };
   const quality = !isContinuation(prompt) && guidanceEnabled("QUALITY");
   const strategy = !isContinuation(prompt) && guidanceEnabled("STRATEGY");
   const design = !isContinuation(prompt) && guidanceEnabled("DESIGN");
@@ -102,8 +102,7 @@ export async function decideMain(
           .join("\n\n") || undefined,
     };
   };
-  if (!enabled.tier && !enabled.effort && !skills.length && !quality && !strategy && !design)
-    return { result: null };
+  if (!withEffort && !skills.length && !quality && !strategy && !design) return { result: null };
   const config = systemOneConfig();
   const context = await state();
   if (!skills.length)

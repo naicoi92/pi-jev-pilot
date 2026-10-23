@@ -1,15 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { PiFixture, type RecordData } from "./fixtures/pi-cli.ts";
 
-const routing = {
-  mainRoutingEnabled: true,
-  tiers: {
-    fast: "fixture-fast/lookup",
-    balanced: "fixture/fixture-model",
-    deep: "fixture-deep/judgment",
-  },
-};
-
 let fixture: PiFixture | undefined;
 afterEach(async () => {
   await fixture?.close();
@@ -35,23 +26,23 @@ function text(f: PiFixture, index = 0): string {
     )
     .join("\n");
 }
-async function start(env: Record<string, string> = {}, virtual = false) {
+async function start(env: Record<string, string> = {}) {
   fixture = new PiFixture();
   fixture.useDesignDefaults = true;
-  if (virtual) {
-    fixture.selectRouter = true;
-  }
+
   fixture.response = {
     answers: {
-      ...(virtual ? { tier: { choice: "balanced", confidence: 0.99 }, risky: { noul: 0 } } : {}),
       ui_design: { noul: 0.97 },
     },
   };
-  return fixture.startWithRouting(virtual ? routing : {}, {
-    JEV_EFFORT_ENABLED: "false",
-    JEV_SKILLS_ENABLED: "false",
-    ...env,
-  });
+  return fixture.startWithRouting(
+    {},
+    {
+      JEV_EFFORT_ENABLED: "false",
+      JEV_SKILLS_ENABLED: "false",
+      ...env,
+    },
+  );
 }
 
 test("D09-design-only-default asks the upstream design noul in one installed request", async () => {
@@ -205,22 +196,23 @@ test("D17-resource-empty configured list stays empty without fallback aliases", 
   expect(text(f)).not.toContain("Inspo");
 }, 20000);
 
-for (const virtual of [false, true]) {
-  test(`D09-combined-${virtual ? "virtual" : "physical"} adds design to the one initial call`, async () => {
+{
+  test(`D09-combined-physical adds design to the one initial call`, async () => {
     fixture = new PiFixture();
     fixture.useDesignDefaults = true;
     fixture.skills = [
       { name: "procedure", body: "ORDINARY_SELECTED_BODY" },
       { name: "impeccable", body: "DESIGN_NOT_AN_ORDINARY_SELECTION" },
     ];
-    if (virtual) {
-      fixture.selectRouter = true;
-    }
-    const f = await fixture.startWithRouting(routing, {
-      JEV_EFFORT_ENABLED: "true",
-      JEV_STRATEGY_ENABLED: "true",
-      JEV_QUALITY_ENABLED: "true",
-    });
+
+    const f = await fixture.startWithRouting(
+      {},
+      {
+        JEV_EFFORT_ENABLED: "true",
+        JEV_STRATEGY_ENABLED: "true",
+        JEV_QUALITY_ENABLED: "true",
+      },
+    );
     f.response = {
       answers: {
         tier: { choice: "deep", confidence: 0.99 },
@@ -253,12 +245,12 @@ for (const virtual of [false, true]) {
     expect(text(f)).toContain("<jev_quality>");
     expect(text(f)).toContain("<execution_strategy>");
     expect(f.generations[0]).toMatchObject({
-      model: virtual ? "judgment" : "fixture-model",
+      model: "fixture-model",
       reasoning_effort: "high",
     });
   }, 20000);
-  test(`D17-raw-consumer-${virtual ? "virtual" : "physical"} design is independent of routing rejection`, async () => {
-    const f = await start({ JEV_EFFORT_ENABLED: "true" }, virtual);
+  test(`D17-raw-consumer-physical design is independent of routing rejection`, async () => {
+    const f = await start({ JEV_EFFORT_ENABLED: "true" });
     f.response = {
       answers: {
         ui_design: { noul: 0.97 },
@@ -271,9 +263,7 @@ for (const virtual of [false, true]) {
     expect(text(f)).toContain("<jev_design>");
     expect(f.generations[0]).toMatchObject({ model: "fixture-model", reasoning_effort: "medium" });
     const entries = ((await f.command("get_entries")).data as { entries: RecordData[] }).entries;
-    const state = entries.findLast(
-      (e) => e.customType === (virtual ? "pi.virtual-model-state" : "jev-pilot:effort"),
-    );
+    const state = entries.findLast((e) => e.customType === "jev-pilot:effort");
     expect(JSON.stringify(state)).toContain("schema-error");
   }, 20000);
 }
@@ -361,9 +351,9 @@ for (const rerank of [false, true]) {
   }, 20000);
 }
 
-for (const virtual of [false, true]) {
-  test(`D17-retry-tool-continue ${virtual} reuses owned design without another classifier call`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`D17-retry-tool-continue physical reuses owned design without another classifier call`, async () => {
+    const f = await start({});
     f.modelFailures = 2;
     await f.command("set_auto_retry", { enabled: true });
     f.nextReadPath = `${f.directory}/agent/settings.json`;
@@ -378,8 +368,8 @@ for (const virtual of [false, true]) {
     ).toEqual(["read"]);
   }, 20000);
 
-  test(`D17-queue ${virtual} shares UUID and keeps design on substantive owner`, async () => {
-    const f = await start({ JEV_EFFORT_ENABLED: "true" }, virtual);
+  test(`D17-queue physical shares UUID and keeps design on substantive owner`, async () => {
+    const f = await start({ JEV_EFFORT_ENABLED: "true" });
     f.response = {
       answers: {
         tier: { choice: "balanced", confidence: 0.99 },
@@ -424,7 +414,7 @@ for (const virtual of [false, true]) {
     expect(advice).toHaveLength(2);
     expect(advice[0]!.data!.inputId).toBe(users[0]!.message!.jevPilotInputId);
     expect(advice[1]!.data!.inputId).toBe(users[1]!.message!.jevPilotInputId);
-    if (!virtual) {
+    {
       const applications = entries.filter((e) => e.customType === "jev-pilot:effort-application");
       expect(applications[1]!.data!.inputId).toBe(advice[1]!.data!.inputId);
     }
@@ -432,8 +422,8 @@ for (const virtual of [false, true]) {
     expect(JSON.stringify(f.generations)).not.toContain("jevPilotInputId");
   }, 20000);
 
-  test(`D17-fork-tree-reload-resume ${virtual} retains only included design owners`, async () => {
-    const f = await start({}, virtual);
+  test(`D17-fork-tree-reload-resume physical retains only included design owners`, async () => {
+    const f = await start({});
     await f.prompt("Restyle the initial dashboard");
     const state = (await f.command("get_state")).data as { sessionFile: string };
     let entries = (
@@ -462,14 +452,14 @@ for (const virtual of [false, true]) {
     await f.prompt("continue");
     expect(text(f, 4)).not.toContain("<jev_design>");
     // Fresh branches without reusable route state still ask tier, never design on continue.
-    expect(f.classifications).toHaveLength(virtual ? 3 : 1);
+    expect(f.classifications).toHaveLength(1);
     expect(
       f.classifications.filter((c) => "ui_design" in (c.questions as RecordData)),
     ).toHaveLength(1);
   }, 20000);
 
-  test(`D17-compaction ${virtual} removed design does not resurrect`, async () => {
-    const f = await start({}, virtual);
+  test(`D17-compaction physical removed design does not resurrect`, async () => {
+    const f = await start({});
     await f.prompt("Restyle initial dashboard");
     f.response = {
       answers: {
@@ -487,8 +477,8 @@ for (const virtual of [false, true]) {
     expect(text(f, f.generations.length - 1)).not.toContain("<jev_design>");
   }, 20000);
 
-  test(`D17-stripped ${virtual} missing new identity never receives old or new design`, async () => {
-    const f = await start({}, virtual);
+  test(`D17-stripped physical missing new identity never receives old or new design`, async () => {
+    const f = await start({});
     await f.prompt("Design first page");
     await f.command("prompt", { message: "/fixture-drop-input-identity" });
     await f.prompt("Design second page");
@@ -507,8 +497,8 @@ for (const virtual of [false, true]) {
   }, 20000);
 
   for (const mode of ["abort", "thinking", "model", "timeout"] as const) {
-    test(`D17-abort-timeout-manual ${virtual}/${mode} discards pending design`, async () => {
-      const f = await start({ JEV_TIMEOUT_MS: mode === "timeout" ? "80" : "5000" }, virtual);
+    test(`D17-abort-timeout-manual physical/${mode} discards pending design`, async () => {
+      const f = await start({ JEV_TIMEOUT_MS: mode === "timeout" ? "80" : "5000" });
       f.classifierDelay = 500;
       const offset = f.records.length;
       await f.command("prompt", { message: "Restyle the dashboard" });
@@ -521,8 +511,7 @@ for (const virtual of [false, true]) {
       await f.wait(() => f.classifierAborts === 1);
       expect(f.classifications).toHaveLength(1);
       if (f.generations.length) expect(text(f)).not.toContain("<jev_design>");
-      if (mode === "abort" || (virtual && mode !== "timeout"))
-        expect(f.generations).toHaveLength(0);
+      if (mode === "abort") expect(f.generations).toHaveLength(0);
       const entries = (
         (await f.command("get_entries")).data as { entries: { customType?: string }[] }
       ).entries;
@@ -531,10 +520,10 @@ for (const virtual of [false, true]) {
   }
 }
 
-for (const virtual of [false, true]) {
+{
   for (const fault of ["service", "json"] as const) {
-    test(`D17-fault-stale ${virtual}/${fault} never attaches previous pack to new work`, async () => {
-      const f = await start({}, virtual);
+    test(`D17-fault-stale physical/${fault} never attaches previous pack to new work`, async () => {
+      const f = await start({});
       await f.prompt("Design the initial page");
       if (fault === "service") f.status = 503;
       else f.response = "not json";

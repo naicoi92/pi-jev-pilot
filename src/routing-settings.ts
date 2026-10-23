@@ -11,18 +11,7 @@ function pilot(settings: unknown): Record<string, unknown> {
   return "jevPilot" in effective ? object(effective.jevPilot, "jevPilot") : {};
 }
 
-/** Main enablement is JSON-only; legacy routing environment values are ignored. */
-export function mainRoutingEnabled(settings: unknown = {}): boolean {
-  const config = pilot(settings);
-  if (!("mainRoutingEnabled" in config)) return false;
-  if (typeof config.mainRoutingEnabled !== "boolean")
-    throw new Error(
-      "Set jevPilot.mainRoutingEnabled to true or false in Pi settings (default: false).",
-    );
-  return config.mainRoutingEnabled;
-}
-
-/** Resolve tiers only for an applicable main route or ordinary worker launch. */
+/** Resolve JSON tiers only for an applicable ordinary worker launch. */
 export function configuredTiers(settings: unknown = {}): Tiers {
   return Object.fromEntries(
     TIER_ORDER.map((tier) => {

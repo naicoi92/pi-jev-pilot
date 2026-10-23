@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 for (const before of [false, true]) {
   for (const enabled of [true, false, null]) {
-    test(`router-registration official Pi foreign ${before ? "before" : "after"} survives shutdown and reload ${enabled}`, async () => {
+    test(`main-removal official Pi foreign ${before ? "before" : "after"} survives shutdown and reload ${enabled}`, async () => {
       const probe = `${root}/tests/fixtures/router-ownership.ts`;
       const extensions = before ? [probe, root] : [root, probe];
       fixture = new PiFixture([
@@ -62,10 +62,7 @@ for (const before of [false, true]) {
         const models = JSON.stringify((await f.command("get_available_models")).data);
         expect(models).toContain("Foreign Auto");
         expect(models).toContain("Foreign Other");
-        if (enabled === true) expect(JSON.stringify(f.records)).toContain("another extension owns");
-        if (enabled === null)
-          expect(JSON.stringify(f.records)).toContain("jevPilot.mainRoutingEnabled");
-        // Re-enable once more: new extension instance must not overwrite foreign owner.
+        // Obsolete enablement must not overwrite foreign owner, even after reload.
         await writeFile(
           path,
           JSON.stringify({ ...settings, jevPilot: { mainRoutingEnabled: true } }),

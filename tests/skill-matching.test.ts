@@ -10,14 +10,7 @@ afterEach(async () => {
 const task = "Please debug this failing test and implement the fully specified repair";
 const body =
   "# Debug procedure\nRead references/steps.md, then reproduce the failure. SELECTED_BODY_TOKEN";
-const routing = {
-  mainRoutingEnabled: true,
-  tiers: {
-    fast: "fixture-fast/lookup",
-    balanced: "fixture/fixture-model",
-    deep: "fixture-deep/judgment",
-  },
-};
+
 function response(name = "debugging", confidence = 0.9, gate = 0.9): RecordData {
   return {
     answers: {
@@ -30,17 +23,15 @@ function response(name = "debugging", confidence = 0.9, gate = 0.9): RecordData 
     },
   };
 }
-async function start(env: Record<string, string> = {}, virtual = false): Promise<PiFixture> {
+async function start(env: Record<string, string> = {}): Promise<PiFixture> {
   fixture = new PiFixture();
   fixture.skills = [
     { name: "debugging", body },
     { name: "slides", body: "UNSELECTED_BODY_TOKEN" },
   ];
   fixture.response = response();
-  if (virtual) {
-    fixture.selectRouter = true;
-  }
-  return fixture.startWithRouting(virtual ? routing : {}, env);
+
+  return fixture.startWithRouting({}, env);
 }
 function providerText(f: PiFixture, index = 0): string {
   const messages = f.generations[index]?.messages as
@@ -71,9 +62,9 @@ test("SK14-content selected real resource body reaches provider without resource
   expect(await readFile(path, "utf8")).toBe(original);
 }, 20000);
 
-for (const virtual of [false, true]) {
-  test(`SK09-${virtual ? "virtual" : "physical"} ordinary skill and routing share one request`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`SK09-physical ordinary skill and effort share one request`, async () => {
+    const f = await start({});
     await f.prompt(task);
     expect(f.classifications).toHaveLength(1);
     expect(Object.keys(questions(f)).sort()).toEqual([
@@ -82,11 +73,11 @@ for (const virtual of [false, true]) {
       "gate::prose_suffices",
       "gate::would_follow_documented_procedure",
       "risky",
-      ...(virtual ? ["tier"] : []),
+
       "which",
     ]);
     expect(f.generations[0]).toMatchObject({
-      model: virtual ? "judgment" : "fixture-model",
+      model: "fixture-model",
       reasoning_effort: "high",
     });
     expect(providerText(f)).toContain("SELECTED_BODY_TOKEN");
@@ -292,9 +283,9 @@ for (const mode of ["reject-all", "winner-low", "stray", "failure", "select"] as
   }, 20000);
 }
 
-for (const virtual of [false, true]) {
-  test(`SK14-lifecycle ${virtual ? "virtual" : "physical"} tool and continuation preserve one projected body`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`SK14-lifecycle physical tool and continuation preserve one projected body`, async () => {
+    const f = await start({});
     const path = `${f.directory}/tool.txt`;
     await writeFile(path, "PRIVATE_TOOL_RESULT");
     f.nextReadPath = path;
@@ -312,8 +303,8 @@ for (const virtual of [false, true]) {
     expect(JSON.stringify(f.classifications.at(-1)!.state)).not.toContain("SELECTED_BODY_TOKEN");
   }, 20000);
 
-  test(`SK14-lifecycle ${virtual ? "virtual" : "physical"} provider retry does not duplicate selected body`, async () => {
-    const f = await start({}, virtual);
+  test(`SK14-lifecycle physical provider retry does not duplicate selected body`, async () => {
+    const f = await start({});
     f.modelFailures = 3;
     await f.command("set_auto_retry", { enabled: true });
     await f.prompt(task);
@@ -323,8 +314,8 @@ for (const virtual of [false, true]) {
       expect(providerText(f, i).split("SELECTED_BODY_TOKEN")).toHaveLength(2);
   }, 20000);
 
-  test(`SK14-lifecycle ${virtual ? "virtual" : "physical"} reload and resume retain only owned content`, async () => {
-    const f = await start({}, virtual);
+  test(`SK14-lifecycle physical reload and resume retain only owned content`, async () => {
+    const f = await start({});
     await f.prompt(task);
     const state = (await f.command("get_state")).data as { sessionFile: string };
     await f.command("prompt", { message: "/fixture-reload" });
@@ -339,8 +330,8 @@ for (const virtual of [false, true]) {
     expect(providerText(f, 3).split("SELECTED_BODY_TOKEN")).toHaveLength(2);
   }, 20000);
 
-  test(`SK14-branch-prefix ${virtual ? "virtual" : "physical"} tree excluding owning user cannot leak selected content`, async () => {
-    const f = await start({}, virtual);
+  test(`SK14-branch-prefix physical tree excluding owning user cannot leak selected content`, async () => {
+    const f = await start({});
     await f.prompt(task);
     const entries = (
       (await f.command("get_entries")).data as {
@@ -354,8 +345,8 @@ for (const virtual of [false, true]) {
     expect(providerText(f, 1)).not.toContain("SELECTED_BODY_TOKEN");
   }, 20000);
 
-  test(`SK14-lifecycle ${virtual ? "virtual" : "physical"} fork including response preserves selected content`, async () => {
-    const f = await start({}, virtual);
+  test(`SK14-lifecycle physical fork including response preserves selected content`, async () => {
+    const f = await start({});
     await f.prompt(task);
     const entries = (
       (await f.command("get_entries")).data as { entries: { id: string; message?: RecordData }[] }
@@ -367,8 +358,8 @@ for (const virtual of [false, true]) {
     expect(providerText(f, 1).split("SELECTED_BODY_TOKEN")).toHaveLength(2);
   }, 20000);
 
-  test(`SK14-lifecycle ${virtual ? "virtual" : "physical"} queued continuation stays with immediately preceding work`, async () => {
-    const f = await start({}, virtual);
+  test(`SK14-lifecycle physical queued continuation stays with immediately preceding work`, async () => {
+    const f = await start({});
     f.modelDelay = 200;
     await f.command("set_steering_mode", { mode: "all" });
     await f.command("prompt", { message: task });
@@ -387,8 +378,8 @@ for (const virtual of [false, true]) {
   }, 20000);
 
   for (const mode of ["abort", "thinking", "model", "timeout"] as const) {
-    test(`SK14-cancel ${virtual ? "virtual" : "physical"} ${mode} never applies stale selected content`, async () => {
-      const f = await start({ JEV_TIMEOUT_MS: mode === "timeout" ? "80" : "5000" }, virtual);
+    test(`SK14-cancel physical ${mode} never applies stale selected content`, async () => {
+      const f = await start({ JEV_TIMEOUT_MS: mode === "timeout" ? "80" : "5000" });
       f.classifierDelay = 500;
       const offset = f.records.length;
       await f.command("prompt", { message: task });
@@ -401,8 +392,7 @@ for (const virtual of [false, true]) {
       await f.wait(() => f.classifierAborts === 1);
       expect(f.classifications).toHaveLength(1);
       expect(providerText(f)).not.toContain("<skill_relevance>");
-      if (mode === "abort" || (virtual && mode !== "timeout"))
-        expect(f.generations).toHaveLength(0);
+      if (mode === "abort") expect(f.generations).toHaveLength(0);
       if (mode === "timeout") expect(f.generations).toHaveLength(1);
       const entries = (
         (await f.command("get_entries")).data as { entries: { customType?: string }[] }
@@ -483,9 +473,9 @@ test("SK14-no-questions-continuation without previous effort skips matching and 
   expect(providerText(f)).not.toContain("<skill_relevance>");
 }, 20000);
 
-for (const virtual of [false, true]) {
-  test(`SK14-repeated-content ${virtual ? "virtual" : "physical"} repeated selection references unchanged visible instructions`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`SK14-repeated-content physical repeated selection references unchanged visible instructions`, async () => {
+    const f = await start({});
     await f.prompt(task);
     await f.prompt("Please diagnose the next independent failing test using that procedure");
     expect(f.classifications).toHaveLength(2);
@@ -494,9 +484,9 @@ for (const virtual of [false, true]) {
   }, 20000);
 }
 
-for (const virtual of [false, true]) {
-  test(`SK14-compaction ${virtual ? "virtual" : "physical"} fresh selection reloads content removed from visible history`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`SK14-compaction physical fresh selection reloads content removed from visible history`, async () => {
+    const f = await start({});
     await f.prompt(task);
     f.response = response("(none)");
     f.modelText = "Compaction context. ".repeat(200);
@@ -550,9 +540,9 @@ test("SK14-batch-none other qualifying batch leader can win without dropped cand
   expect(providerText(fixture)).not.toContain("BODY_0_END");
 }, 20000);
 
-for (const virtual of [false, true]) {
-  test(`SK14-rerank-cancel ${virtual ? "virtual" : "physical"} abort during optional second call stops generation`, async () => {
-    const f = await start({ JEV_SKILL_RERANK: "true", JEV_TIMEOUT_MS: "5000" }, virtual);
+{
+  test(`SK14-rerank-cancel physical abort during optional second call stops generation`, async () => {
+    const f = await start({ JEV_SKILL_RERANK: "true", JEV_TIMEOUT_MS: "5000" });
     f.classifierResponse = () => {
       f.classifierDelay = 2000;
       return response();
@@ -571,9 +561,9 @@ for (const virtual of [false, true]) {
   }, 20000);
 }
 
-for (const virtual of [false, true]) {
-  test(`SK14-stripped-identity ${virtual ? "virtual" : "physical"} newer unidentified selection cannot resurrect older skill`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`SK14-stripped-identity physical newer unidentified selection cannot resurrect older skill`, async () => {
+    const f = await start({});
     await f.prompt(task);
     await f.command("prompt", { message: "/fixture-drop-input-identity" });
     f.response = response("slides");
@@ -594,12 +584,14 @@ for (const virtual of [false, true]) {
 }
 
 for (const disabled of [false, true]) {
-  test(`SK14-no-ownership virtual ${disabled ? "disabled" : "no eligible"} skill path does not tag user`, async () => {
+  test(`SK14-no-ownership physical ${disabled ? "disabled" : "no eligible"} skill path does not tag user`, async () => {
     fixture = new PiFixture();
     fixture.skills = [{ name: "debugging", disabled: !disabled, body }];
-    fixture.selectRouter = true;
     fixture.response = response();
-    await fixture.startWithRouting(routing, { JEV_SKILLS_ENABLED: String(!disabled) });
+    await fixture.startWithRouting(
+      {},
+      { JEV_SKILLS_ENABLED: String(!disabled), JEV_EFFORT_ENABLED: "false" },
+    );
     await fixture.prompt(task);
     const entries = (
       (await fixture.command("get_entries")).data as {
@@ -634,9 +626,9 @@ test("SK14-owned-user physical combined uses one persisted identity without raw 
   expect(JSON.stringify(f.classifications)).not.toContain(id as string);
 }, 20000);
 
-for (const virtual of [false, true]) {
-  test(`SK14-native-auto ${virtual ? "virtual" : "physical"} exact visible native resource needs reference only`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`SK14-native-auto physical exact visible native resource needs reference only`, async () => {
+    const f = await start({});
     await f.prompt("/skill:debugging run procedure");
     await f.prompt(task);
     expect(f.classifications).toHaveLength(1);
@@ -645,9 +637,9 @@ for (const virtual of [false, true]) {
   }, 20000);
 }
 
-for (const virtual of [false, true]) {
-  test(`SK14-native-changed ${virtual ? "virtual" : "physical"} changed body must be injected fully`, async () => {
-    const f = await start({}, virtual);
+{
+  test(`SK14-native-changed physical changed body must be injected fully`, async () => {
+    const f = await start({});
     await f.prompt("/skill:debugging run procedure");
     const path = `${f.directory}/agent/skills/debugging/SKILL.md`;
     const original = await readFile(path, "utf8");
@@ -659,25 +651,23 @@ for (const virtual of [false, true]) {
     expect(await readFile(path, "utf8")).toBe(original.replace(body, changed));
   }, 20000);
 
-  test(`SK14-native-other ${virtual ? "virtual" : "physical"} identical body at different resource path does not suppress selection`, async () => {
+  test(`SK14-native-other physical identical body at different resource path does not suppress selection`, async () => {
     fixture = new PiFixture();
     fixture.skills = [
       { name: "debugging", body },
       { name: "other-debugging", body },
     ];
     fixture.response = response();
-    if (virtual) {
-      fixture.selectRouter = true;
-    }
-    const f = await fixture.startWithRouting(virtual ? routing : {});
+
+    const f = await fixture.startWithRouting({});
     await f.prompt("/skill:other-debugging run procedure");
     await f.prompt(task);
     expect(providerText(f, 1).split(body)).toHaveLength(3);
     expect(providerText(f, 1)).not.toContain("already loaded above; instructions unchanged");
   }, 20000);
 
-  test(`SK14-native-compacted ${virtual ? "virtual" : "physical"} absent native body cannot suppress fresh selection`, async () => {
-    const f = await start({}, virtual);
+  test(`SK14-native-compacted physical absent native body cannot suppress fresh selection`, async () => {
+    const f = await start({});
     await f.prompt("/skill:debugging run procedure");
     f.response = response("(none)");
     f.modelText = "Compaction context. ".repeat(200);

@@ -1,17 +1,18 @@
 # Jev Pilot → Pi: Faithful Port Scope
 
-Status: product direction confirmed; capability boundaries proposed for review before module specifications and implementation.
+Status: updated by operator decision removing automatic main-model routing. Historical acceptance and unfinished checkpoints remain historical; candidate requires fresh review and regression before installation.
 
 ## Baseline and authority
 
 Port Jev Pilot 0.12.1 at `5d27135b34edf81b40c0bf1df01ae401f6b72ea7` to Pi upstream. Preserve selected upstream behavior; replace host integration only. User's latest direction supersedes proposed execution profiles, automatic benchmark/cost ranking and new role mechanisms. Research remains historical evidence, not implementation requirements.
 
-Previously verified target: Pi 1.3.0. Recheck stable version and contracts before implementation; do not silently move to unreleased APIs.
+Current verified host target: official Pi 1.4.0. Revalidate contracts on upgrades.
 
 ## Confirmed behavior
 
-- Three configurable tiers: `fast`, `balanced`, `deep`, with upstream classification rubric and confidence policy. Resolve configured physical models through Pi's qualified provider/model registry.
-- Effort remains a separate decision. Preserve upstream rubric and thresholds, applying only supported Pi levels; expose requested versus effective settings when adaptation is required.
+- Ordinary-worker routing retains three configurable tiers: `fast`, `balanced`, `deep`, with upstream classification rubric and confidence policy. Resolve configured physical models through Pi's qualified provider/model registry.
+- Main selection stays user-owned and physical: no `jev/auto`, main tier dispatch, router registration or main-router state/status. Worker tiers are JSON-only `jevPilot.tiers`; obsolete `mainRoutingEnabled` is ignored and should be removed. Legacy routing environment mappings remain ignored; unrelated auth/env settings are unchanged.
+- Effort remains a separate decision, unchanged pending separate cache investigation. Preserve upstream rubric and thresholds, applying only supported Pi levels; expose requested versus effective settings when adaptation is required.
 - Custom slots preserve `name`, `model`, `when`, maximum eight slots, mode eligibility and default read-only bulk-work description. They are classifier candidates, not automatically bound worker roles.
 - `standard`, `budget`, `junior-lead` retain upstream meaning. Named junior uses the configured slot, not a new pool-ranking algorithm.
 - System One endpoint/auth/model are configurable; default decision model is Jev. Preserve combined typed questions, bounded context and applicable batching behavior.
@@ -24,6 +25,8 @@ Previously verified target: Pi 1.3.0. Recheck stable version and contracts befor
 
 ## Scope exclusions
 
+Automatic main-model routing is removed by operator decision; no replacement routing engine or private host patch.
+
 Excluded feature IDs: 02 mid-turn effort escalation (including escalation triggered by quality/circle detection; step-back advice may remain under feature 07 without changing effort); 11 external CLI review; 12 proactive worker health/fallback; 15 pet; 16 broad live controls/session statistics. Minimal report/tuning/config interfaces required by selected capabilities remain in scope. Registry/config validation is not proactive health probing. Do not reintroduce excluded features via upstream imports.
 
 No automatic benchmark feeds, model score/cost optimizer, execution-profile system, invented expert tier, or Pi-specific reviewer-role product behavior.
@@ -33,7 +36,7 @@ No automatic benchmark feeds, model score/cost optimizer, execution-profile syst
 | Module ID | Responsibility | Depends on |
 |---|---|---|
 | decision-policy | Upstream task/effort/strategy/quality questions, parsing and pure policy | — |
-| pi-routing | Config, System One transport, Pi lifecycle, tier resolution and main routing | decision-policy |
+| pi-routing | Config, System One transport, physical effort lifecycle and worker tier resolution | decision-policy |
 | skill-guidance | Skill catalog/matching, combined decision call and design context | pi-routing |
 | crew-adapter | Custom slots, modes, named junior and subagent model/effort routing | pi-routing |
 | decision-history | Ledger/report, correction attribution, tuning proposals/apply/reset | pi-routing |

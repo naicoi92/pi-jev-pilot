@@ -8,12 +8,9 @@ import {
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import { isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
-import { effortEnabled, type Decision } from "./system-one.ts";
-import { TIER_ORDER, selectTier, type TierDecision } from "./tier-policy.ts";
-import { RouterRegistration } from "./router-registration.ts";
-import { configuredTiers, mainRoutingEnabled } from "./routing-settings.ts";
+import { effortEnabled } from "./system-one.ts";
 import { classifierState } from "./classifier-context.ts";
-import { decideMain, eligibleSkills, skillBlock } from "./skill-matching.ts";
+import { decideMain, skillBlock } from "./skill-matching.ts";
 import type { SkillCandidate } from "./skill-policy.ts";
 import { guidanceEnabled, observeLoop, stepBackNote } from "./guidance-policy.ts";
 
@@ -24,7 +21,7 @@ const STATE_TYPE = "jev-pilot:effort";
 const APPLICATION_TYPE = "jev-pilot:effort-application";
 const RESTORED_TYPE = "jev-pilot:effort-restored";
 
-/** Session-only routing: physical effort path or explicitly selected Jev virtual model. */
+/** User-selected physical main model; session effort, skills and advice only. */
 export default function (pi: ExtensionAPI): void {
   const executionChildren = new Set<string>();
   pi.events.on("jev-pilot:execution-child:v1", (value: unknown) => {
@@ -70,157 +67,6 @@ export default function (pi: ExtensionAPI): void {
   // Our completed write clears active first so its notification cannot cancel it.
   pi.on("model_select", invalidateSelection);
   pi.on("thinking_level_select", invalidateSelection);
-  let settings: unknown = {};
-  const registration = new RouterRegistration(pi);
-  const registerRouter = (ctx: ExtensionContext) => {
-    registration.register<MainRouteState>(ctx, {
-      provider: "jev",
-      id: "auto",
-      name: "Jev Auto",
-      thinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
-      async route(request, ctx) {
-        const tiers = configuredTiers(settings);
-        const models = TIER_ORDER.map((tier) => physicalModel(ctx, tiers[tier]));
-        const sticky = request.failed ?? request.previous;
-        // Native previous/failed is a physical response on this request branch.
-        // A manual physical turn is newer than any saved Jev route state.
-        // Pi omits previous when a successful response's identity has vanished
-        // from the registry. Do not hide that invalid baseline behind saved state.
-        const latest = !sticky
-          ? request.messages.findLast(
-              (message) =>
-                message.role === "assistant" &&
-                message.stopReason !== "error" &&
-                message.stopReason !== "aborted",
-            )
-          : undefined;
-        const identity = sticky
-          ? `${sticky.model.provider}/${sticky.model.id}`
-          : latest?.role === "assistant"
-            ? `${latest.provider}/${latest.model}`
-            : (request.state?.physical ?? tiers.balanced);
-        const baselineModel = physicalModel(ctx, identity);
-        const baselineThinking =
-          request.reason === "user"
-            ? request.thinkingLevel
-            : (request.state?.effective ?? sticky?.thinkingLevel ?? request.thinkingLevel);
-        if (request.reason !== "user") {
-          const model = sticky
-            ? physicalModel(ctx, `${sticky.model.provider}/${sticky.model.id}`)
-            : baselineModel;
-          return {
-            model,
-            thinkingLevel: clampThinkingLevel(model, sticky?.thinkingLevel ?? baselineThinking),
-            state: request.state,
-          };
-        }
-        const batch: string[] = [];
-        for (let index = request.messages.length - 1; index >= 0; index--) {
-          const message = request.messages[index]!;
-          if (message.role !== "user") break;
-          batch.unshift(
-            typeof message.content === "string"
-              ? message.content
-              : message.content
-                  .filter((part) => part.type === "text")
-                  .map((part) => part.text)
-                  .join("\n"),
-          );
-        }
-        const prompt = batch.findLast((text) => !isContinuation(text)) ?? batch.at(-1) ?? "";
-        if (!prompt.trim() || explicitCommand(prompt))
-          return {
-            model: baselineModel,
-            thinkingLevel: clampThinkingLevel(baselineModel, baselineThinking),
-            state: request.state,
-          };
-        const withEffort =
-          effortEnabled() &&
-          models.some((model) => model.reasoning && getSupportedThinkingLevels(model).length > 1);
-        active?.abort();
-        const controller = new AbortController();
-        active = controller;
-        const revision = selectionRevision;
-        const session = ctx.sessionManager.getSessionId();
-        const leaf = ctx.sessionManager.getLeafId();
-        const cancel = () => controller.abort();
-        request.signal?.addEventListener("abort", cancel, { once: true });
-        if (request.signal?.aborted) cancel();
-        try {
-          const previous = request.state?.decision ?? null;
-          const reused = previous?.tier !== undefined && isContinuation(prompt);
-          const { result, skill, advice } = reused
-            ? { result: { outcome: "classified" as const, decision: previous }, skill: undefined }
-            : await decideMain(
-                pi,
-                prompt,
-                () =>
-                  classifierState(
-                    ctx,
-                    prompt,
-                    pi.getAllTools().map((tool) => tool.name),
-                  ),
-                controller.signal,
-                { tier: true, effort: withEffort },
-                ctx.cwd,
-              );
-          if (request.signal?.aborted) throw new Error("Jev routing cancelled.");
-          if (
-            controller.signal.aborted ||
-            revision !== selectionRevision ||
-            session !== ctx.sessionManager.getSessionId() ||
-            leaf !== ctx.sessionManager.getLeafId()
-          ) {
-            throw new Error("Jev routing invalidated by a selection or session change.");
-          }
-          const decision = result?.outcome === "classified" ? result.decision : null;
-          if (skill || advice) {
-            const users = [];
-            for (const entry of ctx.sessionManager.getBranch().reverse()) {
-              if (entry.type !== "message") continue;
-              if (entry.message.role !== "user") break;
-              users.unshift(entry.message);
-            }
-            const owner =
-              users.findLast((message) => !isContinuation(userText(message.content))) ??
-              users.at(-1);
-            if (owner && "jevPilotInputId" in owner) {
-              if (skill) pi.appendEntry(SKILL_TYPE, { inputId: owner.jevPilotInputId, skill });
-              if (advice) pi.appendEntry(ADVICE_TYPE, { inputId: owner.jevPilotInputId, advice });
-            }
-          }
-          const physical = decision?.tier
-            ? (selectTier(decision as TierDecision, identity, tiers) ?? identity)
-            : identity;
-          const model = physicalModel(ctx, physical);
-          const requested =
-            withEffort &&
-            model.reasoning &&
-            getSupportedThinkingLevels(model).length > 1 &&
-            decision
-              ? (selectEffort(decision, baselineThinking, prompt) ?? baselineThinking)
-              : baselineThinking;
-          const effective = clampThinkingLevel(model, requested);
-          const state: MainRouteState = {
-            physical,
-            requested,
-            effective,
-            outcome: reused ? "reused" : (result?.outcome ?? "skipped"),
-            source: decision ? "decision" : request.state || sticky ? "retained" : "default",
-            decision: decision ?? previous,
-          };
-          ctx.ui.setStatus(
-            "jev-pilot",
-            `jev/auto → ${physical} · ${requested} → ${effective} · ${state.source}/${state.outcome}`,
-          );
-          return { model, thinkingLevel: effective, state };
-        } finally {
-          request.signal?.removeEventListener("abort", cancel);
-          if (active === controller) active = undefined;
-        }
-      },
-    });
-  };
   const dispose = () => {
     resetLoop();
     active?.abort();
@@ -246,7 +92,7 @@ export default function (pi: ExtensionAPI): void {
     pending = [];
   };
   const applicable = (ctx: ExtensionContext) =>
-    !isJevModel(ctx) && !!ctx.model?.reasoning && getSupportedThinkingLevels(ctx.model).length > 1;
+    !!ctx.model?.reasoning && getSupportedThinkingLevels(ctx.model).length > 1;
   const restoreThinking = (ctx: ExtensionContext, fromTree = false) => {
     // Inapplicable/disabled effort has no consumer and must not create diagnostics
     // or setter writes, including when retained history contains old decisions.
@@ -269,23 +115,9 @@ export default function (pi: ExtensionAPI): void {
     pi.appendEntry(RESTORED_TYPE, { thinkingLevel: desired });
     pi.setThinkingLevel(desired);
   };
-  pi.on("session_shutdown", (_event, ctx) => {
-    dispose();
-    registration.release(ctx);
-  });
+  pi.on("session_shutdown", dispose);
   pi.on("session_start", (_event, ctx) => {
     dispose();
-    settings = pi.getSettings();
-    try {
-      if (mainRoutingEnabled(settings)) registerRouter(ctx);
-      else registration.release(ctx);
-    } catch (error) {
-      registration.release(ctx);
-      ctx.ui.notify(
-        error instanceof Error ? error.message : "Invalid Jev routing settings.",
-        "error",
-      );
-    }
     restoreThinking(ctx);
   });
   pi.on("session_tree", (_event, ctx) => {
@@ -369,30 +201,6 @@ export default function (pi: ExtensionAPI): void {
     if (event.message.role !== "user" || executionChildren.has(ctx.sessionManager.getSessionId()))
       return;
     resetLoop();
-    if (isJevModel(ctx)) {
-      const session = ctx.sessionManager.getSessionId();
-      const leaf = ctx.sessionManager.getLeafId();
-      const revision = selectionRevision;
-      const prompt = userText(event.message.content);
-      if (!prompt.trim() || explicitCommand(prompt)) return;
-      const skills = await eligibleSkills(pi, prompt);
-      if (
-        (skills.length ||
-          (!isContinuation(prompt) &&
-            (guidanceEnabled("QUALITY") ||
-              guidanceEnabled("STRATEGY") ||
-              guidanceEnabled("DESIGN")))) &&
-        !ctx.signal?.aborted &&
-        session === ctx.sessionManager.getSessionId() &&
-        revision === selectionRevision &&
-        leaf === ctx.sessionManager.getLeafId()
-      ) {
-        const existing =
-          "jevPilotInputId" in event.message ? event.message.jevPilotInputId : undefined;
-        inputIds.set(event.message, typeof existing === "string" ? existing : crypto.randomUUID());
-      }
-      return;
-    }
     // Pi persisted the preceding queued user at message_end. Commit it before a
     // following continuation reads its predecessor, even in steering mode "all".
     commitPending(ctx);
@@ -446,7 +254,7 @@ export default function (pi: ExtensionAPI): void {
                 pi.getAllTools().map((tool) => tool.name),
               ),
             controller.signal,
-            { tier: false, effort: withEffort },
+            withEffort,
             ctx.cwd,
           );
       if (
@@ -522,31 +330,6 @@ function userText(content: string | { type: string; text?: string }[]): string {
         .filter((part) => part.type === "text")
         .map((part) => part.text)
         .join("\n");
-}
-
-interface MainRouteState {
-  physical: string;
-  requested: ModelThinkingLevel;
-  effective: ModelThinkingLevel;
-  outcome: string;
-  source: "decision" | "retained" | "default";
-  decision: Decision | null;
-}
-function isJevModel(ctx: ExtensionContext): boolean {
-  return ctx.model?.provider === "jev" && ctx.model.id === "auto" && ctx.model.api === "pi-virtual";
-}
-function physicalModel(ctx: ExtensionContext, identity: string) {
-  const slash = identity.indexOf("/");
-  const model = ctx.modelRegistry.find(identity.slice(0, slash), identity.slice(slash + 1));
-  if (!model || model.api === "pi-virtual")
-    throw new Error(
-      `Jev target ${identity} must resolve to an exact physical Pi model. Check jevPilot.tiers or JEV_TIER_FAST/BALANCED/DEEP and the model registry.`,
-    );
-  if (!ctx.modelRegistry.hasConfiguredAuth(model))
-    throw new Error(
-      `Configure Pi authentication for Jev target ${identity}; no replacement model will be selected.`,
-    );
-  return model;
 }
 
 interface EffortState extends DecisionState {

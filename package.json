@@ -1,7 +1,7 @@
 {
   "name": "pi-jev-pilot",
   "version": "0.1.0",
-  "description": "Jev Pilot effort, optional main-model routing, skill matching and strategy/quality/design advice for Pi",
+  "description": "Jev Pilot effort, worker routing, skill matching and strategy/quality/design advice for Pi",
   "keywords": [
     "pi-package"
   ],
