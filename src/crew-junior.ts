@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerAgentViaEvents } from "pi-subagents/agents";
+import { fileURLToPath } from "node:url";
 import { crewConfig } from "./crew-config.ts";
 // Pinned hooks/crew.ts juniorSpec. Tool names use the equivalent Pi tools.
 const definition = {
@@ -42,7 +43,13 @@ export function registerCrewJunior(pi: ExtensionAPI): void {
       registration = registerAgentViaEvents({
         pi,
         name: "jev-pilot:junior",
-        definition: { ...definition, model: junior.model },
+        definition: {
+          ...definition,
+          model: junior.model,
+          subagentOnlyExtensions: [
+            fileURLToPath(new URL("./junior-turn-bound.ts", import.meta.url)),
+          ],
+        },
       });
       error = undefined;
     } catch (cause) {
