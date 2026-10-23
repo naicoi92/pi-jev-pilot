@@ -48,28 +48,20 @@ for (const value of [null, true, 1, {}, [], "", "unqualified", "local/white spac
   });
 }
 
-test("routing-settings explicit environment wins per field including false and invalid empty", () => {
-  process.env.JEV_MAIN_ROUTING_ENABLED = "false";
-  expect(mainRoutingEnabled({ jevPilot: { mainRoutingEnabled: true } })).toBe(false);
-  expect(mainRoutingEnabled({ jevPilot: null })).toBe(false);
-  process.env.JEV_MAIN_ROUTING_ENABLED = "true";
-  expect(mainRoutingEnabled({ jevPilot: { mainRoutingEnabled: null } })).toBe(true);
-  process.env.JEV_MAIN_ROUTING_ENABLED = "";
-  expect(() => mainRoutingEnabled()).toThrow("JEV_MAIN_ROUTING_ENABLED");
-  process.env.JEV_TIER_FAST = "override/fast";
-  expect(configuredTiers({ jevPilot: { tiers: { ...tiers, fast: null } } })).toEqual({
-    ...tiers,
-    fast: "override/fast",
+for (const value of ["true", "false", "", "invalid"]) {
+  test(`routing-settings legacy environment ${JSON.stringify(value)} ignored; JSON authoritative`, () => {
+    for (const key of keys) process.env[key] = value;
+    expect(mainRoutingEnabled()).toBe(false);
+    expect(() => configuredTiers()).toThrow("jevPilot.tiers.fast");
+    expect(mainRoutingEnabled({ jevPilot: { mainRoutingEnabled: true } })).toBe(true);
+    expect(mainRoutingEnabled({ jevPilot: { mainRoutingEnabled: false } })).toBe(false);
+    expect(() => mainRoutingEnabled({ jevPilot: { mainRoutingEnabled: null } })).toThrow(
+      "jevPilot.mainRoutingEnabled",
+    );
+    expect(configuredTiers({ jevPilot: { tiers } })).toEqual(tiers);
+    expect(() => configuredTiers({ jevPilot: null })).toThrow("jevPilot");
   });
-  process.env.JEV_TIER_FAST = "";
-  expect(() => configuredTiers({ jevPilot: { tiers } })).toThrow("JEV_TIER_FAST");
-});
-
-test("routing-settings all explicit tiers bypass unused malformed JSON", () => {
-  for (const tier of ["fast", "balanced", "deep"] as const)
-    process.env[`JEV_TIER_${tier.toUpperCase()}`] = tiers[tier];
-  expect(configuredTiers({ jevPilot: null })).toEqual(tiers);
-});
+}
 
 for (const value of [null, [], true, 1, "invalid"]) {
   test(`routing-settings malformed effective settings ${JSON.stringify(value)} fail at unknown boundary`, () => {

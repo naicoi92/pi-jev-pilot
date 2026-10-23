@@ -10,6 +10,7 @@ import {
 import { isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
 import { effortEnabled, type Decision } from "./system-one.ts";
 import { TIER_ORDER, selectTier, type TierDecision } from "./tier-policy.ts";
+import { RouterRegistration } from "./router-registration.ts";
 import { configuredTiers, mainRoutingEnabled } from "./routing-settings.ts";
 import { classifierState } from "./classifier-context.ts";
 import { decideMain, eligibleSkills, skillBlock } from "./skill-matching.ts";
@@ -70,10 +71,9 @@ export default function (pi: ExtensionAPI): void {
   pi.on("model_select", invalidateSelection);
   pi.on("thinking_level_select", invalidateSelection);
   let settings: unknown = {};
-  let registered = false;
-  const registerRouter = () => {
-    if (registered) return;
-    pi.registerVirtualModel<MainRouteState>({
+  const registration = new RouterRegistration(pi);
+  const registerRouter = (ctx: ExtensionContext) => {
+    registration.register<MainRouteState>(ctx, {
       provider: "jev",
       id: "auto",
       name: "Jev Auto",
@@ -220,10 +220,7 @@ export default function (pi: ExtensionAPI): void {
         }
       },
     });
-    registered = true;
   };
-  // Effective host settings are runtime-bound, never available in the factory.
-  if (mainRoutingEnabled()) registerRouter();
   const dispose = () => {
     resetLoop();
     active?.abort();
@@ -272,27 +269,18 @@ export default function (pi: ExtensionAPI): void {
     pi.appendEntry(RESTORED_TYPE, { thinkingLevel: desired });
     pi.setThinkingLevel(desired);
   };
-  pi.on("session_shutdown", () => {
+  pi.on("session_shutdown", (_event, ctx) => {
     dispose();
-    if (registered) {
-      pi.unregisterVirtualModel("jev", "auto");
-      registered = false;
-    }
+    registration.release(ctx);
   });
   pi.on("session_start", (_event, ctx) => {
     dispose();
     settings = pi.getSettings();
     try {
-      if (mainRoutingEnabled(settings)) registerRouter();
-      else if (registered) {
-        pi.unregisterVirtualModel("jev", "auto");
-        registered = false;
-      }
+      if (mainRoutingEnabled(settings)) registerRouter(ctx);
+      else registration.release(ctx);
     } catch (error) {
-      if (registered) {
-        pi.unregisterVirtualModel("jev", "auto");
-        registered = false;
-      }
+      registration.release(ctx);
       ctx.ui.notify(
         error instanceof Error ? error.message : "Invalid Jev routing settings.",
         "error",

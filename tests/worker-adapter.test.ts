@@ -30,15 +30,16 @@ async function fixture(defaultContext = "fresh") {
   process.env.PI_CODING_AGENT_DIR = agent;
   process.env.JEV_WORKER_ROUTING_ENABLED = "true";
   process.env.JEV_SYSTEM_ONE_API_KEY = "fixture";
-  for (const tier of ["FAST", "BALANCED", "DEEP"])
-    process.env[`JEV_TIER_${tier}`] = `local/${tier.toLowerCase()}`;
+
   const hooks = new Map<string, Function[]>();
   const listeners = new Map<string, Function[]>();
   const controls: unknown[] = [];
   const entries: unknown[] = [];
   const signal = new AbortController();
   const session = crypto.randomUUID();
-  let settings: unknown = {};
+  let settings: unknown = {
+    jevPilot: { tiers: { fast: "local/fast", balanced: "local/balanced", deep: "local/deep" } },
+  };
   const pi = {
     getSettings: () => settings,
     on(name: string, handler: Function) {
@@ -96,6 +97,7 @@ async function fixture(defaultContext = "fresh") {
   const call = (input: Record<string, unknown>, id = "call") =>
     fire("tool_call", { toolName: "subagent", toolCallId: id, input });
   shutdowns.push(() => fire("session_shutdown"));
+  await fire("session_start");
   let requests = 0;
   const payloads: Record<string, unknown>[] = [];
   let delay = 0;
@@ -211,7 +213,12 @@ test("WORKER-26 cleanup stops only routed async identity and is idempotent", asy
 
 test("WORKER-13 invalid physical mapping fails actionably without launching", async () => {
   const f = await fixture();
-  process.env.JEV_TIER_DEEP = "missing/unknown";
+  f.settings({
+    jevPilot: {
+      tiers: { fast: "local/fast", balanced: "local/balanced", deep: "missing/unknown" },
+    },
+  });
+  await f.fire("session_start");
   await expect(f.call({ agent: "worker", task: "Do work" })).rejects.toThrow(
     "exact physical Pi model",
   );

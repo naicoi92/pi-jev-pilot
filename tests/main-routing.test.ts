@@ -4,10 +4,12 @@ import { PiFixture, answer, type RecordData } from "./fixtures/pi-cli.ts";
 
 const task = "Please review the complete patch with particular care for failure modes";
 const config = {
-  JEV_MAIN_ROUTING_ENABLED: "true",
-  JEV_TIER_FAST: "fixture-fast/lookup",
-  JEV_TIER_BALANCED: "fixture/fixture-model",
-  JEV_TIER_DEEP: "fixture-deep/judgment",
+  mainRoutingEnabled: true,
+  tiers: {
+    fast: "fixture-fast/lookup",
+    balanced: "fixture/fixture-model",
+    deep: "fixture-deep/judgment",
+  },
 };
 let fixture: PiFixture | undefined;
 afterEach(async () => {
@@ -23,12 +25,14 @@ function routed(tier = "deep", level = "high", confidence = 0.95, risky = 0): Re
     },
   };
 }
-async function start(env: Record<string, string> = {}): Promise<PiFixture> {
+async function start(
+  env: Record<string, string> = {},
+  tiers: Partial<typeof config.tiers> = {},
+): Promise<PiFixture> {
   fixture = new PiFixture();
-  fixture.startupProvider = "jev";
-  fixture.startupModel = "auto";
+  fixture.selectRouter = true;
   fixture.response = routed();
-  return fixture.start({ ...config, ...env });
+  return fixture.startWithRouting({ ...config, tiers: { ...config.tiers, ...tiers } }, env);
 }
 
 test("MAIN-05a virtual selection dispatches configured deep with one combined decision", async () => {
@@ -63,11 +67,14 @@ test("MAIN-05b effort-disabled routing asks tier and risk only", async () => {
 }, 20000);
 
 test("MAIN-05c non-reasoning candidate set omits unused effort questions", async () => {
-  const f = await start({
-    JEV_TIER_FAST: "fixture/fixture-plain-model",
-    JEV_TIER_BALANCED: "fixture/fixture-plain-model",
-    JEV_TIER_DEEP: "fixture/fixture-plain-model",
-  });
+  const f = await start(
+    {},
+    {
+      fast: "fixture/fixture-plain-model",
+      balanced: "fixture/fixture-plain-model",
+      deep: "fixture/fixture-plain-model",
+    },
+  );
   f.response = { answers: { tier: { choice: "deep", confidence: 0.99 }, risky: { noul: 0 } } };
   await f.prompt(task);
   expect(f.generations[0]!.model).toBe("fixture-plain-model");
@@ -76,7 +83,8 @@ test("MAIN-05c non-reasoning candidate set omits unused effort questions", async
 
 test("MAIN-02a default-off ignores unused tier config without changing physical selection or defaults", async () => {
   fixture = new PiFixture();
-  await fixture.start({ JEV_TIER_FAST: "invalid" });
+  fixture.settings = { jevPilot: { tiers: { fast: "invalid" } } };
+  await fixture.start();
   const settings = await Bun.file(`${fixture.directory}/agent/settings.json`).text();
   await fixture.prompt(task);
   expect(fixture.generations[0]!.model).toBe("fixture-model");
@@ -91,7 +99,7 @@ test("MAIN-02a default-off ignores unused tier config without changing physical 
 
 test("MAIN-02b enabled physical selection remains explicit effort-only", async () => {
   fixture = new PiFixture();
-  await fixture.start(config);
+  await fixture.startWithRouting(config);
   await fixture.prompt(task);
   expect(fixture.generations[0]!.model).toBe("fixture-model");
   expect(Object.keys(fixture.classifications[0]!.questions as object).sort()).toEqual([
@@ -101,10 +109,13 @@ test("MAIN-02b enabled physical selection remains explicit effort-only", async (
 }, 20000);
 
 test("MAIN-02c duplicate tier identities are permitted without changing global defaults", async () => {
-  const f = await start({
-    JEV_TIER_FAST: config.JEV_TIER_BALANCED,
-    JEV_TIER_DEEP: config.JEV_TIER_BALANCED,
-  });
+  const f = await start(
+    {},
+    {
+      fast: config.tiers.balanced,
+      deep: config.tiers.balanced,
+    },
+  );
   const settings = await Bun.file(`${f.directory}/agent/settings.json`).text();
   await f.prompt(task);
   expect(f.generations[0]!.model).toBe("fixture-model");
@@ -113,7 +124,7 @@ test("MAIN-02c duplicate tier identities are permitted without changing global d
 
 for (const invalid of ["", "unqualified", "fixture/not-found", "jev/auto"]) {
   test(`MAIN-13a invalid tier target ${JSON.stringify(invalid)} stops without substitution`, async () => {
-    const f = await start({ JEV_TIER_FAST: invalid });
+    const f = await start({}, { fast: invalid });
     await f.prompt(task);
     expect(f.generations).toHaveLength(0);
     expect(f.classifications).toHaveLength(0);
@@ -123,9 +134,8 @@ for (const invalid of ["", "unqualified", "fixture/not-found", "jev/auto"]) {
 test("MAIN-13b unauthenticated tier stops without probing another provider", async () => {
   fixture = new PiFixture();
   fixture.configuredModelKey = false;
-  fixture.startupProvider = "jev";
-  fixture.startupModel = "auto";
-  await fixture.start(config);
+  fixture.selectRouter = true;
+  await fixture.startWithRouting(config);
   await fixture.prompt(task);
   expect(fixture.generations).toHaveLength(0);
   expect(fixture.classifications).toHaveLength(0);
@@ -140,7 +150,7 @@ test("MAIN-13c initial classifier failure uses configured balanced as an explici
   await f.prompt(task);
   expect(f.generations[0]).toMatchObject({ model: "fixture-model", reasoning_effort: "medium" });
   expect(await routeReceipt(f)).toMatchObject({
-    physical: config.JEV_TIER_BALANCED,
+    physical: config.tiers.balanced,
     source: "default",
     outcome: "service-error",
     decision: null,
@@ -154,7 +164,7 @@ test("MAIN-13d classifier failure preserves valid previous physical route", asyn
   await f.prompt("Please investigate this different failure in full detail before proceeding");
   expect(f.generations.at(-1)).toMatchObject({ model: "judgment", reasoning_effort: "medium" });
   expect(await routeReceipt(f)).toMatchObject({
-    physical: config.JEV_TIER_DEEP,
+    physical: config.tiers.deep,
     source: "retained",
     outcome: "service-error",
   });
@@ -401,10 +411,10 @@ for (const tier of [
 
 test("MAIN-02d disabled capabilities make zero HTTP with unused invalid service config", async () => {
   fixture = new PiFixture();
+  fixture.settings = { jevPilot: { tiers: { fast: "invalid" } } };
   await fixture.start({
     JEV_EFFORT_ENABLED: "false",
     JEV_SYSTEM_ONE_URL: "invalid",
-    JEV_TIER_FAST: "invalid",
   });
   await fixture.prompt(task);
   expect(fixture.classifications).toHaveLength(0);

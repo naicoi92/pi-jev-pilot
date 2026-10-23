@@ -102,11 +102,12 @@ test("settings-json reload enables disables and replaces tiers without stale reg
   expect(f.generations.at(-1)!.model).toBe("fixture-model");
 }, 30000);
 
-test("settings-json explicit env false overrides true JSON without unused tier validation", async () => {
+test("settings-json conflicting legacy env ignored; JSON dispatch wins", async () => {
   const f = await start(true, { JEV_MAIN_ROUTING_ENABLED: "false", JEV_TIER_FAST: "invalid" });
-  expect(await routerCount(f)).toBe(0);
+  expect(await routerCount(f)).toBe(1);
+  await f.command("set_model", { provider: "jev", modelId: "auto" });
   await f.prompt(task);
-  expect(f.generations[0]!.model).toBe("fixture-model");
+  expect(f.generations[0]!.model).toBe("judgment");
 }, 20000);
 
 test("settings-json malformed applicable JSON tier stops dispatch actionably", async () => {
@@ -129,4 +130,17 @@ test("settings-json official CLI rejects JSON-only router startup before session
   expect(fixture.process.signalCode).toBeNull();
   expect(fixture.generations).toHaveLength(0);
   expect(fixture.classifications).toHaveLength(0);
+}, 20000);
+
+test("settings-json absent JSON stays default off despite legacy env", async () => {
+  fixture = new PiFixture();
+  const f = await fixture.start({
+    JEV_MAIN_ROUTING_ENABLED: "true",
+    JEV_TIER_FAST: "invalid",
+    JEV_TIER_BALANCED: "bad",
+    JEV_TIER_DEEP: "bad",
+  });
+  expect(await routerCount(f)).toBe(0);
+  await f.prompt(task);
+  expect(f.generations[0]!.model).toBe("fixture-model");
 }, 20000);

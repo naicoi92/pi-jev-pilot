@@ -132,7 +132,6 @@ for (const scenario of cases)
       PI_TELEMETRY: "0",
       PI_SUBAGENTS_TEMP_ROOT: join(directory, "runtime"),
       JEV_EFFORT_ENABLED: "true",
-      JEV_MAIN_ROUTING_ENABLED: "false",
       JEV_SKILLS_ENABLED: "false",
       JEV_STRATEGY_ENABLED:
         name === "workflow-guidance" || name === "slot-workflow" ? "true" : "false",
@@ -146,30 +145,21 @@ for (const scenario of cases)
           ? "false"
           : "true",
       JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
-      JEV_TIER_FAST: "local/parent",
-      JEV_TIER_BALANCED: "local/selected",
-      JEV_TIER_DEEP: riskOmitted ? "local/deep" : "local/configured",
       JEV_TIMEOUT_MS: name.includes("timeout") ? "100" : "5000",
     };
-    if (name === "json-only") {
-      delete env.JEV_MAIN_ROUTING_ENABLED;
-      delete env.JEV_TIER_FAST;
-      delete env.JEV_TIER_BALANCED;
-      delete env.JEV_TIER_DEEP;
-      await writeFile(
-        join(agentDir, "settings.json"),
-        JSON.stringify({
-          jevPilot: {
-            mainRoutingEnabled: true,
-            tiers: {
-              fast: "local/parent",
-              balanced: "local/selected",
-              deep: "local/configured",
-            },
+    await writeFile(
+      join(agentDir, "settings.json"),
+      JSON.stringify({
+        jevPilot: {
+          mainRoutingEnabled: name === "json-only",
+          tiers: {
+            fast: "local/parent",
+            balanced: "local/selected",
+            deep: riskOmitted ? "local/deep" : "local/configured",
           },
-        }),
-      );
-    }
+        },
+      }),
+    );
     if (slot || junior) {
       env.JEV_CREW_CONFIG = join(directory, "crew.json");
       await writeFile(
@@ -458,7 +448,12 @@ for (const scenario of cases)
     if (name.startsWith("profile"))
       await writeFile(
         join(agentDir, "settings.json"),
-        JSON.stringify({ subagents: { defaultSubagentContext: "fork" } }),
+        JSON.stringify({
+          jevPilot: {
+            tiers: { fast: "local/parent", balanced: "local/selected", deep: "local/configured" },
+          },
+          subagents: { defaultSubagentContext: "fork" },
+        }),
       );
     if (name === "junior-collision")
       await writeFile(

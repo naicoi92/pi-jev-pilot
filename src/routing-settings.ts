@@ -11,14 +11,8 @@ function pilot(settings: unknown): Record<string, unknown> {
   return "jevPilot" in effective ? object(effective.jevPilot, "jevPilot") : {};
 }
 
-/** Explicit environment values win per field, including empty/invalid values. */
+/** Main enablement is JSON-only; legacy routing environment values are ignored. */
 export function mainRoutingEnabled(settings: unknown = {}): boolean {
-  const env = process.env.JEV_MAIN_ROUTING_ENABLED;
-  if (env !== undefined) {
-    if (env !== "true" && env !== "false")
-      throw new Error("Set JEV_MAIN_ROUTING_ENABLED to true or false (default: false).");
-    return env === "true";
-  }
   const config = pilot(settings);
   if (!("mainRoutingEnabled" in config)) return false;
   if (typeof config.mainRoutingEnabled !== "boolean")
@@ -32,16 +26,12 @@ export function mainRoutingEnabled(settings: unknown = {}): boolean {
 export function configuredTiers(settings: unknown = {}): Tiers {
   return Object.fromEntries(
     TIER_ORDER.map((tier) => {
-      const key = `JEV_TIER_${tier.toUpperCase()}`;
-      let value: unknown = process.env[key];
-      if (value === undefined) {
-        const config = pilot(settings);
-        const tiers = "tiers" in config ? object(config.tiers, "jevPilot.tiers") : {};
-        value = tiers[tier];
-      }
+      const config = pilot(settings);
+      const tiers = "tiers" in config ? object(config.tiers, "jevPilot.tiers") : {};
+      const value = tiers[tier];
       if (typeof value !== "string" || !/^[^/\s]+\/\S+$/.test(value))
         throw new Error(
-          `Set ${key} or jevPilot.tiers.${tier} in Pi settings to a qualified physical provider/model identity.`,
+          `Set jevPilot.tiers.${tier} in Pi settings to a qualified physical provider/model identity.`,
         );
       return [tier, value];
     }),

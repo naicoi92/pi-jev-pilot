@@ -52,21 +52,13 @@ Automatic main-model routing is **off by default**. Set this object in Pi's `set
 
 Keep unrelated settings and package declarations intact. No credentials belong in `jevPilot`; keep System One keys in the environment and model authentication in Pi's normal authentication configuration. This package consumes only public `pi.getSettings()` after runtime initialization, so host recursive global/project merge, project trust, `PI_CODING_AGENT_DIR` and SDK agent-directory/settings overrides remain authoritative. It does not independently read project settings.
 
-**JSON-only startup:** start with a configured physical model, then select `/model` → `jev/auto`. No startup enablement flag or environment switch is required. On official Pi **1.4.0**, JSON registration occurs at `session_start`, after CLI model resolution: JSON-only `pi --model jev/auto` is **not supported**. Saved-default router restoration is **not verified**; do not rely on it. Enabling registration never automatically changes selected/default model. After editing settings, `/reload` (or restart) applies registration and tier changes; after enabling, explicitly select the router. Before disabling a selected router, select a physical model.
+**JSON-only startup:** start with a configured physical model, then select `/model` → `jev/auto`. No startup enablement flag or environment switch is required. On official Pi **1.4.0**, JSON registration occurs at `session_start`, after CLI model resolution: JSON-only `pi --model jev/auto` is **not supported**. Saved-default router startup is **not supported** (restoration unverified); start with a physical model. Enabling registration never automatically changes selected/default model. After editing settings, `/reload` (or restart) applies registration and tier changes; after enabling, explicitly select the router. Before disabling a selected router, select a physical model.
 
-Existing environment-only CLI startup remains supported:
+Main enablement and tier mappings are **JSON-only**. Legacy `JEV_MAIN_ROUTING_ENABLED` and `JEV_TIER_FAST/BALANCED/DEEP` are ignored, even when set or conflicting with JSON. This intentionally removes environment-only routing startup compatibility; there is no startup environment flag. Authentication keys (including `TYPESAFE_API_KEY`) and unrelated environment settings are unchanged.
 
-```bash
-export JEV_MAIN_ROUTING_ENABLED=true
-export JEV_TIER_FAST='provider/fast-model-id'
-export JEV_TIER_BALANCED='provider/balanced-model-id'
-export JEV_TIER_DEEP='other-provider/deep-model-id'
-pi --model jev/auto
-```
+Omitted enablement defaults to false; omitted tiers remain unconfigured and must be supplied before an applicable route/ordinary worker launch. Enablement accepts only a JSON boolean. Explicit null/wrong types and malformed applicable mappings fail with the field name, never silently select a substitute. Unknown settings keys are ignored. Disabled main routing and inapplicable workers do not validate unused tiers. Ordinary worker routing is independently enabled and uses the same effective JSON tiers even when main routing is off.
 
-Explicit `JEV_MAIN_ROUTING_ENABLED` and each `JEV_TIER_FAST/BALANCED/DEEP` override only their corresponding JSON field, including explicit `false` and malformed/empty values. Omitted enablement defaults to false; omitted tiers retain the existing unconfigured default and must be supplied before an applicable route/ordinary worker launch. JSON enablement accepts only a boolean; the environment switch accepts only `true` or `false`. Explicit null/wrong types and malformed applicable mappings fail with the field name, never silently select a substitute. Unknown settings keys are ignored. Disabled main routing and inapplicable workers do not validate unused tiers. Ordinary worker routing is independently enabled and uses the same effective tiers even when main routing is off.
-
-Tier mappings may be identical; the first slash separates provider from model ID, which may itself contain slashes. Physical selections continue using effort/skill matching without main tier routing. Registration changes require extension reload; JSON tiers use the host effective-settings snapshot refreshed at session start/reload, while explicit environment tier values are read per route. Neither path writes global defaults or automatically selects the router.
+Tier mappings may be identical; the first slash separates provider from model ID, which may itself contain slashes. Physical selections continue using effort/skill matching without main tier routing. Registration changes require extension reload; JSON tiers use the host effective-settings snapshot refreshed at session start/reload. Jev never writes global defaults or automatically selects the router.
 
 Every configured target must resolve exactly to a physical Pi registry model with configured authentication. Unknown IDs, virtual targets and missing authentication produce actionable errors, without fuzzy matching, health probes, failover or cross-provider retry. The initial physical default is **configured balanced**, an approved adaptation of upstream balanced/Sonnet. The latest successful physical response on the active request branch is the baseline (including a manually selected physical turn); saved Jev state is used only when no successful response remains, then balanced when neither exists. Classifier failure retains that valid baseline. If Pi omits `previous` because the latest successful physical identity no longer resolves, public transcript validation reports the exact invalid identity rather than hiding it behind saved state/balanced. Failed/aborted assistants do not establish a new successful baseline. This does not make a manual physical model a persistent pin: future eligible tier decisions may route again.
 
@@ -156,7 +148,7 @@ New sessions do not inherit another session's decisions; resume/reload, forks/tr
 
 ## Ordinary workers — incomplete checkpoint
 
-`JEV_WORKER_ROUTING_ENABLED` defaults to `true` and accepts only `true`/`false`. Ordinary direct/async `subagent` calls require configured authenticated `jevPilot.tiers` (or overriding `JEV_TIER_FAST/BALANCED/DEEP`) physical identities. Enable the exact tested fork executor separately with official Pi:
+`JEV_WORKER_ROUTING_ENABLED` defaults to `true` and accepts only `true`/`false`. Ordinary direct/async `subagent` calls require configured authenticated `jevPilot.tiers` physical identities. Enable the exact tested fork executor separately with official Pi:
 
 ```bash
 pi install git:github.com/naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2

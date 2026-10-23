@@ -24,16 +24,17 @@ function text(f: PiFixture, index = 0): string {
     .join("\n");
 }
 const routing = {
-  JEV_MAIN_ROUTING_ENABLED: "true",
-  JEV_TIER_FAST: "fixture-fast/lookup",
-  JEV_TIER_BALANCED: "fixture/fixture-model",
-  JEV_TIER_DEEP: "fixture-deep/judgment",
+  mainRoutingEnabled: true,
+  tiers: {
+    fast: "fixture-fast/lookup",
+    balanced: "fixture/fixture-model",
+    deep: "fixture-deep/judgment",
+  },
 };
 async function start(env: Record<string, string> = {}, virtual = false) {
   fixture = new PiFixture();
   if (virtual) {
-    fixture.startupProvider = "jev";
-    fixture.startupModel = "auto";
+    fixture.selectRouter = true;
   }
   fixture.response = {
     answers: {
@@ -43,10 +44,9 @@ async function start(env: Record<string, string> = {}, virtual = false) {
       corrects: { noul: 0.7 },
     },
   };
-  return fixture.start({
+  return fixture.startWithRouting(virtual ? routing : {}, {
     JEV_EFFORT_ENABLED: "false",
     JEV_QUALITY_ENABLED: "true",
-    ...(virtual ? routing : {}),
     ...env,
   });
 }
@@ -156,11 +156,9 @@ for (const virtual of [false, true]) {
     fixture = new PiFixture();
     fixture.skills = [{ name: "procedure", body: "GUIDANCE_SELECTED_SKILL" }];
     if (virtual) {
-      fixture.startupProvider = "jev";
-      fixture.startupModel = "auto";
+      fixture.selectRouter = true;
     }
-    const f = await fixture.start({
-      ...routing,
+    const f = await fixture.startWithRouting(routing, {
       JEV_EFFORT_ENABLED: "true",
       JEV_STRATEGY_ENABLED: "true",
       JEV_QUALITY_ENABLED: "true",
@@ -436,11 +434,9 @@ for (const virtual of [false, true]) {
     fixture = new PiFixture();
     fixture.tools = "bash";
     if (virtual) {
-      fixture.startupProvider = "jev";
-      fixture.startupModel = "auto";
+      fixture.selectRouter = true;
     }
-    const f = await fixture.start({
-      ...(virtual ? routing : {}),
+    const f = await fixture.startWithRouting(virtual ? routing : {}, {
       JEV_EFFORT_ENABLED: "true",
       JEV_QUALITY_ENABLED: "true",
     });

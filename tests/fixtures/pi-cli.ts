@@ -18,6 +18,7 @@ export function answer(level = "high", confidence = 0.95, risky = 0): RecordData
 export class PiFixture {
   directory = "";
   settings: RecordData = {};
+  selectRouter = false;
   server!: ReturnType<typeof Bun.serve>;
   process!: ChildProcessWithoutNullStreams;
   records: RecordData[] = [];
@@ -57,6 +58,11 @@ export class PiFixture {
   private exited: Promise<void> | undefined;
 
   constructor(private readonly commandLine?: string[]) {}
+
+  async startWithRouting(config: RecordData, env: Record<string, string> = {}): Promise<this> {
+    this.settings = { ...this.settings, jevPilot: config };
+    return this.start(env);
+  }
 
   async start(env: Record<string, string> = {}, thinkingOverride?: string): Promise<this> {
     this.directory = await mkdtemp(join(tmpdir(), "pi-jev-ticket01-"));
@@ -225,7 +231,7 @@ export class PiFixture {
     await writeFile(
       controls,
       `import type { ExtensionAPI } from ${JSON.stringify(join(root, "node_modules/@earendil-works/pi-coding-agent/dist/index.js"))};
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { Type } from ${JSON.stringify(join(root, "node_modules/@earendil-works/pi-ai/dist/index.js"))};
 export default function (pi: ExtensionAPI) {
   const referenceTools = ${JSON.stringify(this.referenceTools)};
@@ -242,7 +248,13 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("fixture-tree", { handler: async (id, ctx) => { await ctx.navigateTree(id, { summarize: false }); } });
   pi.registerCommand("fixture-fork-at", { handler: async (id, ctx) => { await ctx.fork(id, { position: "at" }); } });
   pi.registerCommand("fixture-effort", { handler: async (value) => { process.env.JEV_EFFORT_ENABLED = value; } });
-  pi.registerCommand("fixture-tier-deep", { handler: async (value) => { process.env.JEV_TIER_DEEP = value; } });
+  pi.registerCommand("fixture-tier-deep", { handler: async (value, ctx) => {
+    const path = ${JSON.stringify(join(this.directory, "agent/settings.json"))};
+    const settings = JSON.parse(readFileSync(path, "utf8"));
+    settings.jevPilot.tiers.deep = value;
+    writeFileSync(path, JSON.stringify(settings));
+    await ctx.reload();
+  } });
   pi.registerCommand("fixture-model-refresh", { handler: async (_args, ctx) => { await ctx.modelRegistry.refresh(); } });
   let dropInputIdentity = ${this.dropInputIdentity};
   pi.registerCommand("fixture-drop-input-identity", { handler: async () => { dropInputIdentity = true; } });
@@ -351,6 +363,7 @@ export default function (pi: ExtensionAPI) {
     this.process.stderr.on("data", (data: Buffer) => (this.stderr += data.toString()));
     try {
       await this.command("get_state");
+      if (this.selectRouter) await this.command("set_model", { provider: "jev", modelId: "auto" });
       return this;
     } catch (error) {
       await this.close();

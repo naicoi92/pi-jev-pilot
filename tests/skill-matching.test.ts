@@ -11,10 +11,12 @@ const task = "Please debug this failing test and implement the fully specified r
 const body =
   "# Debug procedure\nRead references/steps.md, then reproduce the failure. SELECTED_BODY_TOKEN";
 const routing = {
-  JEV_MAIN_ROUTING_ENABLED: "true",
-  JEV_TIER_FAST: "fixture-fast/lookup",
-  JEV_TIER_BALANCED: "fixture/fixture-model",
-  JEV_TIER_DEEP: "fixture-deep/judgment",
+  mainRoutingEnabled: true,
+  tiers: {
+    fast: "fixture-fast/lookup",
+    balanced: "fixture/fixture-model",
+    deep: "fixture-deep/judgment",
+  },
 };
 function response(name = "debugging", confidence = 0.9, gate = 0.9): RecordData {
   return {
@@ -36,10 +38,9 @@ async function start(env: Record<string, string> = {}, virtual = false): Promise
   ];
   fixture.response = response();
   if (virtual) {
-    fixture.startupProvider = "jev";
-    fixture.startupModel = "auto";
+    fixture.selectRouter = true;
   }
-  return fixture.start({ ...(virtual ? routing : {}), ...env });
+  return fixture.startWithRouting(virtual ? routing : {}, env);
 }
 function providerText(f: PiFixture, index = 0): string {
   const messages = f.generations[index]?.messages as
@@ -596,10 +597,9 @@ for (const disabled of [false, true]) {
   test(`SK14-no-ownership virtual ${disabled ? "disabled" : "no eligible"} skill path does not tag user`, async () => {
     fixture = new PiFixture();
     fixture.skills = [{ name: "debugging", disabled: !disabled, body }];
-    fixture.startupProvider = "jev";
-    fixture.startupModel = "auto";
+    fixture.selectRouter = true;
     fixture.response = response();
-    await fixture.start({ ...routing, JEV_SKILLS_ENABLED: String(!disabled) });
+    await fixture.startWithRouting(routing, { JEV_SKILLS_ENABLED: String(!disabled) });
     await fixture.prompt(task);
     const entries = (
       (await fixture.command("get_entries")).data as {
@@ -667,10 +667,9 @@ for (const virtual of [false, true]) {
     ];
     fixture.response = response();
     if (virtual) {
-      fixture.startupProvider = "jev";
-      fixture.startupModel = "auto";
+      fixture.selectRouter = true;
     }
-    const f = await fixture.start(virtual ? routing : {});
+    const f = await fixture.startWithRouting(virtual ? routing : {});
     await f.prompt("/skill:other-debugging run procedure");
     await f.prompt(task);
     expect(providerText(f, 1).split(body)).toHaveLength(3);

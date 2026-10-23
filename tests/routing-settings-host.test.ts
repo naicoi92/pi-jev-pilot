@@ -60,6 +60,7 @@ test("routing-settings runtime binding only, idempotent starts and shutdown rele
   let reads = 0;
   let registrations = 0;
   let removals = 0;
+  let current: { input?: unknown } | undefined;
   const hooks = new Map<string, Function[]>();
   const notifications: string[] = [];
   const pi = {
@@ -72,10 +73,12 @@ test("routing-settings runtime binding only, idempotent starts and shutdown rele
       if (!initialized) throw new Error("factory settings unavailable");
       return settings;
     },
-    registerVirtualModel() {
+    registerVirtualModel(definition: { input?: unknown }) {
+      current = { ...definition };
       registrations++;
     },
     unregisterVirtualModel() {
+      current = undefined;
       removals++;
     },
   } as unknown as ExtensionAPI;
@@ -84,6 +87,7 @@ test("routing-settings runtime binding only, idempotent starts and shutdown rele
   expect(registrations).toBe(0);
   const ctx = {
     cwd: directory,
+    modelRegistry: { find: () => current },
     ui: { notify: (message: string) => notifications.push(message) },
   } as unknown as ExtensionContext;
   const fire = async (name: string) => {
@@ -111,7 +115,7 @@ test("routing-settings runtime binding only, idempotent starts and shutdown rele
   expect(removals).toBe(3);
 });
 
-test("routing-settings env true retains early factory registration without getSettings", () => {
+test("routing-settings legacy env cannot register at factory", () => {
   process.env.JEV_MAIN_ROUTING_ENABLED = "true";
   let registrations = 0;
   extension({
@@ -124,5 +128,55 @@ test("routing-settings env true retains early factory registration without getSe
       registrations++;
     },
   } as unknown as ExtensionAPI);
-  expect(registrations).toBe(1);
+  expect(registrations).toBe(0);
 });
+
+for (const transition of ["session_shutdown", "disabled", "malformed"] as const) {
+  for (const before of [false, true]) {
+    test(`routing-settings foreign ${before ? "before" : "after"} registration survives ${transition} and next start`, async () => {
+      let settings: unknown = { jevPilot: { mainRoutingEnabled: true, tiers } };
+      const foreign = { input: ["text"], name: "Foreign Auto" };
+      let current: unknown = before ? foreign : undefined;
+      let registrations = 0;
+      let removals = 0;
+      const hooks = new Map<string, Function[]>();
+      const notifications: string[] = [];
+      extension({
+        on(name: string, handler: Function) {
+          hooks.set(name, [...(hooks.get(name) ?? []), handler]);
+        },
+        events: { on() {} },
+        getSettings: () => settings,
+        registerVirtualModel(definition: object) {
+          registrations++;
+          current = { ...definition };
+        },
+        unregisterVirtualModel() {
+          removals++;
+          current = undefined;
+        },
+      } as unknown as ExtensionAPI);
+      const ctx = {
+        modelRegistry: { find: () => current },
+        ui: { notify: (message: string) => notifications.push(message) },
+      } as unknown as ExtensionContext;
+      const fire = async (event: string) => {
+        for (const hook of hooks.get(event) ?? []) await hook({}, ctx);
+      };
+      await fire("session_start");
+      expect(registrations).toBe(before ? 0 : 1);
+      if (!before) current = foreign;
+      if (transition === "disabled")
+        settings = { jevPilot: { mainRoutingEnabled: false, tiers: null } };
+      if (transition === "malformed") settings = { jevPilot: { mainRoutingEnabled: null } };
+      await fire(transition === "session_shutdown" ? transition : "session_start");
+      expect(current).toBe(foreign);
+      expect(removals).toBe(0);
+      settings = { jevPilot: { mainRoutingEnabled: true, tiers } };
+      await fire("session_start");
+      expect(current).toBe(foreign);
+      expect(registrations).toBe(before ? 0 : 1);
+      expect(notifications.join()).toContain("another extension owns");
+    });
+  }
+}
