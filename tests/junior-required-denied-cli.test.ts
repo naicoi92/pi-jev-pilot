@@ -1,15 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { WorkerEvidence, reapWorkerCli } from "./fixtures/worker-evidence.ts";
-
-let child: ChildProcessWithoutNullStreams | undefined;
-let closed: Promise<void> | undefined;
-let server: ReturnType<typeof Bun.serve> | undefined;
-let evidence: WorkerEvidence | undefined;
+import { juniorCliTest } from "./fixtures/junior-cli-lifecycle.ts";
 interface RpcRecord {
   type: string;
   id?: string;
@@ -23,35 +17,14 @@ interface ChildStatus {
 interface ToolReceipt {
   details: { asyncId?: string };
 }
-afterEach(async () => {
-  if (child && closed) await reapWorkerCli(child, closed);
-  child = undefined;
-  closed = undefined;
-  server?.stop(true);
-  server = undefined;
-  if (evidence) {
-    const root = join(evidence.directory, "runtime/async-subagent-runs");
-    for (const name of await readdir(root).catch(() => [])) {
-      if (name.startsWith(".")) continue;
-      const files = await readdir(join(root, name));
-      if (!files.includes("status.json")) {
-        // Admission may reserve fan-out before rejecting, without starting a runner.
-        // Preserve that exact no-process artifact outside the runner-terminal scan.
-        expect(files).toEqual(["run-fanout-budget.json"]);
-        const target = join(evidence.directory, "admission-reservations");
-        await mkdir(target, { recursive: true });
-        await rename(join(root, name), join(target, name));
-      }
-    }
-    await evidence.finish();
-  }
-  evidence = undefined;
-});
 
-for (const scenario of ["direct41", "async41", "workflow41", "retained-denied"] as const)
-  test(`REQUIRED-19-${scenario} policy conflict before provider activity`, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pi-jev-junior-bound-"));
-    evidence = new WorkerEvidence(directory);
+for (const scenario of ["direct41", "async41", "workflow41", "retained-denied"] as const) {
+  const name = `REQUIRED-19-${scenario} policy conflict before provider activity`;
+  juniorCliTest(name, async (owner) => {
+    const { evidence } = owner;
+    const { directory } = evidence;
+    let child: ChildProcessWithoutNullStreams;
+    let closed: Promise<void>;
     await evidence.checkCapacity();
     const agentDir = join(directory, "agent");
     await mkdir(join(agentDir, "agents"), { recursive: true });
@@ -102,7 +75,7 @@ for (const scenario of ["direct41", "async41", "workflow41", "retained-denied"] 
       const p = Bun.spawn(args, { cwd, env, stdout: "pipe", stderr: "pipe" });
       const output = (await new Response(p.stdout).text()) + (await new Response(p.stderr).text());
       const exitCode = await p.exited;
-      evidence!.commands.push({ command: args, exitCode, output });
+      evidence.commands.push({ command: args, exitCode, output });
       expect(exitCode, output).toBe(0);
     };
     await run([Bun.which("bun")!, "install"]);
@@ -149,7 +122,7 @@ export default function(pi) {
             options,
           };
     const requests: { model: string; ordinal: number }[] = [];
-    server = Bun.serve({
+    const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
       async fetch(request) {
@@ -214,6 +187,7 @@ export default function(pi) {
         );
       },
     });
+    owner.server = server;
     await writeFile(
       join(agentDir, "models.json"),
       JSON.stringify({
@@ -258,18 +232,19 @@ export default function(pi) {
     const start = (argv = args) => {
       let pending = "";
       child = spawn(Bun.which("node")!, argv, { cwd: directory, env });
-      evidence!.commands.push({
+      evidence.commands.push({
         command: [Bun.which("node")!, ...argv],
         exitCode: -1,
         output: "RPC trace in trace.json",
       });
-      const command = evidence!.commands.at(-1)!;
+      const command = evidence.commands.at(-1)!;
       closed = new Promise<void>((resolve) =>
         child!.once("close", (code) => {
           command.exitCode = code ?? -1;
           resolve();
         }),
       );
+      owner.cli = { child, closed };
       child.stderr.on("data", (data) => {
         stderr += data.toString();
       });
@@ -378,4 +353,5 @@ export default function(pi) {
       );
       console.log(`BOUND-${scenario} artifacts: ${directory}`);
     }
-  }, 180000);
+  });
+}
