@@ -95,6 +95,7 @@ async function fixture(defaultContext = "fresh") {
     fire("tool_call", { toolName: "subagent", toolCallId: id, input });
   shutdowns.push(() => fire("session_shutdown"));
   let requests = 0;
+  const payloads: Record<string, unknown>[] = [];
   let delay = 0;
   let response = {
     answers: {
@@ -106,7 +107,8 @@ async function fixture(defaultContext = "fresh") {
   server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch: async () => {
+    fetch: async (request) => {
+      payloads.push((await request.json()) as Record<string, unknown>);
       requests++;
       await Bun.sleep(delay);
       return Response.json(response);
@@ -122,6 +124,7 @@ async function fixture(defaultContext = "fresh") {
     controls,
     entries,
     requests: () => requests,
+    payloads,
     delay: (value: number) => {
       delay = value;
     },
@@ -300,4 +303,69 @@ test("WORKER-13 Jev-first owner survives late host collision and re-registers af
   await f.call({ agent: "worker", task: "Implement work", model: "local/fast" });
   expect(f.requests()).toBe(3);
   expect(() => registerRequiredChildExtensions(config)).toThrow("already registered");
+});
+
+test("CREW-18 offered custom keys stay distinct from real tiers", async () => {
+  const f = await fixture();
+  const path = join(f.ctx.cwd, "crew.json");
+  process.env.JEV_CREW_CONFIG = path;
+  await writeFile(
+    path,
+    JSON.stringify({
+      mode: "budget",
+      slots: ["fast", "balanced", "deep"].map((name) => ({ name, model: "local/fast" })),
+    }),
+  );
+  for (const choice of ["slot::fast", "slot::balanced", "slot::deep", "balanced", "deep"]) {
+    f.response({
+      answers: {
+        tier: { choice, confidence: 0.9 },
+        effort: { choice: "medium", confidence: 0.95 },
+        risky: { noul: 0 },
+      },
+    });
+    const input = { agent: "worker", task: "Read all logs", model: "local/deep" };
+    await f.call(input);
+    expect(input.model).toBe(
+      choice.startsWith("slot::") ? "local/fast:medium" : `local/${choice}:medium`,
+    );
+  }
+  const tier = (f.payloads[0]!.questions as Record<string, { criteria: unknown }>).tier!;
+  expect(Object.keys(tier.criteria as object)).toEqual([
+    "balanced",
+    "deep",
+    "slot::fast",
+    "slot::balanced",
+    "slot::deep",
+  ]);
+});
+test("CREW-03 risk forced deep overrides a custom slot named deep", async () => {
+  const f = await fixture();
+  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
+  await writeFile(
+    process.env.JEV_CREW_CONFIG,
+    JSON.stringify({ mode: "budget", slots: [{ name: "deep", model: "local/fast" }] }),
+  );
+  f.response({
+    answers: {
+      tier: { choice: "slot::deep", confidence: 0.9 },
+      effort: { choice: "medium", confidence: 0.95 },
+      risky: { noul: 0.95 },
+    },
+  });
+  const input = { agent: "worker", task: "Read the logs", model: "local/balanced" };
+  await f.call(input);
+  expect(input.model).toBe("local/deep:high");
+});
+test("CREW-13 invalid eligible target fails before classifier", async () => {
+  const f = await fixture();
+  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
+  await writeFile(
+    process.env.JEV_CREW_CONFIG,
+    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/missing" }] }),
+  );
+  await expect(f.call({ agent: "worker", task: "Read the logs" })).rejects.toThrow(
+    "exact physical",
+  );
+  expect(f.requests()).toBe(0);
 });

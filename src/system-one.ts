@@ -2,6 +2,8 @@
 import { DESIGN_QUESTION, readDesign } from "./design-policy.ts";
 import { EFFORT_ORDER, type EffortDecision } from "./effort-policy.ts";
 import { TIER_ORDER, type Tier } from "./tier-policy.ts";
+import type { Slot } from "./crew-config.ts";
+import { slotKey } from "./crew-policy.ts";
 
 import {
   QUALITY_QUESTIONS,
@@ -12,6 +14,7 @@ import {
 
 export interface Decision extends EffortDecision, QualityReads, StrategyRead {
   tier?: Tier;
+  slot?: string;
   confidence?: number | null;
 }
 export interface DecisionQuestions {
@@ -20,6 +23,8 @@ export interface DecisionQuestions {
   quality?: boolean;
   strategy?: boolean;
   design?: boolean;
+  slots?: Slot[];
+  junior?: boolean;
 }
 
 export function mainRoutingEnabled(): boolean {
@@ -178,15 +183,20 @@ const tierQuestion = {
 function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | null {
   const answers = object(object(value)?.answers);
   const risk = object(answers?.risky);
-  const risky = enabled.tier || enabled.effort ? (risk?.noul ?? risk?.probability) : null;
-  if ((enabled.tier || enabled.effort) && !probability(risky)) return null;
+  const withRisk = enabled.tier || enabled.effort || (enabled.strategy && enabled.junior);
+  const risky = withRisk ? (risk?.noul ?? risk?.probability) : null;
+  if (withRisk && !probability(risky)) return null;
   const decision: Decision | null = enabled.effort
     ? readDecision(value)
     : { effort: null, effortConfidence: null, risky: risky as number | null };
   if (!decision) return null;
   if (enabled.tier || enabled.strategy) {
     const tier = object(answers?.tier);
-    if (!tier || !TIER_ORDER.includes(tier.choice as Tier)) return null;
+    const slot = enabled.slots?.find((candidate) => slotKey(candidate.name) === tier?.choice);
+    const choices = enabled.slots?.length
+      ? ["balanced", "deep", ...enabled.slots.map((candidate) => slotKey(candidate.name))]
+      : [...TIER_ORDER];
+    if (!tier || !choices.includes(tier.choice as string)) return null;
     if (tier.confidence !== undefined && !probability(tier.confidence)) return null;
     const distribution = tier.probabilities === undefined ? null : object(tier.probabilities);
     if (
@@ -194,7 +204,7 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
       (!distribution ||
         !Object.keys(distribution).length ||
         Object.entries(distribution).some(
-          ([key, value]) => !TIER_ORDER.includes(key as Tier) || !probability(value),
+          ([key, value]) => !choices.includes(key) || !probability(value),
         ) ||
         (enabled.tier &&
           Math.abs(
@@ -203,7 +213,8 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
           ) > 0.02))
     )
       return null;
-    decision.tier = tier.choice as Tier;
+    decision.tier = slot ? "fast" : (tier.choice as Tier);
+    if (slot) decision.slot = slot.name;
     decision.confidence =
       (tier.confidence as number | undefined) ??
       (distribution ? Math.max(...(Object.values(distribution) as number[])) : null);
@@ -213,7 +224,8 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
     if (
       strategy &&
       typeof strategy.choice === "string" &&
-      Object.hasOwn(STRATEGY_CRITERIA, strategy.choice)
+      Object.hasOwn(STRATEGY_CRITERIA, strategy.choice) &&
+      (strategy.choice !== "junior" || enabled.junior)
     ) {
       const raw = strategy.probabilities;
       const distribution = raw === undefined ? null : object(raw);
@@ -223,7 +235,10 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
         (distribution &&
           Object.keys(distribution).length > 0 &&
           Object.entries(distribution).every(
-            ([key, value]) => Object.hasOwn(STRATEGY_CRITERIA, key) && probability(value),
+            ([key, value]) =>
+              Object.hasOwn(STRATEGY_CRITERIA, key) &&
+              (key !== "junior" || enabled.junior) &&
+              probability(value),
           ));
       if (valid && validDistribution) {
         decision.strategy = strategy.choice as NonNullable<StrategyRead["strategy"]>;
@@ -266,14 +281,36 @@ export async function classify(
   )
     throw new Error("No applicable Jev questions.");
   const asked = {
-    ...(enabled.tier || enabled.strategy ? { tier: tierQuestion } : {}),
+    ...(enabled.tier || enabled.strategy
+      ? {
+          tier: {
+            ...tierQuestion,
+            criteria: enabled.slots?.length
+              ? {
+                  balanced: tierQuestion.criteria.balanced,
+                  deep: tierQuestion.criteria.deep,
+                  ...Object.fromEntries(
+                    enabled.slots.map((slot) => [
+                      slotKey(slot.name),
+                      `${slot.model} (a custom model). ${slot.when}`,
+                    ]),
+                  ),
+                }
+              : tierQuestion.criteria,
+          },
+        }
+      : {}),
     ...(enabled.strategy
       ? {
           strategy: {
             type: "choice",
             instructions:
               "How should a coding assistant carry out the latest request, given the recent conversation? Prefer the simplest way that does it well.",
-            criteria: STRATEGY_CRITERIA,
+            criteria: Object.fromEntries(
+              Object.entries(STRATEGY_CRITERIA).filter(
+                ([key]) => key !== "junior" || enabled.junior,
+              ),
+            ),
           },
         }
       : {}),
@@ -287,7 +324,9 @@ export async function classify(
       : {}),
     ...(enabled.design ? { ui_design: DESIGN_QUESTION } : {}),
     ...(enabled.effort ? { effort: questions.effort } : {}),
-    ...(enabled.tier || enabled.effort ? { risky: questions.risky } : {}),
+    ...(enabled.tier || enabled.effort || (enabled.strategy && enabled.junior)
+      ? { risky: questions.risky }
+      : {}),
     ...additionalQuestions,
   };
   const controller = new AbortController();
@@ -330,6 +369,7 @@ export async function classify(
             effort: false,
             strategy: enabled.strategy,
             quality: enabled.quality,
+            junior: enabled.junior,
           }) ?? undefined)
         : undefined;
     const designScore = enabled.design ? readDesign(value) : undefined;

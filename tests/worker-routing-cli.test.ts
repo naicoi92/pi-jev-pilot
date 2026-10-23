@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -10,6 +11,22 @@ let process: ChildProcessWithoutNullStreams | undefined;
 let closed: Promise<void> | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let evidence: WorkerEvidence | undefined;
+interface StatusObservation {
+  request: { requestId: string; params: { id: string } };
+  reply: {
+    requestId: string;
+    success: boolean;
+    data?: {
+      details: {
+        runId: string;
+        lifecycleStatus?: {
+          processTerminal: { state: string; runId: string; runnerProcessInstanceId: string };
+        };
+      };
+    };
+  };
+}
+// Cover the unchanged 7-second reap escalation and 10-second strict evidence gate, plus I/O.
 afterEach(async () => {
   if (process && closed) await reapWorkerCli(process, closed);
   closed = undefined;
@@ -18,9 +35,29 @@ afterEach(async () => {
   server = undefined;
   await evidence?.finish();
   evidence = undefined;
-});
+}, 25000);
 
 const cases = [
+  { name: "slot-standard", baseline: "max", background: false },
+  { name: "slot-budget", baseline: "max", background: false },
+  { name: "slot-async", baseline: "low", background: true },
+  { name: "slot-risk", baseline: "max", background: false },
+  { name: "slot-risk-omitted-direct", baseline: "max", background: false },
+  { name: "slot-risk-omitted-async", baseline: "low", background: true },
+  { name: "slot-risk-boundary", baseline: "max", background: false },
+  { name: "slot-risk-disabled", baseline: "max", background: false },
+  { name: "slot-risk-error", baseline: "low", background: false },
+  { name: "junior-workflow-switch-cancel", baseline: "max", background: false },
+  { name: "junior-workflow-fork-cancel", baseline: "max", background: false },
+  { name: "junior-workflow-switch-accept", baseline: "max", background: false },
+  { name: "junior-workflow-fork-accept", baseline: "max", background: false },
+  { name: "junior-selected", baseline: "max", background: false },
+  { name: "junior-first", baseline: "low", background: true },
+  { name: "junior-selected-routing-off", baseline: "max", background: false },
+  { name: "junior-first-routing-off", baseline: "low", background: true },
+  { name: "junior-workflow-routing-off", baseline: "max", background: false },
+  { name: "slot-workflow", baseline: "max", background: false },
+  { name: "junior-collision", baseline: "max", background: false },
   { name: "direct-max", baseline: "max", background: false },
   { name: "direct-low", baseline: "low", background: false },
   { name: "async-max", baseline: "max", background: true },
@@ -58,8 +95,16 @@ const cases = [
   { name: "pending-session", baseline: "max", background: false },
 ] as const;
 for (const scenario of cases)
-  test(`WORKER-${scenario.name.includes("clamp") ? "06" : scenario.name.includes("coexistence") || scenario.name === "profile" || scenario.name === "runtime-unknown" ? "13" : scenario.name.includes("cancel") ? "12" : scenario.name.startsWith("pending-") || ["lifecycle", "resume"].includes(scenario.name) ? "26" : scenario.name === "workflow-guidance" ? "21" : "20"}-${scenario.name} packed production adapter actual receipt`, async () => {
+  test(`WORKER-${scenario.name.startsWith("junior-workflow-") && !scenario.name.endsWith("routing-off") ? "26" : scenario.name.startsWith("slot-risk-") ? (scenario.name.endsWith("disabled") || scenario.name.endsWith("error") ? "20" : "03") : scenario.name.startsWith("slot-") ? "18" : scenario.name.startsWith("junior-") ? "19" : scenario.name.includes("clamp") ? "06" : scenario.name.includes("coexistence") || scenario.name === "profile" || scenario.name === "runtime-unknown" ? "13" : scenario.name.includes("cancel") ? "12" : scenario.name.startsWith("pending-") || ["lifecycle", "resume"].includes(scenario.name) ? "26" : scenario.name === "workflow-guidance" ? "21" : "20"}-${scenario.name} packed production adapter actual receipt`, async () => {
     const { name, baseline, background } = scenario;
+    const junior = name.startsWith("junior-");
+    const slot = name.startsWith("slot-");
+    const routingOff = name.endsWith("routing-off");
+    const juniorWorkflow = name.startsWith("junior-workflow-");
+    const transition = juniorWorkflow && !routingOff;
+    const riskOmitted = name.startsWith("slot-risk-");
+    const parentModel = riskOmitted ? "local/deep" : "local/parent";
+    let transitionReady = !transition;
     const directory = await mkdtemp(join(tmpdir(), "pi-jev-worker-production-"));
     evidence = new WorkerEvidence(directory);
     await evidence.checkCapacity();
@@ -73,7 +118,8 @@ for (const scenario of cases)
         dependencies: {
           "@earendil-works/pi-coding-agent": "1.4.0",
           "@earendil-works/pi-ai": "1.4.0",
-          "pi-subagents": "0.80.0",
+          "pi-subagents":
+            "git+https://github.com/naicoi92/pi-subagents.git#5f8adccb235f1a45858c84b5110c105108947de2",
         },
       }),
     );
@@ -87,17 +133,37 @@ for (const scenario of cases)
       JEV_EFFORT_ENABLED: "true",
       JEV_MAIN_ROUTING_ENABLED: "false",
       JEV_SKILLS_ENABLED: "false",
-      JEV_STRATEGY_ENABLED: name === "workflow-guidance" ? "true" : "false",
+      JEV_STRATEGY_ENABLED:
+        name === "workflow-guidance" || name === "slot-workflow" ? "true" : "false",
       JEV_QUALITY_ENABLED: "false",
       JEV_DESIGN_ENABLED: "false",
       JEV_WORKER_ROUTING_ENABLED:
-        name === "disabled" || name === "profile-executor" ? "false" : "true",
+        name === "disabled" ||
+        name === "slot-risk-disabled" ||
+        name === "profile-executor" ||
+        routingOff
+          ? "false"
+          : "true",
       JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
       JEV_TIER_FAST: "local/parent",
       JEV_TIER_BALANCED: "local/selected",
-      JEV_TIER_DEEP: "local/configured",
+      JEV_TIER_DEEP: riskOmitted ? "local/deep" : "local/configured",
       JEV_TIMEOUT_MS: name.includes("timeout") ? "100" : "5000",
     };
+    if (slot || junior) {
+      env.JEV_CREW_CONFIG = join(directory, "crew.json");
+      await writeFile(
+        env.JEV_CREW_CONFIG,
+        JSON.stringify({
+          mode: name === "slot-standard" ? "standard" : junior ? "junior-lead" : "budget",
+          slots: [
+            { name: "deep", model: "local/selected" },
+            { name: "alpha", model: "local/configured", when: "Read and report logs." },
+          ],
+          ...(name.startsWith("junior-selected") || juniorWorkflow ? { junior: "alpha" } : {}),
+        }),
+      );
+    }
     const commands = evidence.commands;
     const run = async (args: string[], cwd = directory) => {
       const child = Bun.spawn(args, { cwd, env, stdout: "pipe", stderr: "pipe" });
@@ -125,9 +191,10 @@ for (const scenario of cases)
     let childStarted = false;
     const pendingChange = name.startsWith("pending-");
     const classifierCancel = name === "classifier-cancel" || pendingChange;
-    const childCancel = name.includes("cancel") && !classifierCancel;
+    const childCancel = name.includes("cancel") && !classifierCancel && !transition;
     const preserve =
       name === "disabled" ||
+      name === "slot-risk-disabled" ||
       name.includes("error") ||
       name.includes("timeout") ||
       name === "async-rejected-cancel" ||
@@ -135,17 +202,38 @@ for (const scenario of cases)
       name === "profile-executor";
     const runtime = name === "runtime" || name === "runtime-unknown";
     const omitted =
+      riskOmitted ||
       name.startsWith("omitted") ||
       name === "rejected-tier" ||
       name === "retained-clamp" ||
-      name === "runtime-unknown";
-    const retained = omitted && name !== "omitted-upgrade";
+      name === "runtime-unknown" ||
+      routingOff;
+    const retained = omitted && !routingOff && !riskOmitted && name !== "omitted-upgrade";
     const clamped = name === "clamp" || name === "retained-clamp";
-    const expectedIdentity = preserve || retained ? "configured" : "selected";
-    const expectedThinking = preserve ? baseline : clamped ? "off" : "medium";
+    const expectedIdentity =
+      riskOmitted && !preserve
+        ? name === "slot-risk-boundary"
+          ? "configured"
+          : "deep"
+        : preserve ||
+            retained ||
+            name === "slot-risk" ||
+            name.startsWith("junior-selected") ||
+            juniorWorkflow
+          ? "configured"
+          : "selected";
+    const expectedThinking = junior
+      ? "medium"
+      : name === "slot-risk" || (riskOmitted && !preserve && name !== "slot-risk-boundary")
+        ? "high"
+        : preserve
+          ? baseline
+          : clamped
+            ? "off"
+            : "medium";
     const caller = name === "same-identity" ? "local/selected" : "local/configured";
-    const original = {
-      agent: "receipt-worker",
+    const direct = {
+      agent: junior ? "jev-pilot:junior" : "receipt-worker",
       ...(!omitted ? { model: caller } : {}),
       task: "Return CHILD_RECEIPT_OK after performing the specified local implementation and tests.",
       async: background,
@@ -158,6 +246,18 @@ for (const scenario of cases)
         acceptance: false,
       },
     };
+    const original = juniorWorkflow
+      ? {
+          workflow: "./junior-workflow.js",
+          async: false,
+          options: { context: "fresh", acceptance: false, mission: false },
+        }
+      : direct;
+    if (juniorWorkflow)
+      await writeFile(
+        join(directory, "junior-workflow.js"),
+        'const result = await runs.run("junior", { agent: "jev-pilot:junior", task: "Return CHILD_RECEIPT_OK without tools." }); return result;',
+      );
     let dispatched: Record<string, unknown> = original;
     let launches = 0;
     let releaseNotificationWake: (() => void) | undefined;
@@ -173,7 +273,7 @@ for (const scenario of cases)
               answers: {
                 effort: { choice: "medium", confidence: 0.95 },
                 risky: { noul: 0 },
-                ...(name === "workflow-guidance"
+                ...(name === "workflow-guidance" || name === "slot-workflow"
                   ? {
                       tier: { choice: "balanced", confidence: 0.95 },
                       strategy: { choice: "parallel", confidence: 0.95 },
@@ -190,11 +290,15 @@ for (const scenario of cases)
             answers: {
               tier: {
                 choice:
-                  name === "async-noop-cancel"
-                    ? "deep"
-                    : retained && name !== "rejected-tier" && name !== "retained-clamp"
-                      ? "fast"
-                      : "balanced",
+                  slot && name !== "slot-standard"
+                    ? riskOmitted
+                      ? "slot::alpha"
+                      : "slot::deep"
+                    : name === "async-noop-cancel"
+                      ? "deep"
+                      : retained && name !== "rejected-tier" && name !== "retained-clamp"
+                        ? "fast"
+                        : "balanced",
                 confidence:
                   name === "rejected-tier" ||
                   name === "retained-clamp" ||
@@ -202,20 +306,31 @@ for (const scenario of cases)
                     ? 0.1
                     : name === "omitted-upgrade"
                       ? 0.45
-                      : 0.95,
+                      : riskOmitted
+                        ? 0.9
+                        : 0.95,
               },
               effort: {
                 choice: "medium",
                 confidence:
                   name === "async-noop-cancel" || name === "async-rejected-cancel" ? 0.1 : 0.95,
               },
-              risky: { noul: 0 },
+              risky: {
+                noul:
+                  name === "slot-risk-boundary"
+                    ? 0.7
+                    : name === "slot-risk" || riskOmitted
+                      ? 0.95
+                      : 0,
+              },
             },
           });
         }
         if (!activationProbe) requests.push(body);
         const isParent =
-          body.model === "parent" ||
+          (riskOmitted
+            ? activationProbe || JSON.stringify(body.messages).includes("PRIVATE_PARENT_HISTORY")
+            : body.model === "parent") ||
           (pendingChange && JSON.stringify(body.messages).includes("PRIVATE_PARENT_HISTORY"));
         if (
           background &&
@@ -236,7 +351,7 @@ for (const scenario of cases)
           await new Promise<void>((done) => {
             releaseNotificationWake = done;
           });
-        const launch = !activationProbe && isParent && !parentSent;
+        const launch = !activationProbe && transitionReady && isParent && !parentSent;
         if (launch) {
           parentSent = true;
           launches++;
@@ -288,7 +403,7 @@ for (const scenario of cases)
             baseUrl: `${server.url}v1`,
             api: "openai-completions",
             apiKey: "fixture-not-a-credential",
-            models: ["parent", "configured", "selected"].map((id) => ({
+            models: ["parent", "configured", "selected", "deep"].map((id) => ({
               id,
               reasoning: !(clamped && id === expectedIdentity),
               input: ["text"],
@@ -325,6 +440,11 @@ for (const scenario of cases)
         join(agentDir, "settings.json"),
         JSON.stringify({ subagents: { defaultSubagentContext: "fork" } }),
       );
+    if (name === "junior-collision")
+      await writeFile(
+        join(agentDir, "agents/jev-pilot:junior.md"),
+        "---\nname: jev-pilot:junior\ndescription: User owned junior\nmodel: local/configured\n---\nUSER_OWNED_DO_NOT_REPLACE\n",
+      );
     const observer = join(directory, "observer.ts");
     await writeFile(
       observer,
@@ -332,14 +452,42 @@ for (const scenario of cases)
 import { registerRequiredChildExtensions } from "pi-subagents/required-child-extensions";
 export default function(pi) {
  let registration;
+ const lifecycle=(type,ctx,extra={})=>appendFileSync(${JSON.stringify(join(directory, "lifecycle.jsonl"))},JSON.stringify({type,pid:process.pid,sessionId:ctx.sessionManager.getSessionId(),at:Date.now(),...extra})+"\\n");
+ if (${transition}) {
+  pi.on("session_start",(event,ctx)=>lifecycle(event.type,ctx,{reason:event.reason}));
+  pi.on("session_shutdown",(event,ctx)=>lifecycle(event.type,ctx,{reason:event.reason}));
+  for(const type of ["session_before_switch","session_before_fork"]) pi.on(type,(event,ctx)=>{lifecycle(type,ctx);return {cancel:${name.endsWith("cancel")}};});
+  pi.registerCommand("worker-transition",{handler:async(_args,ctx)=>{
+   await ctx.waitForIdle();
+   const before=ctx.sessionManager.getSessionId();
+   const result=${name.includes("-fork-") ? 'await ctx.fork(ctx.sessionManager.getEntries().find(entry=>entry.type==="message" && entry.message.role==="user").id,{position:"at"})' : "await ctx.switchSession(ctx.sessionManager.getSessionFile())"};
+   appendFileSync(${JSON.stringify(join(directory, "transition.jsonl"))},JSON.stringify({before,result})+"\\n");
+  }});
+ }
  pi.on("session_start", (_event,ctx) => {
   if (${runtime}) { const input={version:1,name:"receipt-worker",definition:{description:"Runtime worker",systemPrompt:"Return CHILD_RECEIPT_OK without tools.",tools:["read"],model:"local/configured",thinking:"max",defaultContext:"fresh"}};pi.events.emit("pi-subagents:runtime-agent-register:v1",input);if(!input.result?.ok)throw new Error("Runtime registration failed"); }
  });
  pi.on("session_start", (_event,ctx) => { if (${name === "coexistence"}) registration = registerRequiredChildExtensions({sessionId:ctx.sessionManager.getSessionId(),extensions:[{id:"existing-owner",path:${JSON.stringify(join(installedPackage, "src/worker-child.ts"))}}]}); });
  pi.on("session_shutdown",()=>registration?.dispose());
  pi.registerCommand("worker-reload", { handler: async (_args,ctx) => { await ctx.waitForIdle(); await ctx.reload(); } });
+ pi.registerCommand("worker-status", {handler:async(id,ctx)=>{
+  await ctx.waitForIdle();
+  const requestAt=Date.now();
+  const request={version:1,requestId:"worker-"+id+"-"+requestAt,method:"status",params:{id}};
+  await new Promise((resolve,reject)=>{
+   const channel="subagents:rpc:v1:reply:"+request.requestId;
+   const off=pi.events.on(channel,reply=>{
+    clearTimeout(timer);off();
+    appendFileSync(${JSON.stringify(join(directory, "status-rpc.jsonl"))},JSON.stringify({requestAt,replyAt:Date.now(),request,reply})+"\\n");
+    resolve();
+   });
+   const timer=setTimeout(()=>{off();reject(new Error("Public status RPC timed out: "+id));},3000);
+   pi.events.emit("subagents:rpc:v1:request",request);
+  });
+ }});
  pi.on("tool_call", (event,ctx) => {
   if (${name === "coexistence-jev-first"} && event.toolName==="subagent") { try { registerRequiredChildExtensions({sessionId:ctx.sessionManager.getSessionId(),extensions:[{id:"late-host",path:${JSON.stringify(join(installedPackage, "src/worker-child.ts"))}}]});throw new Error("Expected singleton collision"); } catch(error) { appendFileSync(${JSON.stringify(join(directory, "host-conflict.log"))},String(error)); } }
+  if (${transition} && event.toolName==="subagent") lifecycle("workflow_dispatch",ctx);
   if(event.toolName==="subagent") appendFileSync(${JSON.stringify(join(directory, "envelope.jsonl"))},JSON.stringify(event.input)+"\\n");});
  pi.on("tool_result", event => {if(event.toolName==="subagent") appendFileSync(${JSON.stringify(join(directory, "result.jsonl"))},JSON.stringify(event)+"\\n");});
  pi.events.on("subagents:rpc:v1:request", event => appendFileSync(${JSON.stringify(join(directory, "control.jsonl"))},JSON.stringify(event)+"\\n"));
@@ -359,7 +507,7 @@ export default function(pi) {
       "--no-prompt-templates",
       "--no-themes",
       "--model",
-      "local/parent",
+      parentModel,
       "Package dependency activation check.",
     ]);
     allClassifications.length = 0;
@@ -378,12 +526,26 @@ export default function(pi) {
       "--no-prompt-templates",
       "--no-themes",
       "--model",
-      "local/parent",
+      parentModel,
       "--thinking",
       "medium",
     ];
     process = spawn(Bun.which("node")!, args, { cwd: directory, env });
-    closed = new Promise<void>((done) => process!.once("close", () => done()));
+    const parentCommand = {
+      command: [Bun.which("node")!, ...args],
+      exitCode: -1,
+      output: "RPC records in trace.json; close timing in parent-close.json",
+    };
+    commands.push(parentCommand);
+    closed = new Promise<void>((done, reject) =>
+      process!.once("close", (exitCode, signal) => {
+        parentCommand.exitCode = exitCode ?? -1;
+        writeFile(
+          join(directory, "parent-close.json"),
+          JSON.stringify({ observedAt: Date.now(), exitCode, signal }),
+        ).then(done, reject);
+      }),
+    );
     const records: Record<string, unknown>[] = [];
     let stderr = "";
     let pending = "";
@@ -403,8 +565,7 @@ export default function(pi) {
         }
       }
     });
-    const wait = async (predicate: () => boolean) => {
-      const deadline = Date.now() + 40000;
+    const wait = async (predicate: () => boolean, deadline = Date.now() + 40000) => {
       while (!predicate()) {
         if (process!.exitCode !== null || Date.now() > deadline)
           throw new Error(
@@ -457,10 +618,114 @@ export default function(pi) {
     };
     const readResults = async () =>
       JSON.parse((await Bun.file(join(directory, "result.jsonl")).text()).trim().split("\n")[0]!);
+    const awaitWorkflowChildren = async (details: {
+      mode: string;
+      results: { runId: string }[];
+      workflowChildren?: { inventoryComplete: boolean; children: { runId: string }[] };
+    }) => {
+      if (details.mode !== "workflow") return;
+      const children = details.results.map((result) => result.runId);
+      expect(children.length).toBeGreaterThan(0);
+      for (const id of children) {
+        expect(id).toBeString();
+        expect(id).not.toBe("");
+      }
+      expect(new Set(children).size).toBe(children.length);
+      expect(details.workflowChildren?.inventoryComplete).toBe(true);
+      expect(details.workflowChildren!.children.map((child) => child.runId).sort()).toEqual(
+        [...children].sort(),
+      );
+      // Logical results do not prove native close. Keep the parent observer and HTTP server alive.
+      const deadline = Date.now() + 10000;
+      const pending = new Set(children);
+      const file = join(directory, "status-rpc.jsonl");
+      await writeFile(file, "");
+      let observations: StatusObservation[] = [];
+      let sequence = 0;
+      while (pending.size && Date.now() < deadline) {
+        for (const id of pending) {
+          const before = observations.length;
+          const promptId = `status-${sequence++}`;
+          process!.stdin.write(
+            JSON.stringify({ id: promptId, type: "prompt", message: `/worker-status ${id}` }) +
+              "\n",
+          );
+          await wait(
+            () => records.some((record) => record.type === "response" && record.id === promptId),
+            deadline,
+          );
+          expect(records.find((record) => record.id === promptId)!.success).toBe(true);
+          await wait(() => {
+            observations = readFileSync(file, "utf8")
+              .trim()
+              .split("\n")
+              .filter(Boolean)
+              .map((line) => JSON.parse(line));
+            return observations.length > before;
+          }, deadline);
+          const { request, reply } = observations.at(-1)!;
+          expect(request.params.id).toBe(id);
+          expect(reply.requestId).toBe(request.requestId);
+          expect(reply.success).toBe(true);
+          expect(reply.data!.details.runId).toBe(id);
+          const terminal = reply.data!.details.lifecycleStatus!.processTerminal;
+          expect(terminal.runId).toBe(id);
+          expect(terminal.runnerProcessInstanceId).toBeString();
+          expect(terminal.runnerProcessInstanceId).not.toBe("");
+          if (terminal.state === "observed") pending.delete(id);
+        }
+        if (pending.size) await Bun.sleep(50);
+      }
+      expect(
+        [...pending],
+        "All exact workflow children must be observed before parent close",
+      ).toEqual([]);
+      expect(process!.exitCode).toBeNull();
+      await writeFile(
+        join(directory, "workflow-barrier.json"),
+        JSON.stringify({ children, observedAt: Date.now(), parentExitCode: process!.exitCode }),
+      );
+    };
     let receipt: unknown;
     try {
       process.stdin.write(JSON.stringify({ id: "ready", type: "get_state" }) + "\n");
       await wait(() => records.some((record) => record.id === "ready"));
+      if (transition) {
+        process.stdin.write(
+          JSON.stringify({
+            id: "seed",
+            type: "prompt",
+            message: "PRIVATE_PARENT_HISTORY: Seed the transition without delegation.",
+          }) + "\n",
+        );
+        await waitForPromptResponse("seed", "started");
+        await wait(() => records.some((record) => record.type === "agent_settled"));
+        process.stdin.write(
+          JSON.stringify({ id: "transition", type: "prompt", message: "/worker-transition" }) +
+            "\n",
+        );
+        await waitForPromptResponse("transition", "handled");
+        await wait(() => Bun.file(join(directory, "transition.jsonl")).size > 0);
+        const completed = JSON.parse(
+          (await Bun.file(join(directory, "transition.jsonl")).text()).trim(),
+        );
+        expect(completed.result.cancelled).toBe(name.endsWith("cancel"));
+        const lifecycle = (await Bun.file(join(directory, "lifecycle.jsonl")).text())
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        const starts = lifecycle.filter((event) => event.type === "session_start");
+        const shutdowns = lifecycle.filter((event) => event.type === "session_shutdown");
+        expect(starts).toHaveLength(name.endsWith("cancel") ? 1 : 2);
+        expect(shutdowns).toHaveLength(name.endsWith("cancel") ? 0 : 1);
+        expect(starts[0].sessionId).toBe(completed.before);
+        if (name.endsWith("accept")) {
+          expect(shutdowns[0].sessionId).toBe(completed.before);
+          expect(lifecycle.indexOf(shutdowns[0])).toBeLessThan(lifecycle.indexOf(starts[1]));
+        }
+        records.length = 0;
+        transitionReady = true;
+      }
       process.stdin.write(
         JSON.stringify({
           id: "start",
@@ -499,6 +764,20 @@ export default function(pi) {
         }
       }
       await wait(() => records.some((record) => record.type === "agent_settled"));
+      if (name === "slot-workflow") {
+        const visible = JSON.stringify(requests[0]!.messages);
+        expect(visible).toContain("deep: local/selected");
+        expect(visible).not.toContain("choose its configured fast model");
+        expect(visible).toContain("Never for writing or changing code");
+        expect(visible).toContain("not transparently intercepted");
+        expect(visible).toContain("User and project delegation restrictions take precedence");
+      }
+      if (name === "junior-collision") {
+        expect(childStarted).toBe(false);
+        expect(classifications).toHaveLength(0);
+        expect(JSON.stringify(records)).toMatch(/collides with configured agent|collision/);
+        return;
+      }
       if (name === "workflow-guidance") {
         const visible = JSON.stringify(requests[0]!.messages);
         expect(visible).toContain(
@@ -539,6 +818,7 @@ export default function(pi) {
       } else {
         await wait(() => records.some((record) => record.type === "tool_execution_end"));
         const result = await readResults();
+        await awaitWorkflowChildren(result.details);
         if (background) {
           await wait(() => childStarted);
           const statusFile = join(result.details.asyncDir, "status.json");
@@ -559,7 +839,7 @@ export default function(pi) {
             expect(status.steps).toMatchObject([
               {
                 model: `local/${expectedIdentity}`,
-                thinking: expectedThinking,
+                ...(!junior ? { thinking: expectedThinking } : {}),
                 exitCode: 0,
                 tokens: { input: 10, output: 4 },
                 recentOutput: ["CHILD_RECEIPT_OK"],
@@ -585,11 +865,38 @@ export default function(pi) {
             await wait(() => childAborts > 0);
             expect(result.isError).toBe(true);
             expect(JSON.stringify(result.content)).toContain("Request aborted");
+          } else if (juniorWorkflow) {
+            expect(result.isError).not.toBe(true);
+            expect(JSON.stringify(result)).toContain("CHILD_RECEIPT_OK");
+            if (transition) {
+              expect(result.details.results).toMatchObject([
+                { model: "local/configured", exitCode: 0 },
+              ]);
+              const lifecycle = (await Bun.file(join(directory, "lifecycle.jsonl")).text())
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line))
+                .filter((event) => event.pid === process!.pid);
+              const starts = lifecycle.filter((event) => event.type === "session_start");
+              const dispatches = lifecycle.filter((event) => event.type === "workflow_dispatch");
+              expect(dispatches).toHaveLength(1);
+              expect(dispatches[0].sessionId).toBe(starts.at(-1).sessionId);
+              const childId = result.details.results[0].runId;
+              const status = await Bun.file(
+                join(env.PI_SUBAGENTS_TEMP_ROOT!, "async-subagent-runs", childId, "status.json"),
+              ).json();
+              expect(status.runId).toBe(childId);
+              expect(status.processTerminal).toMatchObject({ state: "observed", runId: childId });
+              expect(status.steps).toHaveLength(1);
+              expect(status.steps[0].launchResolvedExtensions.required).toContain(
+                "jev-pilot-junior-turn-bound",
+              );
+            }
           } else
             expect(result.details.results).toMatchObject([
               {
-                model: `local/${expectedIdentity}:${expectedThinking}`,
-                thinking: expectedThinking,
+                model: `local/${expectedIdentity}${junior ? "" : `:${expectedThinking}`}`,
+                ...(!junior ? { thinking: expectedThinking } : {}),
                 exitCode: 0,
                 finalOutput: "CHILD_RECEIPT_OK",
                 usage: { input: 10, output: 4 },
@@ -599,31 +906,54 @@ export default function(pi) {
         const envelope = JSON.parse(
           (await Bun.file(join(directory, "envelope.jsonl")).text()).trim(),
         );
-        if (preserve) expect(envelope).toEqual(original);
+        if (preserve || routingOff || juniorWorkflow) expect(envelope).toEqual(original);
         if (!childCancel) {
-          const childRequest = requests.find((request) => request.model !== "parent");
+          const childRequest = requests.find((request) =>
+            riskOmitted
+              ? !JSON.stringify(request.messages).includes("PRIVATE_PARENT_HISTORY")
+              : request.model !== "parent",
+          );
           if (["top-fresh", "scope-user", "profile-executor"].includes(name))
             expect(JSON.stringify(childRequest?.messages)).not.toContain("PRIVATE_PARENT_HISTORY");
           expect(childRequest).toMatchObject({
             model: expectedIdentity,
             ...(!clamped ? { reasoning_effort: expectedThinking } : {}),
           });
-          if (!preserve)
-            expect(envelope.model).toBe(`local/${expectedIdentity}:${expectedThinking}`);
+          if (!preserve && !routingOff && !juniorWorkflow)
+            expect(envelope.model).toBe(
+              `local/${expectedIdentity}${junior ? "" : `:${expectedThinking}`}`,
+            );
         }
       }
       expect(classifications).toHaveLength(
-        name === "disabled" || name === "profile-executor" ? 0 : 1,
+        name === "disabled" ||
+          name === "slot-risk-disabled" ||
+          name === "profile-executor" ||
+          junior
+          ? 0
+          : 1,
       );
       if (!preserve && !classifierCancel && !childCancel) {
-        expect(allClassifications).toHaveLength(2); // Parent task plus exactly one worker decision, never a child main decision.
+        expect(allClassifications).toHaveLength(transition ? 3 : junior && !juniorWorkflow ? 1 : 2); // Workflow inner children retain executor-owned main guidance; direct children use the helper.
       }
       if (classifications.length) {
         expect(classifications[0]!.state).toEqual({
-          prompt: original.task,
+          prompt: direct.task,
           agentType: "receipt-worker",
         });
         expect(JSON.stringify(classifications)).not.toContain("PRIVATE_PARENT_HISTORY");
+        if (slot) {
+          const criteria = (
+            classifications[0]!.questions as Record<string, { criteria: Record<string, string> }>
+          ).tier!.criteria;
+          expect(Object.keys(criteria)).toEqual(
+            name === "slot-standard"
+              ? ["fast", "balanced", "deep"]
+              : ["balanced", "deep", "slot::deep", "slot::alpha"],
+          );
+          if (name !== "slot-standard")
+            expect(criteria["slot::deep"]).toContain("Never for writing or changing code.");
+        }
         expect(Object.keys(classifications[0]!.questions as object).sort()).toEqual([
           "effort",
           "risky",
@@ -713,7 +1043,11 @@ export default function(pi) {
         JSON.stringify(
           {
             name,
-            versions: { pi: "1.4.0", subagents: "0.80.0", bun: Bun.version },
+            versions: {
+              pi: "1.4.0",
+              subagents: "naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2",
+              bun: Bun.version,
+            },
             original,
             commands,
             requests,

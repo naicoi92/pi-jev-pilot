@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url";
 import { classify, systemOneConfig, WORKER_EFFORT_QUESTION, effortEnabled } from "./system-one.ts";
 import { guidanceEnabled } from "./guidance-policy.ts";
 import { selectEffort } from "./effort-policy.ts";
-import { selectTier, TIER_ORDER, type Tiers } from "./tier-policy.ts";
+import { TIER_ORDER, type Tiers } from "./tier-policy.ts";
+import { crewConfig } from "./crew-config.ts";
+import { selectWorkerModel } from "./crew-policy.ts";
 
 function enabled(): boolean {
   const value = process.env.JEV_WORKER_ROUTING_ENABLED ?? "true";
@@ -198,6 +200,8 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
       TIER_ORDER.map((tier) => [tier, process.env[`JEV_TIER_${tier.toUpperCase()}`] ?? ""]),
     ) as Tiers;
     for (const tier of TIER_ORDER) physical(ctx, tiers[tier]);
+    const crew = crewConfig(ctx.cwd);
+    for (const slot of crew.offered) physical(ctx, slot.model);
     const controller = new AbortController();
     const cancel = () => controller.abort();
     ctx.signal?.addEventListener("abort", cancel, { once: true });
@@ -226,7 +230,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
         return { block: true, reason: preview.message };
       const specialized =
         input.agent === "jev-pilot:junior"
-          ? tiers.balanced
+          ? (crew.junior?.model ?? tiers.balanced)
           : ["jev-pilot:codex-review", "jev-pilot:opencode-review"].includes(input.agent)
             ? tiers.fast
             : undefined;
@@ -252,7 +256,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
             : {}),
         },
         controller.signal,
-        { tier: true, effort: true },
+        { tier: true, effort: true, slots: crew.offered },
         {
           effort: WORKER_EFFORT_QUESTION,
         },
@@ -264,14 +268,16 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
         return;
       }
       const selected = result.decision.tier
-        ? selectTier(
+        ? selectWorkerModel(
             {
               tier: result.decision.tier,
+              slot: result.decision.slot,
               confidence: result.decision.confidence ?? null,
               risky: result.decision.risky,
             },
             baseline,
             tiers,
+            crew.offered,
           )
         : null;
       // Policy comparison is not authority to replace an omitted executor default.
