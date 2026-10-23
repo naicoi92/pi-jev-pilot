@@ -5,7 +5,7 @@
 **Blocked by:** 04: Deliver upstream strategy and quality advice in Pi; 06: Route direct and async native subagents through Pi; 07: Record the risk versus custom-slot precedence decision
 
 **Status:** ready-for-agent
-**Implementation:** in-progress
+**Implementation:** completed
 
 **Parent:** Jev Pilot for Pi — Faithful Port (local feature spec).
 
@@ -27,3 +27,11 @@ Through Pi CLI and the real adapter, compare classifier candidate payloads by mo
 Before writing tests, map each test to exactly one parent acceptance criterion and an independent expected-value source. Tests and verification belong to this slice, not a later horizontal testing ticket.
 
 ## Comments
+
+### Parent acceptance — 2026-10-23
+
+Accepted after independent whole-feature Standards and Spec verdicts (both OK with notes, no issues found), exact-candidate merge and fresh integration verification. Candidate `c68c186dee9387b8b2d8c730c994c23644a841bb`; merge `fe4f2be6ea4f0080d372d09ef1c3cd02df3c335f`, parents `3991458e51cdb3f69aba2da0329112ff99f2eb40` and that candidate; identical tree `8793879a31821820901e4ecae3e306fd24cd3a52`. Candidate full: 458 pass / 0 fail / 2916 assertions. Integration full: 458 pass / 0 fail / 2900 assertions, actual exit0; 33/33 saved native terminal pairs valid, audit anomalies0. Frozen install, lint, format, typecheck and whitespace gates passed.
+
+Evidence under parent-session subagent-artifacts/outputs: `0f4dd902-6309-4f52-a6ad-b51f18927f9c/ticket-08/final-integrated-review.task-{1,2}.md`; `85549847-2296-41fb-a7e9-4e6acf094276/ticket-08/p1-corrected-full-verification.md`; `53f62d62-3add-4d7e-9fbc-91040f5bba2f/ticket-08/merge.md`; `29c3f455-feb3-4f4f-9214-acf7c5a34dca/ticket-08/integration-full-verification.md`, with sibling raw evidence directories.
+
+Both integrated P1s are closed: cancelled transitions preserve junior registration, and forced deep remains authoritative with omitted caller model. Historical full REDs, ownership reproduction, interrupted worker, intermediate harness failures and original pending-terminal fixtures remain retained, not rewritten as passes. Verification is bounded to official Pi1.4.0/Bun1.4.3/exact fork5f8adccb with deterministic localhost fixtures and one physical executor owner; no universal/live-provider/remote compatibility claim. Fork PR2 remains Draft; no publication or fork merge authorized.
