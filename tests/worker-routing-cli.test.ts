@@ -160,6 +160,7 @@ for (const scenario of cases)
     };
     let dispatched: Record<string, unknown> = original;
     let launches = 0;
+    let releaseNotificationWake: (() => void) | undefined;
     server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -224,6 +225,17 @@ for (const scenario of cases)
           requests.filter((request) => request.model === "parent").length >= 3
         )
           await Bun.sleep(10000);
+        if (
+          name === "lifecycle" &&
+          isParent &&
+          launches === 2 &&
+          JSON.stringify((body.messages as unknown[] | undefined)?.at(-1)).includes(
+            "Background task completed:",
+          )
+        )
+          await new Promise<void>((done) => {
+            releaseNotificationWake = done;
+          });
         const launch = !activationProbe && isParent && !parentSent;
         if (launch) {
           parentSent = true;
@@ -325,7 +337,7 @@ export default function(pi) {
  });
  pi.on("session_start", (_event,ctx) => { if (${name === "coexistence"}) registration = registerRequiredChildExtensions({sessionId:ctx.sessionManager.getSessionId(),extensions:[{id:"existing-owner",path:${JSON.stringify(join(installedPackage, "src/worker-child.ts"))}}]}); });
  pi.on("session_shutdown",()=>registration?.dispose());
- pi.registerCommand("worker-reload", { handler: async (_args,ctx) => { await ctx.reload(); } });
+ pi.registerCommand("worker-reload", { handler: async (_args,ctx) => { await ctx.waitForIdle(); await ctx.reload(); } });
  pi.on("tool_call", (event,ctx) => {
   if (${name === "coexistence-jev-first"} && event.toolName==="subagent") { try { registerRequiredChildExtensions({sessionId:ctx.sessionManager.getSessionId(),extensions:[{id:"late-host",path:${JSON.stringify(join(installedPackage, "src/worker-child.ts"))}}]});throw new Error("Expected singleton collision"); } catch(error) { appendFileSync(${JSON.stringify(join(directory, "host-conflict.log"))},String(error)); } }
   if(event.toolName==="subagent") appendFileSync(${JSON.stringify(join(directory, "envelope.jsonl"))},JSON.stringify(event.input)+"\\n");});
@@ -401,6 +413,48 @@ export default function(pi) {
         await Bun.sleep(20);
       }
     };
+    const waitForPromptResponse = async (id: string, disposition: "started" | "handled") => {
+      await wait(() => records.some((record) => record.type === "response" && record.id === id));
+      const response = records.find((record) => record.type === "response" && record.id === id)!;
+      expect(response.success, `RPC ${id}: ${response.error ?? JSON.stringify(response)}`).toBe(
+        true,
+      );
+      expect(response.data).toMatchObject({ disposition });
+    };
+    const notificationIndex = (asyncId: string, offset = 0) =>
+      records.findIndex((record, index) => {
+        const message = record.message as
+          | { customType?: string; details?: { runs?: { runId?: string }[] } }
+          | undefined;
+        return (
+          index >= offset &&
+          record.type === "message_end" &&
+          message?.customType === "subagent-notify" &&
+          message.details?.runs?.some((run) => run.runId === asyncId)
+        );
+      });
+    const waitForNotificationSettled = async (asyncId: string, offset = 0) => {
+      expect(asyncId).toBeString();
+      expect(asyncId.length).toBeGreaterThan(0);
+      await wait(() => notificationIndex(asyncId, offset) >= 0);
+      const notified = notificationIndex(asyncId, offset);
+      if (name === "lifecycle" && launches === 2) {
+        await wait(() => releaseNotificationWake !== undefined);
+        expect(
+          records.slice(offset, notified).some((record) => record.type === "agent_settled"),
+        ).toBe(true);
+        expect(
+          records.some((record, index) => index > notified && record.type === "agent_settled"),
+        ).toBe(false);
+        releaseNotificationWake!();
+      }
+      await wait(() =>
+        records.some((record, index) => index > notified && record.type === "agent_settled"),
+      );
+      expect(
+        records.findIndex((record, index) => index > notified && record.type === "agent_settled"),
+      ).toBeGreaterThan(notified);
+    };
     const readResults = async () =>
       JSON.parse((await Bun.file(join(directory, "result.jsonl")).text()).trim().split("\n")[0]!);
     let receipt: unknown;
@@ -414,6 +468,7 @@ export default function(pi) {
           message: "PRIVATE_PARENT_HISTORY: Run the deterministic child test subject.",
         }) + "\n",
       );
+      await waitForPromptResponse("start", "started");
       if (classifierCancel || childCancel) {
         await wait(() => (classifierCancel ? classifications.length === 1 : childStarted));
         if (pendingChange) {
@@ -435,6 +490,7 @@ export default function(pi) {
               message: "Wait for my cancellation.",
             }) + "\n",
           );
+          await waitForPromptResponse("cancel-turn", "started");
           await wait(() => requests.filter((request) => request.model === "parent").length >= 3);
         }
         if (!pendingChange) {
@@ -488,12 +544,7 @@ export default function(pi) {
           const statusFile = join(result.details.asyncDir, "status.json");
           await wait(
             () =>
-              records.some(
-                (record) =>
-                  record.type === "message_end" &&
-                  JSON.stringify(record).includes("subagent-notify"),
-              ) ||
-              (childCancel && childAborts > 0),
+              notificationIndex(result.details.asyncId) >= 0 || (childCancel && childAborts > 0),
           );
           const deadline = Date.now() + 30000;
           let status = await Bun.file(statusFile).json();
@@ -585,10 +636,12 @@ export default function(pi) {
         );
       if (name === "lifecycle" || name === "resume") {
         const first = await readResults();
+        await waitForNotificationSettled(first.details.asyncId);
         const follow = async (id: string, input: Record<string, unknown>) => {
           dispatched = input;
           parentSent = false;
           const offset = records.length;
+          const toolCallId = `worker-production-${launches + 1}`;
           process!.stdin.write(
             JSON.stringify({
               id,
@@ -596,20 +649,26 @@ export default function(pi) {
               message: "Run the next authorized receipt pass.",
             }) + "\n",
           );
+          await waitForPromptResponse(id, "started");
           await wait(() =>
-            records
-              .slice(offset)
-              .some(
-                (record) =>
-                  record.type === "message_end" &&
-                  JSON.stringify(record).includes("subagent-notify"),
-              ),
+            records.some(
+              (record) => record.type === "tool_execution_end" && record.toolCallId === toolCallId,
+            ),
           );
-          const lines = (await Bun.file(join(directory, "result.jsonl")).text()).trim().split("\n");
-          const result = JSON.parse(lines.at(-1)!);
-          expect(result.isError).not.toBe(true);
+          const terminal = records.find(
+            (record) => record.type === "tool_execution_end" && record.toolCallId === toolCallId,
+          )!;
+          expect(terminal.isError, JSON.stringify(terminal.result)).not.toBe(true);
+          const result = terminal.result as {
+            details: {
+              asyncId: string;
+              asyncDir: string;
+              launchResolvedExtensions: { required: string[] };
+            };
+          };
+          await waitForNotificationSettled(result.details.asyncId, offset);
+          expect(result.details.launchResolvedExtensions.required).toContain("jev-pilot-child");
           const statusFile = join(result.details.asyncDir, "status.json");
-          await wait(() => records.slice(offset).some((record) => record.type === "agent_settled"));
           let status = await Bun.file(statusFile).json();
           const deadline = Date.now() + 10000;
           while (status.processTerminal?.state !== "observed" && Date.now() < deadline) {
@@ -619,7 +678,7 @@ export default function(pi) {
           expect(status).toMatchObject({
             state: "complete",
             processTerminal: { state: "observed" },
-            steps: [{ thinking: "medium", exitCode: 0 }],
+            steps: [{ model: "local/selected", thinking: "medium", exitCode: 0 }],
           });
           return result;
         };
@@ -637,7 +696,7 @@ export default function(pi) {
           process!.stdin.write(
             JSON.stringify({ id: "reload", type: "prompt", message: "/worker-reload" }) + "\n",
           );
-          await wait(() => records.some((record) => record.id === "reload"));
+          await waitForPromptResponse("reload", "handled");
           await follow("reload-pass", original);
           expect(classifications).toHaveLength(3);
           expect(allClassifications).toHaveLength(6);
@@ -648,6 +707,7 @@ export default function(pi) {
         expect(classifierAborts).toBe(1);
       }
     } finally {
+      releaseNotificationWake?.();
       await writeFile(
         join(directory, "trace.json"),
         JSON.stringify(
