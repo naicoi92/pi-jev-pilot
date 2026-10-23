@@ -42,6 +42,15 @@ const cases = [
   { name: "slot-budget", baseline: "max", background: false },
   { name: "slot-async", baseline: "low", background: true },
   { name: "slot-risk", baseline: "max", background: false },
+  { name: "slot-risk-omitted-direct", baseline: "max", background: false },
+  { name: "slot-risk-omitted-async", baseline: "low", background: true },
+  { name: "slot-risk-boundary", baseline: "max", background: false },
+  { name: "slot-risk-disabled", baseline: "max", background: false },
+  { name: "slot-risk-error", baseline: "low", background: false },
+  { name: "junior-workflow-switch-cancel", baseline: "max", background: false },
+  { name: "junior-workflow-fork-cancel", baseline: "max", background: false },
+  { name: "junior-workflow-switch-accept", baseline: "max", background: false },
+  { name: "junior-workflow-fork-accept", baseline: "max", background: false },
   { name: "junior-selected", baseline: "max", background: false },
   { name: "junior-first", baseline: "low", background: true },
   { name: "junior-selected-routing-off", baseline: "max", background: false },
@@ -86,12 +95,16 @@ const cases = [
   { name: "pending-session", baseline: "max", background: false },
 ] as const;
 for (const scenario of cases)
-  test(`WORKER-${scenario.name.startsWith("slot-") ? "18" : scenario.name.startsWith("junior-") ? "19" : scenario.name.includes("clamp") ? "06" : scenario.name.includes("coexistence") || scenario.name === "profile" || scenario.name === "runtime-unknown" ? "13" : scenario.name.includes("cancel") ? "12" : scenario.name.startsWith("pending-") || ["lifecycle", "resume"].includes(scenario.name) ? "26" : scenario.name === "workflow-guidance" ? "21" : "20"}-${scenario.name} packed production adapter actual receipt`, async () => {
+  test(`WORKER-${scenario.name.startsWith("junior-workflow-") && !scenario.name.endsWith("routing-off") ? "26" : scenario.name.startsWith("slot-risk-") ? (scenario.name.endsWith("disabled") || scenario.name.endsWith("error") ? "20" : "03") : scenario.name.startsWith("slot-") ? "18" : scenario.name.startsWith("junior-") ? "19" : scenario.name.includes("clamp") ? "06" : scenario.name.includes("coexistence") || scenario.name === "profile" || scenario.name === "runtime-unknown" ? "13" : scenario.name.includes("cancel") ? "12" : scenario.name.startsWith("pending-") || ["lifecycle", "resume"].includes(scenario.name) ? "26" : scenario.name === "workflow-guidance" ? "21" : "20"}-${scenario.name} packed production adapter actual receipt`, async () => {
     const { name, baseline, background } = scenario;
     const junior = name.startsWith("junior-");
     const slot = name.startsWith("slot-");
     const routingOff = name.endsWith("routing-off");
-    const juniorWorkflow = name === "junior-workflow-routing-off";
+    const juniorWorkflow = name.startsWith("junior-workflow-");
+    const transition = juniorWorkflow && !routingOff;
+    const riskOmitted = name.startsWith("slot-risk-");
+    const parentModel = riskOmitted ? "local/deep" : "local/parent";
+    let transitionReady = !transition;
     const directory = await mkdtemp(join(tmpdir(), "pi-jev-worker-production-"));
     evidence = new WorkerEvidence(directory);
     await evidence.checkCapacity();
@@ -125,11 +138,16 @@ for (const scenario of cases)
       JEV_QUALITY_ENABLED: "false",
       JEV_DESIGN_ENABLED: "false",
       JEV_WORKER_ROUTING_ENABLED:
-        name === "disabled" || name === "profile-executor" || routingOff ? "false" : "true",
+        name === "disabled" ||
+        name === "slot-risk-disabled" ||
+        name === "profile-executor" ||
+        routingOff
+          ? "false"
+          : "true",
       JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
       JEV_TIER_FAST: "local/parent",
       JEV_TIER_BALANCED: "local/selected",
-      JEV_TIER_DEEP: "local/configured",
+      JEV_TIER_DEEP: riskOmitted ? "local/deep" : "local/configured",
       JEV_TIMEOUT_MS: name.includes("timeout") ? "100" : "5000",
     };
     if (slot || junior) {
@@ -173,9 +191,10 @@ for (const scenario of cases)
     let childStarted = false;
     const pendingChange = name.startsWith("pending-");
     const classifierCancel = name === "classifier-cancel" || pendingChange;
-    const childCancel = name.includes("cancel") && !classifierCancel;
+    const childCancel = name.includes("cancel") && !classifierCancel && !transition;
     const preserve =
       name === "disabled" ||
+      name === "slot-risk-disabled" ||
       name.includes("error") ||
       name.includes("timeout") ||
       name === "async-rejected-cancel" ||
@@ -183,24 +202,29 @@ for (const scenario of cases)
       name === "profile-executor";
     const runtime = name === "runtime" || name === "runtime-unknown";
     const omitted =
+      riskOmitted ||
       name.startsWith("omitted") ||
       name === "rejected-tier" ||
       name === "retained-clamp" ||
       name === "runtime-unknown" ||
       routingOff;
-    const retained = omitted && !routingOff && name !== "omitted-upgrade";
+    const retained = omitted && !routingOff && !riskOmitted && name !== "omitted-upgrade";
     const clamped = name === "clamp" || name === "retained-clamp";
     const expectedIdentity =
-      preserve ||
-      retained ||
-      name === "slot-risk" ||
-      name.startsWith("junior-selected") ||
-      juniorWorkflow
-        ? "configured"
-        : "selected";
+      riskOmitted && !preserve
+        ? name === "slot-risk-boundary"
+          ? "configured"
+          : "deep"
+        : preserve ||
+            retained ||
+            name === "slot-risk" ||
+            name.startsWith("junior-selected") ||
+            juniorWorkflow
+          ? "configured"
+          : "selected";
     const expectedThinking = junior
       ? "medium"
-      : name === "slot-risk"
+      : name === "slot-risk" || (riskOmitted && !preserve && name !== "slot-risk-boundary")
         ? "high"
         : preserve
           ? baseline
@@ -267,7 +291,9 @@ for (const scenario of cases)
               tier: {
                 choice:
                   slot && name !== "slot-standard"
-                    ? "slot::deep"
+                    ? riskOmitted
+                      ? "slot::alpha"
+                      : "slot::deep"
                     : name === "async-noop-cancel"
                       ? "deep"
                       : retained && name !== "rejected-tier" && name !== "retained-clamp"
@@ -280,20 +306,31 @@ for (const scenario of cases)
                     ? 0.1
                     : name === "omitted-upgrade"
                       ? 0.45
-                      : 0.95,
+                      : riskOmitted
+                        ? 0.9
+                        : 0.95,
               },
               effort: {
                 choice: "medium",
                 confidence:
                   name === "async-noop-cancel" || name === "async-rejected-cancel" ? 0.1 : 0.95,
               },
-              risky: { noul: name === "slot-risk" ? 0.95 : 0 },
+              risky: {
+                noul:
+                  name === "slot-risk-boundary"
+                    ? 0.7
+                    : name === "slot-risk" || riskOmitted
+                      ? 0.95
+                      : 0,
+              },
             },
           });
         }
         if (!activationProbe) requests.push(body);
         const isParent =
-          body.model === "parent" ||
+          (riskOmitted
+            ? activationProbe || JSON.stringify(body.messages).includes("PRIVATE_PARENT_HISTORY")
+            : body.model === "parent") ||
           (pendingChange && JSON.stringify(body.messages).includes("PRIVATE_PARENT_HISTORY"));
         if (
           background &&
@@ -314,7 +351,7 @@ for (const scenario of cases)
           await new Promise<void>((done) => {
             releaseNotificationWake = done;
           });
-        const launch = !activationProbe && isParent && !parentSent;
+        const launch = !activationProbe && transitionReady && isParent && !parentSent;
         if (launch) {
           parentSent = true;
           launches++;
@@ -366,7 +403,7 @@ for (const scenario of cases)
             baseUrl: `${server.url}v1`,
             api: "openai-completions",
             apiKey: "fixture-not-a-credential",
-            models: ["parent", "configured", "selected"].map((id) => ({
+            models: ["parent", "configured", "selected", "deep"].map((id) => ({
               id,
               reasoning: !(clamped && id === expectedIdentity),
               input: ["text"],
@@ -415,6 +452,18 @@ for (const scenario of cases)
 import { registerRequiredChildExtensions } from "pi-subagents/required-child-extensions";
 export default function(pi) {
  let registration;
+ const lifecycle=(type,ctx,extra={})=>appendFileSync(${JSON.stringify(join(directory, "lifecycle.jsonl"))},JSON.stringify({type,pid:process.pid,sessionId:ctx.sessionManager.getSessionId(),at:Date.now(),...extra})+"\\n");
+ if (${transition}) {
+  pi.on("session_start",(event,ctx)=>lifecycle(event.type,ctx,{reason:event.reason}));
+  pi.on("session_shutdown",(event,ctx)=>lifecycle(event.type,ctx,{reason:event.reason}));
+  for(const type of ["session_before_switch","session_before_fork"]) pi.on(type,(event,ctx)=>{lifecycle(type,ctx);return {cancel:${name.endsWith("cancel")}};});
+  pi.registerCommand("worker-transition",{handler:async(_args,ctx)=>{
+   await ctx.waitForIdle();
+   const before=ctx.sessionManager.getSessionId();
+   const result=${name.includes("-fork-") ? 'await ctx.fork(ctx.sessionManager.getEntries().find(entry=>entry.type==="message" && entry.message.role==="user").id,{position:"at"})' : "await ctx.switchSession(ctx.sessionManager.getSessionFile())"};
+   appendFileSync(${JSON.stringify(join(directory, "transition.jsonl"))},JSON.stringify({before,result})+"\\n");
+  }});
+ }
  pi.on("session_start", (_event,ctx) => {
   if (${runtime}) { const input={version:1,name:"receipt-worker",definition:{description:"Runtime worker",systemPrompt:"Return CHILD_RECEIPT_OK without tools.",tools:["read"],model:"local/configured",thinking:"max",defaultContext:"fresh"}};pi.events.emit("pi-subagents:runtime-agent-register:v1",input);if(!input.result?.ok)throw new Error("Runtime registration failed"); }
  });
@@ -438,6 +487,7 @@ export default function(pi) {
  }});
  pi.on("tool_call", (event,ctx) => {
   if (${name === "coexistence-jev-first"} && event.toolName==="subagent") { try { registerRequiredChildExtensions({sessionId:ctx.sessionManager.getSessionId(),extensions:[{id:"late-host",path:${JSON.stringify(join(installedPackage, "src/worker-child.ts"))}}]});throw new Error("Expected singleton collision"); } catch(error) { appendFileSync(${JSON.stringify(join(directory, "host-conflict.log"))},String(error)); } }
+  if (${transition} && event.toolName==="subagent") lifecycle("workflow_dispatch",ctx);
   if(event.toolName==="subagent") appendFileSync(${JSON.stringify(join(directory, "envelope.jsonl"))},JSON.stringify(event.input)+"\\n");});
  pi.on("tool_result", event => {if(event.toolName==="subagent") appendFileSync(${JSON.stringify(join(directory, "result.jsonl"))},JSON.stringify(event)+"\\n");});
  pi.events.on("subagents:rpc:v1:request", event => appendFileSync(${JSON.stringify(join(directory, "control.jsonl"))},JSON.stringify(event)+"\\n"));
@@ -457,7 +507,7 @@ export default function(pi) {
       "--no-prompt-templates",
       "--no-themes",
       "--model",
-      "local/parent",
+      parentModel,
       "Package dependency activation check.",
     ]);
     allClassifications.length = 0;
@@ -476,7 +526,7 @@ export default function(pi) {
       "--no-prompt-templates",
       "--no-themes",
       "--model",
-      "local/parent",
+      parentModel,
       "--thinking",
       "medium",
     ];
@@ -640,6 +690,42 @@ export default function(pi) {
     try {
       process.stdin.write(JSON.stringify({ id: "ready", type: "get_state" }) + "\n");
       await wait(() => records.some((record) => record.id === "ready"));
+      if (transition) {
+        process.stdin.write(
+          JSON.stringify({
+            id: "seed",
+            type: "prompt",
+            message: "PRIVATE_PARENT_HISTORY: Seed the transition without delegation.",
+          }) + "\n",
+        );
+        await waitForPromptResponse("seed", "started");
+        await wait(() => records.some((record) => record.type === "agent_settled"));
+        process.stdin.write(
+          JSON.stringify({ id: "transition", type: "prompt", message: "/worker-transition" }) +
+            "\n",
+        );
+        await waitForPromptResponse("transition", "handled");
+        await wait(() => Bun.file(join(directory, "transition.jsonl")).size > 0);
+        const completed = JSON.parse(
+          (await Bun.file(join(directory, "transition.jsonl")).text()).trim(),
+        );
+        expect(completed.result.cancelled).toBe(name.endsWith("cancel"));
+        const lifecycle = (await Bun.file(join(directory, "lifecycle.jsonl")).text())
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        const starts = lifecycle.filter((event) => event.type === "session_start");
+        const shutdowns = lifecycle.filter((event) => event.type === "session_shutdown");
+        expect(starts).toHaveLength(name.endsWith("cancel") ? 1 : 2);
+        expect(shutdowns).toHaveLength(name.endsWith("cancel") ? 0 : 1);
+        expect(starts[0].sessionId).toBe(completed.before);
+        if (name.endsWith("accept")) {
+          expect(shutdowns[0].sessionId).toBe(completed.before);
+          expect(lifecycle.indexOf(shutdowns[0])).toBeLessThan(lifecycle.indexOf(starts[1]));
+        }
+        records.length = 0;
+        transitionReady = true;
+      }
       process.stdin.write(
         JSON.stringify({
           id: "start",
@@ -782,6 +868,30 @@ export default function(pi) {
           } else if (juniorWorkflow) {
             expect(result.isError).not.toBe(true);
             expect(JSON.stringify(result)).toContain("CHILD_RECEIPT_OK");
+            if (transition) {
+              expect(result.details.results).toMatchObject([
+                { model: "local/configured", exitCode: 0 },
+              ]);
+              const lifecycle = (await Bun.file(join(directory, "lifecycle.jsonl")).text())
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line))
+                .filter((event) => event.pid === process!.pid);
+              const starts = lifecycle.filter((event) => event.type === "session_start");
+              const dispatches = lifecycle.filter((event) => event.type === "workflow_dispatch");
+              expect(dispatches).toHaveLength(1);
+              expect(dispatches[0].sessionId).toBe(starts.at(-1).sessionId);
+              const childId = result.details.results[0].runId;
+              const status = await Bun.file(
+                join(env.PI_SUBAGENTS_TEMP_ROOT!, "async-subagent-runs", childId, "status.json"),
+              ).json();
+              expect(status.runId).toBe(childId);
+              expect(status.processTerminal).toMatchObject({ state: "observed", runId: childId });
+              expect(status.steps).toHaveLength(1);
+              expect(status.steps[0].launchResolvedExtensions.required).toContain(
+                "jev-pilot-junior-turn-bound",
+              );
+            }
           } else
             expect(result.details.results).toMatchObject([
               {
@@ -796,26 +906,35 @@ export default function(pi) {
         const envelope = JSON.parse(
           (await Bun.file(join(directory, "envelope.jsonl")).text()).trim(),
         );
-        if (preserve || routingOff) expect(envelope).toEqual(original);
+        if (preserve || routingOff || juniorWorkflow) expect(envelope).toEqual(original);
         if (!childCancel) {
-          const childRequest = requests.find((request) => request.model !== "parent");
+          const childRequest = requests.find((request) =>
+            riskOmitted
+              ? !JSON.stringify(request.messages).includes("PRIVATE_PARENT_HISTORY")
+              : request.model !== "parent",
+          );
           if (["top-fresh", "scope-user", "profile-executor"].includes(name))
             expect(JSON.stringify(childRequest?.messages)).not.toContain("PRIVATE_PARENT_HISTORY");
           expect(childRequest).toMatchObject({
             model: expectedIdentity,
             ...(!clamped ? { reasoning_effort: expectedThinking } : {}),
           });
-          if (!preserve && !routingOff)
+          if (!preserve && !routingOff && !juniorWorkflow)
             expect(envelope.model).toBe(
               `local/${expectedIdentity}${junior ? "" : `:${expectedThinking}`}`,
             );
         }
       }
       expect(classifications).toHaveLength(
-        name === "disabled" || name === "profile-executor" || junior ? 0 : 1,
+        name === "disabled" ||
+          name === "slot-risk-disabled" ||
+          name === "profile-executor" ||
+          junior
+          ? 0
+          : 1,
       );
       if (!preserve && !classifierCancel && !childCancel) {
-        expect(allClassifications).toHaveLength(junior && !juniorWorkflow ? 1 : 2); // Workflow inner children retain executor-owned main guidance; direct children use the helper.
+        expect(allClassifications).toHaveLength(transition ? 3 : junior && !juniorWorkflow ? 1 : 2); // Workflow inner children retain executor-owned main guidance; direct children use the helper.
       }
       if (classifications.length) {
         expect(classifications[0]!.state).toEqual({

@@ -20,6 +20,24 @@ test("CREW-03 approved risk deep wins over confident custom choice", () => {
     ),
   ).toBe("local/cheap");
 });
+test("CREW-03 forced deep remains authoritative when parent baseline is already deep", () => {
+  expect(
+    selectWorkerModel(
+      { tier: "fast", slot: "deep", confidence: 0.9, risky: 0.95 },
+      tiers.deep,
+      tiers,
+      slots,
+    ),
+  ).toBe("local/deep");
+  expect(
+    selectWorkerModel(
+      { tier: "fast", slot: "deep", confidence: 0.9, risky: 0.7 },
+      tiers.deep,
+      tiers,
+      slots,
+    ),
+  ).toBe("local/cheap");
+});
 test("CREW-03 custom choices require original downgrade confidence", () => {
   for (const confidence of [null, 0.59])
     expect(

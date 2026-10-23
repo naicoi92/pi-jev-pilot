@@ -107,6 +107,26 @@ test("CREW-19 junior registration reuses ownership and disposes on lifecycle", a
   await f.fire("session_shutdown");
   expect(f.disposals()).toBe(2);
 });
+test("CREW-26 junior ownership survives cancellable transition events until accepted shutdown", async () => {
+  const f = await fixture();
+  await f.fire("session_start");
+  for (const event of ["session_before_switch", "session_before_fork"]) {
+    await f.fire(event);
+    await f.fire("tool_call", {
+      toolName: "subagent",
+      input: { workflow: "./junior-workflow.js" },
+    });
+    expect(f.disposals()).toBe(0);
+    expect(f.requests()).toBe(1);
+  }
+  await f.fire("session_shutdown");
+  await f.fire("session_shutdown");
+  expect(f.disposals()).toBe(1);
+  await f.fire("session_start");
+  expect(f.requests()).toBe(2);
+  await f.fire("session_shutdown");
+  expect(f.disposals()).toBe(2);
+});
 test("CREW-13 invalid junior target blocks before runtime registration", async () => {
   const f = await fixture();
   f.invalid();

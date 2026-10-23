@@ -63,9 +63,8 @@ export function registerCrewJunior(pi: ExtensionAPI): void {
     clear();
     ensure(ctx);
   });
+  // Before-switch/fork can be cancelled; only committed teardown releases this owner.
   pi.on("session_shutdown", clear);
-  pi.on("session_before_switch", clear);
-  pi.on("session_before_fork", clear);
   pi.on("tool_call", (event, ctx) => {
     if (event.toolName !== "subagent" || event.input.agent !== "jev-pilot:junior") return;
     ensure(ctx);

@@ -9,7 +9,7 @@ export function selectWorkerModel(
   tiers: Tiers,
   offered: Slot[],
 ): string | null {
-  if ((decision.risky ?? 0) > 0.7) return tiers.deep === current ? null : tiers.deep;
+  if ((decision.risky ?? 0) > 0.7) return tiers.deep;
   if (decision.slot)
     return (decision.confidence ?? 0) >= 0.6
       ? (offered.find((slot) => slot.name === decision.slot)?.model ?? null)
