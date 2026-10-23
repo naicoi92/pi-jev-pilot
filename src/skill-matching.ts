@@ -90,7 +90,9 @@ export async function decideMain(
       advice:
         [
           strategy ? crewAdvice(crew, true) : null,
-          adviceDecision && strategy ? strategyAdvice(adviceDecision) : null,
+          adviceDecision && strategy
+            ? strategyAdvice(adviceDecision, crew.offered.length > 0)
+            : null,
           adviceDecision && quality ? qualityAdvice(adviceDecision) : null,
           design
             ? designBlock(result?.designScore, designNames, resources, pi.getActiveTools())

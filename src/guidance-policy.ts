@@ -104,7 +104,10 @@ const STRATEGY_HOW = {
     "At most 4 subagents at a time. If it cannot be explained in one breath, work directly.",
   ].join("\n"),
 };
-export function strategyAdvice(decision: StrategyRead & { risky?: number | null }): string | null {
+export function strategyAdvice(
+  decision: StrategyRead & { risky?: number | null },
+  customWorkflowModels = false,
+): string | null {
   const strategy = decision.strategy;
   if (!strategy || strategy === "direct" || decision.strategyConfidence == null) return null;
   if (decision.strategyConfidence < (strategy === "graph" ? 0.8 : 0.6)) return null;
@@ -118,7 +121,11 @@ export function strategyAdvice(decision: StrategyRead & { risky?: number | null 
     STRATEGY_HOW[strategy],
     "It saw only the request and a few recent messages, not the code. If the actual work does not fit, ignore this and work directly.",
     "This is advice, not execution authority. User and project delegation restrictions take precedence; use only permitted tools and workers.",
-    "Workflow-script inner agents are not transparently intercepted. If a permitted workflow requires model selection, choose its configured fast model for searching, reading and reporting, balanced for ordinary well-specified work, and the workflow default for judgment-heavy work. Respect explicit user model choices.",
+    ...(customWorkflowModels
+      ? []
+      : [
+          "Workflow-script inner agents are not transparently intercepted. If a permitted workflow requires model selection, choose its configured fast model for searching, reading and reporting, balanced for ordinary well-specified work, and the workflow default for judgment-heavy work. Respect explicit user model choices.",
+        ]),
     "</execution_strategy>",
   ].join("\n");
 }

@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerAgentViaEvents } from "pi-subagents/agents";
 import { crewConfig } from "./crew-config.ts";
 // Pinned hooks/crew.ts juniorSpec. Tool names use the equivalent Pi tools.
@@ -24,10 +24,26 @@ export function registerCrewJunior(pi: ExtensionAPI): void {
     registration = undefined;
     error = undefined;
   };
-  const ensure = (cwd: string) => {
-    if (!crewConfig(cwd).junior || registration) return;
+  const ensure = (ctx: ExtensionContext) => {
+    const junior = crewConfig(ctx.cwd).junior;
+    if (!junior || registration) return;
     try {
-      registration = registerAgentViaEvents({ pi, name: "jev-pilot:junior", definition });
+      const slash = junior.model.indexOf("/");
+      const model = ctx.modelRegistry.find(
+        junior.model.slice(0, slash),
+        junior.model.slice(slash + 1),
+      );
+      if (!model || model.api === "pi-virtual")
+        throw new Error(
+          `Jev junior target ${junior.model} must resolve to an exact physical Pi model.`,
+        );
+      if (!ctx.modelRegistry.hasConfiguredAuth(model))
+        throw new Error(`Configure Pi authentication for Jev junior target ${junior.model}.`);
+      registration = registerAgentViaEvents({
+        pi,
+        name: "jev-pilot:junior",
+        definition: { ...definition, model: junior.model },
+      });
       error = undefined;
     } catch (cause) {
       error = `Jev junior registration failed: ${cause instanceof Error ? cause.message : String(cause)}`;
@@ -35,14 +51,14 @@ export function registerCrewJunior(pi: ExtensionAPI): void {
   };
   pi.on("session_start", (_event, ctx) => {
     clear();
-    ensure(ctx.cwd);
+    ensure(ctx);
   });
   pi.on("session_shutdown", clear);
   pi.on("session_before_switch", clear);
   pi.on("session_before_fork", clear);
   pi.on("tool_call", (event, ctx) => {
     if (event.toolName !== "subagent" || event.input.agent !== "jev-pilot:junior") return;
-    ensure(ctx.cwd);
+    ensure(ctx);
     if (error) return { block: true, reason: error };
   });
 }

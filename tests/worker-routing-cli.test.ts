@@ -27,6 +27,9 @@ const cases = [
   { name: "slot-risk", baseline: "max", background: false },
   { name: "junior-selected", baseline: "max", background: false },
   { name: "junior-first", baseline: "low", background: true },
+  { name: "junior-selected-routing-off", baseline: "max", background: false },
+  { name: "junior-first-routing-off", baseline: "low", background: true },
+  { name: "junior-workflow-routing-off", baseline: "max", background: false },
   { name: "slot-workflow", baseline: "max", background: false },
   { name: "junior-collision", baseline: "max", background: false },
   { name: "direct-max", baseline: "max", background: false },
@@ -70,6 +73,8 @@ for (const scenario of cases)
     const { name, baseline, background } = scenario;
     const junior = name.startsWith("junior-");
     const slot = name.startsWith("slot-");
+    const routingOff = name.endsWith("routing-off");
+    const juniorWorkflow = name === "junior-workflow-routing-off";
     const directory = await mkdtemp(join(tmpdir(), "pi-jev-worker-production-"));
     evidence = new WorkerEvidence(directory);
     await evidence.checkCapacity();
@@ -102,7 +107,7 @@ for (const scenario of cases)
       JEV_QUALITY_ENABLED: "false",
       JEV_DESIGN_ENABLED: "false",
       JEV_WORKER_ROUTING_ENABLED:
-        name === "disabled" || name === "profile-executor" ? "false" : "true",
+        name === "disabled" || name === "profile-executor" || routingOff ? "false" : "true",
       JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
       JEV_TIER_FAST: "local/parent",
       JEV_TIER_BALANCED: "local/selected",
@@ -119,7 +124,7 @@ for (const scenario of cases)
             { name: "deep", model: "local/selected" },
             { name: "alpha", model: "local/configured", when: "Read and report logs." },
           ],
-          ...(name === "junior-selected" ? { junior: "alpha" } : {}),
+          ...(name.startsWith("junior-selected") || juniorWorkflow ? { junior: "alpha" } : {}),
         }),
       );
     }
@@ -163,11 +168,16 @@ for (const scenario of cases)
       name.startsWith("omitted") ||
       name === "rejected-tier" ||
       name === "retained-clamp" ||
-      name === "runtime-unknown";
-    const retained = omitted && name !== "omitted-upgrade";
+      name === "runtime-unknown" ||
+      routingOff;
+    const retained = omitted && !routingOff && name !== "omitted-upgrade";
     const clamped = name === "clamp" || name === "retained-clamp";
     const expectedIdentity =
-      preserve || retained || name === "slot-risk" || name === "junior-selected"
+      preserve ||
+      retained ||
+      name === "slot-risk" ||
+      name.startsWith("junior-selected") ||
+      juniorWorkflow
         ? "configured"
         : "selected";
     const expectedThinking = junior
@@ -180,7 +190,7 @@ for (const scenario of cases)
             ? "off"
             : "medium";
     const caller = name === "same-identity" ? "local/selected" : "local/configured";
-    const original = {
+    const direct = {
       agent: junior ? "jev-pilot:junior" : "receipt-worker",
       ...(!omitted ? { model: caller } : {}),
       task: "Return CHILD_RECEIPT_OK after performing the specified local implementation and tests.",
@@ -194,6 +204,18 @@ for (const scenario of cases)
         acceptance: false,
       },
     };
+    const original = juniorWorkflow
+      ? {
+          workflow: "./junior-workflow.js",
+          async: false,
+          options: { context: "fresh", acceptance: false, mission: false },
+        }
+      : direct;
+    if (juniorWorkflow)
+      await writeFile(
+        join(directory, "junior-workflow.js"),
+        'const result = await runs.run("junior", { agent: "jev-pilot:junior", task: "Return CHILD_RECEIPT_OK without tools." }); return result;',
+      );
     let dispatched: Record<string, unknown> = original;
     let launches = 0;
     let releaseNotificationWake: (() => void) | undefined;
@@ -545,6 +567,7 @@ export default function(pi) {
       if (name === "slot-workflow") {
         const visible = JSON.stringify(requests[0]!.messages);
         expect(visible).toContain("deep: local/selected");
+        expect(visible).not.toContain("choose its configured fast model");
         expect(visible).toContain("Never for writing or changing code");
         expect(visible).toContain("not transparently intercepted");
         expect(visible).toContain("User and project delegation restrictions take precedence");
@@ -641,6 +664,9 @@ export default function(pi) {
             await wait(() => childAborts > 0);
             expect(result.isError).toBe(true);
             expect(JSON.stringify(result.content)).toContain("Request aborted");
+          } else if (juniorWorkflow) {
+            expect(result.isError).not.toBe(true);
+            expect(JSON.stringify(result)).toContain("CHILD_RECEIPT_OK");
           } else
             expect(result.details.results).toMatchObject([
               {
@@ -655,7 +681,7 @@ export default function(pi) {
         const envelope = JSON.parse(
           (await Bun.file(join(directory, "envelope.jsonl")).text()).trim(),
         );
-        if (preserve) expect(envelope).toEqual(original);
+        if (preserve || routingOff) expect(envelope).toEqual(original);
         if (!childCancel) {
           const childRequest = requests.find((request) => request.model !== "parent");
           if (["top-fresh", "scope-user", "profile-executor"].includes(name))
@@ -664,7 +690,7 @@ export default function(pi) {
             model: expectedIdentity,
             ...(!clamped ? { reasoning_effort: expectedThinking } : {}),
           });
-          if (!preserve)
+          if (!preserve && !routingOff)
             expect(envelope.model).toBe(
               `local/${expectedIdentity}${junior ? "" : `:${expectedThinking}`}`,
             );
@@ -674,11 +700,11 @@ export default function(pi) {
         name === "disabled" || name === "profile-executor" || junior ? 0 : 1,
       );
       if (!preserve && !classifierCancel && !childCancel) {
-        expect(allClassifications).toHaveLength(junior ? 1 : 2); // Parent plus ordinary worker decision, never a child main decision.
+        expect(allClassifications).toHaveLength(junior && !juniorWorkflow ? 1 : 2); // Workflow inner children retain executor-owned main guidance; direct children use the helper.
       }
       if (classifications.length) {
         expect(classifications[0]!.state).toEqual({
-          prompt: original.task,
+          prompt: direct.task,
           agentType: "receipt-worker",
         });
         expect(JSON.stringify(classifications)).not.toContain("PRIVATE_PARENT_HISTORY");

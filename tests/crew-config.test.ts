@@ -42,6 +42,15 @@ test("CREW-18 validates original names, count and field types", async () => {
   ])
     expect(await config(value)).toThrow("Invalid JEV_CREW_CONFIG");
 });
+test("CREW-18 explicit null mode is an actionable enum error", async () => {
+  expect(await config({ mode: null })).toThrow("mode must be standard, budget or junior-lead");
+});
+test("CREW-18 explicit null slots is an actionable array error", async () => {
+  expect(await config({ slots: null })).toThrow("slots must be an array");
+});
+test("CREW-18 omitted mode and slots retain defaults", async () => {
+  expect((await config({}))()).toEqual({ mode: "standard", slots: [], offered: [] });
+});
 test("CREW-02 slot target requires qualified identity without effort", async () => {
   for (const model of ["cheap", "local/cheap:high", "local/a b", ""])
     expect(await config({ slots: [{ name: "alpha", model }] })).toThrow("qualified");

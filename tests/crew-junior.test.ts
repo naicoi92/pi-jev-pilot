@@ -18,6 +18,13 @@ async function fixture() {
   );
   const hooks = new Map<string, Function[]>();
   const listeners = new Map<string, Function[]>();
+  let target: unknown;
+  let valid = true,
+    authenticated = true;
+  const modelRegistry = {
+    find: () => (valid ? { api: "openai-completions" } : undefined),
+    hasConfiguredAuth: () => authenticated,
+  };
   let requests = 0,
     disposals = 0;
   let fail = false,
@@ -30,7 +37,8 @@ async function fixture() {
       on(name: string, fn: Function) {
         listeners.set(name, [...(listeners.get(name) ?? []), fn]);
       },
-      emit(_name: string, request: { result?: unknown }) {
+      emit(_name: string, request: { result?: unknown; definition?: { model?: string } }) {
+        target = request.definition?.model;
         requests++;
         if (installed)
           request.result = fail
@@ -49,11 +57,19 @@ async function fixture() {
   registerCrewJunior(pi as unknown as ExtensionAPI);
   const fire = async (name: string, event: unknown = {}) => {
     let result;
-    for (const fn of hooks.get(name) ?? []) result = await fn(event, { cwd } as ExtensionContext);
+    for (const fn of hooks.get(name) ?? [])
+      result = await fn(event, { cwd, modelRegistry } as unknown as ExtensionContext);
     return result;
   };
   return {
     fire,
+    target: () => target,
+    invalid: () => {
+      valid = false;
+    },
+    unauthenticated: () => {
+      authenticated = false;
+    },
     requests: () => requests,
     disposals: () => disposals,
     fail: () => {
@@ -69,6 +85,7 @@ test("CREW-19 junior registration reuses ownership and disposes on lifecycle", a
   await f.fire("session_start");
   await f.fire("tool_call", { toolName: "subagent", input: { agent: "jev-pilot:junior" } });
   expect(f.requests()).toBe(1);
+  expect(f.target()).toBe("local/cheap");
   await f.fire("session_shutdown");
   await f.fire("session_shutdown");
   expect(f.disposals()).toBe(1);
@@ -76,6 +93,24 @@ test("CREW-19 junior registration reuses ownership and disposes on lifecycle", a
   expect(f.requests()).toBe(2);
   await f.fire("session_shutdown");
   expect(f.disposals()).toBe(2);
+});
+test("CREW-13 invalid junior target blocks before runtime registration", async () => {
+  const f = await fixture();
+  f.invalid();
+  await f.fire("session_start");
+  expect(
+    await f.fire("tool_call", { toolName: "subagent", input: { agent: "jev-pilot:junior" } }),
+  ).toMatchObject({ block: true, reason: expect.stringContaining("exact physical Pi model") });
+  expect(f.requests()).toBe(0);
+});
+test("CREW-13 unauthenticated junior target blocks before runtime registration", async () => {
+  const f = await fixture();
+  f.unauthenticated();
+  await f.fire("session_start");
+  expect(
+    await f.fire("tool_call", { toolName: "subagent", input: { agent: "jev-pilot:junior" } }),
+  ).toMatchObject({ block: true, reason: expect.stringContaining("Configure Pi authentication") });
+  expect(f.requests()).toBe(0);
 });
 test("CREW-13 unavailable executor or collision blocks junior not main startup", async () => {
   const f = await fixture();

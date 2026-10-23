@@ -33,10 +33,10 @@ export function crewConfig(cwd: string): Crew {
   if (!record(raw)) return fail("expected an object");
   if (Object.keys(raw).some((key) => !["mode", "slots", "junior"].includes(key)))
     return fail("unknown field");
-  const mode = raw.mode ?? "standard";
+  const mode = raw.mode === undefined ? "standard" : raw.mode;
   if (mode !== "standard" && mode !== "budget" && mode !== "junior-lead")
     return fail("mode must be standard, budget or junior-lead");
-  const entries = raw.slots ?? [];
+  const entries = raw.slots === undefined ? [] : raw.slots;
   if (!Array.isArray(entries) || entries.length > 8)
     return fail("slots must be an array of at most eight active slots");
   const reserved = new Set(
