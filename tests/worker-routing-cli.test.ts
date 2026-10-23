@@ -88,7 +88,8 @@ for (const scenario of cases)
         dependencies: {
           "@earendil-works/pi-coding-agent": "1.4.0",
           "@earendil-works/pi-ai": "1.4.0",
-          "pi-subagents": "0.80.0",
+          "pi-subagents":
+            "git+https://github.com/naicoi92/pi-subagents.git#5f8adccb235f1a45858c84b5110c105108947de2",
         },
       }),
     );
@@ -809,7 +810,11 @@ export default function(pi) {
         JSON.stringify(
           {
             name,
-            versions: { pi: "1.4.0", subagents: "0.80.0", bun: Bun.version },
+            versions: {
+              pi: "1.4.0",
+              subagents: "naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2",
+              bun: Bun.version,
+            },
             original,
             commands,
             requests,

@@ -1,5 +1,37 @@
 # Ticket 08 — validation evidence
 
+## Final fork pairing — bounded verification, workflow terminal gate OPEN
+
+Current integration starts from clean `4ccc1ed6beba0ee3f417e81b0905a950db254b9f` (tree `8ff153e5019d22b87f6a126d71f48cd65a5806aa`). It consumes the user-owned public fork `naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2`, tree `7201b00488f688479241a4e44be9b42e6a403a0e`. Bun regenerated the lock with Git locator and integrity `sha512-1KaSHfPWznMSt7ZjwNp+ZmGlJMjzTivUgt4bBBZCTludtTa6Zyp4YUYTsFzelLly4evumSNRpXeuxPqEJPzDrg==`; version 0.80.0 is a source label only. Official Pi installation uses `git:github.com/naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2`, verified in the separate new-head Git install proof referenced by the fork checkpoint. No npm fallback, publication or dependency-repository edit.
+
+The only production behavior delta is junior `requiredExtensions` with ID `jev-pilot-junior-turn-bound` and portable `fileURLToPath`; counter/model/effort policy remains unchanged. All executor fixtures pin the Git source; packed fixtures resolve public APIs and activate one physical executor. The feasibility fixture now installs a packed Jev copy rather than the working source, avoiding a second physical dependency owner. Runtime imports alone do not activate tools.
+
+Fresh local deterministic results, raw logs and receipts: `/tmp/ticket08-fork-final/`:
+
+| Gate                                                                         | Actual result                                                                                                                                  |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun install`                                                                | First attempt timed out at 120 seconds without lock delta; subsequent verbose install exit0; lock regenerated (no hand editing)                |
+| Focused crew/config/helper/adapter unit tests                                | 34 pass, 0 fail, 232 assertions                                                                                                                |
+| Allowed + denied packed junior CLI                                           | **9 pass, 1 fail, 1 error**, 129 assertions, outer exit1; not all GREEN                                                                        |
+| Denied direct/async/workflow/retained                                        | All four PASS: initial junior requests 0/0/0; retained admitted 40 then zero additional after denial. Sibling45; workflow two siblings total90 |
+| Allowed direct39/direct40/direct41                                           | PASS: junior39/40/40, natural completion at39/40; needs41 reports cap error                                                                    |
+| Allowed async41/cancel-resume                                                | PASS: retained session resumes/reloads do not refund; independent fresh child gets its own budget                                              |
+| Ordinary direct-max/disabled/classifier-cancel                               | 3 pass, 0 fail, 43 filtered, 50 assertions                                                                                                     |
+| Packed feasibility direct                                                    | 1 pass, 0 fail, 5 filtered, 9 assertions                                                                                                       |
+| Main routing/default-off controls                                            | 2 pass, 0 fail, 49 filtered, 10 assertions                                                                                                     |
+| `bun run lint`, `bun run fmt:check`, `bun run typecheck`, `git diff --check` | PASS; final logs retained separately                                                                                                           |
+
+**Workflow41 remaining gate:** `receipts/pi-jev-junior-bound-LgaZSo/trace.json` measures junior40 and sibling45, with cap failure and sibling completion. The test body passed its output/count checks, but cleanup could not prove real runner terminal observation. Both `status.json` files retain `processTerminal.state: pending`:
+
+- Junior run `80a70302-40ee-47dd-ac41-ad513ae488a5`, PID61110, runner instance `9c6cfd6f-8e1a-407f-af69-6a55c9c19a04`: failed/exit1, helper ACK and literal40 error.
+- Sibling run `9427acda-d6ad-4dd9-a00d-d5fb3edea877`, PID61111, runner instance `d5153f6f-077d-468e-a3d0-e3d2bba2ce4a`: complete/exit0, no junior requirement.
+
+Paths are `runtime/async-subagent-runs/<runID>/status.json` under that receipt. Original owned fixture is `/var/folders/kx/1fk4553s26d5ygj1wrzbv5200000gn/T/pi-jev-junior-bound-LgaZSo`; dependencies remain intact because terminal proof is missing. No runner directory was renamed, pruned, or given synthetic terminal state. Absence in a later process listing is not observed-terminal proof.
+
+Recorded parent RPC order: ready response index1, launch response2, workflow/tool events, `agent_settled`46, alive response47. Body awaits parent settled, verifies junior/sibling outputs, waits150ms and alive; it does **not** await workflow child process-terminal status before close. afterEach reaps parent first (actual close exit0 in commands.json), stops fixture HTTP, then WorkerEvidence waits for observed child terminal and fails. This ordering differs from explicit status waits in async/resume cases. No root cause is inferred. Historical workflow GREEN `aetzTF` below remains historical, not a fresh pass for this fork.
+
+The denied fixture only moves exact admission-only directories containing `[run-fanout-budget.json]` after parent reap, preserving them as admission reservations; it never hides a real status-bearing runner. Full-suite verification and independent integrated review remain required; no ticket/spec status or acceptance transition is made.
+
 ## F3 mandatory-helper contract-negative checkpoint — BLOCKED
 
 This checkpoint supersedes any implication below that optional helper delivery closes F3. Inspected candidate: clean `3e4ee41a3ba5e603947b6c42d4468135afacebbc`, tree `b484777e3b6fb57e95de15446b8554f37eef322d`. Latest independent review is `outputs/3eb72e91-36db-41e1-9438-16ece100f99f/ticket-08/turn-bound-review.md` in the parent session artifacts: F3 BLOCK, F1/F2/F4 CLOSED. Local operator authority remains preserve upstream 40 and continue; no remote-room check is claimed.

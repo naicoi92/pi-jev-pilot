@@ -55,7 +55,8 @@ for (const mode of [
           dependencies: {
             "@earendil-works/pi-coding-agent": "1.4.0",
             "@earendil-works/pi-ai": "1.4.0",
-            "pi-subagents": "0.80.0",
+            "pi-subagents":
+              "git+https://github.com/naicoi92/pi-subagents.git#5f8adccb235f1a45858c84b5110c105108947de2",
           },
         }),
       );
@@ -226,7 +227,25 @@ export default function(pi) {
       };
       const commands: string[][] = [];
       const installReceipts: { command: string[]; output: string; exitCode: number }[] = [];
-      for (const source of [root, join(directory, "node_modules/pi-subagents"), adapter]) {
+      const packed = join(directory, "pi-jev-pilot.tgz");
+      const extract = join(directory, "packed");
+      await mkdir(extract);
+      for (const command of [
+        [Bun.which("bun")!, "pm", "pack", "--filename", packed],
+        ["tar", "-xzf", packed, "-C", extract],
+      ]) {
+        const packing = Bun.spawn(command, { cwd: root, env, stdout: "pipe", stderr: "pipe" });
+        const output =
+          (await new Response(packing.stdout).text()) + (await new Response(packing.stderr).text());
+        const exitCode = await packing.exited;
+        evidence.commands.push({ command, exitCode, output });
+        expect(exitCode, output).toBe(0);
+      }
+      for (const source of [
+        join(extract, "package"),
+        join(directory, "node_modules/pi-subagents"),
+        adapter,
+      ]) {
         const args = [Bun.which("node")!, cli, "install", source];
         commands.push(args);
         const child = Bun.spawn(args, { cwd: directory, env, stdout: "pipe", stderr: "pipe" });
@@ -387,8 +406,8 @@ export default function(pi) {
               mode,
               versions: {
                 pi: "1.4.0",
-                executionPackage: "0.80.0",
-                preflight: "0.80.0",
+                executionPackage: "naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2",
+                preflight: "naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2",
                 node: Bun.spawnSync([Bun.which("node")!, "--version"])
                   .stdout.toString()
                   .trim(),

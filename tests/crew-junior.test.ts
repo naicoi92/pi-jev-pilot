@@ -4,6 +4,7 @@ import { registerCrewJunior } from "../src/crew-junior.ts";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 const saved = process.env.JEV_CREW_CONFIG;
 afterEach(() => {
   if (saved === undefined) delete process.env.JEV_CREW_CONFIG;
@@ -19,6 +20,7 @@ async function fixture() {
   const hooks = new Map<string, Function[]>();
   const listeners = new Map<string, Function[]>();
   let target: unknown;
+  let definition: unknown;
   let valid = true,
     authenticated = true;
   const modelRegistry = {
@@ -39,6 +41,7 @@ async function fixture() {
       },
       emit(_name: string, request: { result?: unknown; definition?: { model?: string } }) {
         target = request.definition?.model;
+        definition = request.definition;
         requests++;
         if (installed)
           request.result = fail
@@ -64,6 +67,7 @@ async function fixture() {
   return {
     fire,
     target: () => target,
+    definition: () => definition,
     invalid: () => {
       valid = false;
     },
@@ -86,6 +90,15 @@ test("CREW-19 junior registration reuses ownership and disposes on lifecycle", a
   await f.fire("tool_call", { toolName: "subagent", input: { agent: "jev-pilot:junior" } });
   expect(f.requests()).toBe(1);
   expect(f.target()).toBe("local/cheap");
+  expect(f.definition()).toMatchObject({
+    requiredExtensions: [
+      {
+        id: "jev-pilot-junior-turn-bound",
+        path: fileURLToPath(new URL("../src/junior-turn-bound.ts", import.meta.url)),
+      },
+    ],
+  });
+  expect(f.definition()).not.toHaveProperty("subagentOnlyExtensions");
   await f.fire("session_shutdown");
   await f.fire("session_shutdown");
   expect(f.disposals()).toBe(1);

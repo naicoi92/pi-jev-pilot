@@ -46,8 +46,11 @@ export function registerCrewJunior(pi: ExtensionAPI): void {
         definition: {
           ...definition,
           model: junior.model,
-          subagentOnlyExtensions: [
-            fileURLToPath(new URL("./junior-turn-bound.ts", import.meta.url)),
+          requiredExtensions: [
+            {
+              id: "jev-pilot-junior-turn-bound",
+              path: fileURLToPath(new URL("./junior-turn-bound.ts", import.meta.url)),
+            },
           ],
         },
       });

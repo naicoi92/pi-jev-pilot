@@ -64,7 +64,8 @@ for (const scenario of [
         dependencies: {
           "@earendil-works/pi-coding-agent": "1.4.0",
           "@earendil-works/pi-ai": "1.4.0",
-          "pi-subagents": "0.80.0",
+          "pi-subagents":
+            "git+https://github.com/naicoi92/pi-subagents.git#5f8adccb235f1a45858c84b5110c105108947de2",
         },
       }),
     );
@@ -106,7 +107,7 @@ for (const scenario of [
     await run(["tar", "-xzf", packed, "-C", join(directory, "packed")]);
     const installed = join(directory, "packed/package");
     const cli = join(directory, "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js");
-    const executor = join(directory, "node_modules/pi-subagents/index.js");
+    const executor = join(directory, "node_modules/pi-subagents/index.ts");
     const observer = join(directory, "observer.ts");
     await writeFile(
       observer,

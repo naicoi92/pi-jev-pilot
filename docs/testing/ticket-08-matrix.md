@@ -18,6 +18,20 @@ Baseline: integration `265e282`; pinned Jev Pilot 0.12.1 `5d27135b34edf81b40c0bf
 
 Existing ticket06 tests remain controls for privacy, cancellation ownership, retained targets, profile/unknown runtime/singleton negatives. Main tiers are not custom candidates. Persistent controls are file-based crew configuration (mode, slots, junior), with no broad live command surface. No paid provider, credential or remote-machine execution is authorized. Full suite includes packed CLI; do not redundantly rerun all E2E separately.
 
+## Final fork-pairing matrix (before final integration tests)
+
+Approved fork-first source: `naicoi92/pi-subagents` commit `5f8adccb235f1a45858c84b5110c105108947de2`, tree `7201b00488f688479241a4e44be9b42e6a403a0e`; official Pi 1.4.0. Historical blocked/RED sections below remain historical, not current dependency identity. Version 0.80.0 is only the fork manifest label. Runtime dependency imports do not activate the executor; each fixture activates one physical source owner and uses public exports.
+
+| Criterion | Final test / scenario                                                 | Independent expected-value source                                                                                                                                                  |
+| --------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-19     | CREW-19 registration required helper identity and portable path       | Approved per-agent `requiredExtensions` contract; ID `jev-pilot-junior-turn-bound`; portable `fileURLToPath`                                                                       |
+| AC-19     | BOUND-19 direct39/direct40/direct41, async41/workflow41/cancel-resume | Upstream literal 40; existing F3 matrix below; unchanged counter semantics                                                                                                         |
+| AC-19     | REQUIRED-19-direct41/async41/workflow41                               | Approved mandatory-helper contract: UUID-only denying ceiling, zero initial junior provider requests, actionable conflict; ordinary sibling 45 (two siblings in workflow scenario) |
+| AC-19     | REQUIRED-19-retained-denied                                           | Existing admitted run spends 40; later denied recovery adds zero requests, retains required helper in recovery descriptor; ordinary sibling remains unaffected                     |
+| AC-20     | Existing ordinary adapter controls under exact Git source             | Decision gating: disabled/error preserves envelope, valid model/effort overrides remain; cancellation and main routing unchanged                                                   |
+
+No complete-suite claim in this bounded run. Broader existing tests stay in the suite for separate fresh verification and integrated review. Exact admission-only directory set `run-fanout-budget.json` may be preserved separately after CLI reap; real runner directories must retain observed terminal receipts.
+
 ## F3 turn-bound implementation matrix (before tests)
 
 Authority: operator instruction to preserve the declared upstream junior `maxTurns: 40`, recorded in `.scratch/jev-pilot-port/ticket-08-turn-bound-decision.md`; pinned `hooks/crew.ts:396–424`. This is AC-19, not a tool/HTTP budget or a timeout. Pi adaptation counts an assistant agent turn when its public `turn_start` reserves a turn before generation, including failed/cancelled attempts. Multiple tools in one turn consume one turn; a synthetic abort after denial consumes none. Natural completion at turn 40 remains success. If another turn would be required, abort only that child and report the limit as an error, retaining its transcript/output. Public session custom entries retain reservations across same-session resume/reload/compaction; a different fresh child session has its own budget. No exact equivalence to unavailable upstream runtime internals is claimed.
