@@ -21,7 +21,25 @@ interface ChildStatus {
   steps: { sessionFile: string }[];
 }
 interface ToolReceipt {
-  details: { asyncId?: string };
+  details: {
+    asyncId?: string;
+    results?: { runId: string; workflowKey: string; exitCode: number }[];
+  };
+}
+interface StatusObservation {
+  request: { requestId: string; params: { id: string } };
+  reply: {
+    requestId: string;
+    success: boolean;
+    data?: {
+      details: {
+        runId: string;
+        lifecycleStatus?: {
+          processTerminal: { state: string; runId: string; runnerProcessInstanceId: string };
+        };
+      };
+    };
+  };
 }
 afterEach(async () => {
   if (child && closed) await reapWorkerCli(child, closed);
@@ -114,6 +132,21 @@ for (const scenario of [
       `import {appendFileSync} from "node:fs";
 export default function(pi) {
  pi.on("tool_result", e=>{if(e.toolName==="subagent")appendFileSync(${JSON.stringify(join(directory, "results.jsonl"))},JSON.stringify(e)+"\\n");});
+ pi.registerCommand("bound-status", {handler:async(id,ctx)=>{
+  await ctx.waitForIdle();
+  const requestAt=Date.now();
+  const request={version:1,requestId:"bound-"+id+"-"+requestAt,method:"status",params:{id}};
+  await new Promise((resolve,reject)=>{
+   const channel="subagents:rpc:v1:reply:"+request.requestId;
+   const off=pi.events.on(channel,reply=>{
+    clearTimeout(timer);off();
+    appendFileSync(${JSON.stringify(join(directory, "status-rpc.jsonl"))},JSON.stringify({requestAt,replyAt:Date.now(),request,reply})+"\\n");
+    resolve();
+   });
+   const timer=setTimeout(()=>{off();reject(new Error("Public status RPC timed out: "+id));},3000);
+   pi.events.emit("subagents:rpc:v1:request",request);
+  });
+ }});
  pi.registerCommand("bound-reload", {handler:async(_args,ctx)=>{await ctx.waitForIdle();await ctx.reload();}});
 }`,
     );
@@ -297,8 +330,7 @@ export default function(pi) {
         }
       });
     };
-    const wait = async (predicate: () => boolean) => {
-      const deadline = Date.now() + 60000;
+    const wait = async (predicate: () => boolean, deadline = Date.now() + 60000) => {
       while (!predicate()) {
         if (child!.exitCode !== null || Date.now() > deadline)
           throw new Error(
@@ -307,10 +339,14 @@ export default function(pi) {
         await Bun.sleep(20);
       }
     };
-    const prompt = async (id: string, message = "Run the authorized local child test.") => {
+    const prompt = async (
+      id: string,
+      message = "Run the authorized local child test.",
+      deadline?: number,
+    ) => {
       const offset = records.length;
       child!.stdin.write(JSON.stringify({ id, type: "prompt", message }) + "\n");
-      await wait(() => records.some((r) => r.id === id));
+      await wait(() => records.some((r) => r.id === id), deadline);
       expect(records.find((r) => r.id === id)!.success).toBe(true);
       return offset;
     };
@@ -372,6 +408,52 @@ export default function(pi) {
       if (scenario === "workflow41") {
         expect(requests.filter((r) => r.model === "sibling")).toHaveLength(45);
         expect(JSON.stringify(await results())).toContain("COMPLETE_sibling_45");
+        const children = (await results())[0]!.details.results!;
+        expect(children).toHaveLength(2);
+        expect(children.map((result) => result.workflowKey).sort()).toEqual(["junior", "sibling"]);
+        expect(new Set(children.map((result) => result.runId)).size).toBe(2);
+        expect(children.find((result) => result.workflowKey === "junior")!.exitCode).toBe(1);
+        expect(children.find((result) => result.workflowKey === "sibling")!.exitCode).toBe(0);
+        for (const result of children) {
+          expect(result.runId).toBeString();
+          expect(result.runId).not.toBe("");
+        }
+        // Logical workflow completion precedes native close. Keep its observer owner alive.
+        const deadline = Date.now() + 10000;
+        const pending = new Set(children.map((result) => result.runId));
+        const file = join(directory, "status-rpc.jsonl");
+        await writeFile(file, "");
+        let observations: StatusObservation[] = [];
+        let sequence = 0;
+        while (pending.size && Date.now() < deadline) {
+          for (const id of pending) {
+            const before = observations.length;
+            await prompt(`status-${sequence++}`, `/bound-status ${id}`, deadline);
+            await wait(() => {
+              observations = readFileSync(file, "utf8")
+                .trim()
+                .split("\n")
+                .filter(Boolean)
+                .map((line) => JSON.parse(line));
+              return observations.length > before;
+            }, deadline);
+            const { request, reply } = observations.at(-1)!;
+            expect(request.params.id).toBe(id);
+            expect(reply.requestId).toBe(request.requestId);
+            expect(reply.success).toBe(true);
+            expect(reply.data!.details.runId).toBe(id);
+            const terminal = reply.data!.details.lifecycleStatus!.processTerminal;
+            expect(terminal.runId).toBe(id);
+            expect(terminal.runnerProcessInstanceId).toBeString();
+            if (terminal.state === "observed") pending.delete(id);
+          }
+          if (pending.size) await Bun.sleep(50);
+        }
+        expect(
+          [...pending],
+          "Exact workflow children must be observed before parent close",
+        ).toEqual([]);
+        expect(child!.exitCode).toBeNull();
       }
       if (background) {
         const before = requests.filter((r) => r.model === "junior").length;

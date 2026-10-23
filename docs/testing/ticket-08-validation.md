@@ -1,6 +1,41 @@
 # Ticket 08 — validation evidence
 
-## Final fork pairing — bounded verification, workflow terminal gate OPEN
+## Workflow fixture ordering correction — focused GREEN, full gate pending
+
+Corrective baseline: clean `e328ea71b005381db63571858783059e4c1345fb`, tree `db82d30e34673f170a0e4c2f1fcaa4c593351e02`. This change is test-fixture ordering only. The Git fork pin remains `5f8adccb235f1a45858c84b5110c105108947de2`; production, helper counter/policy, `WorkerEvidence.finish()` and `reapWorkerCli()` are unchanged. The [corrective matrix](ticket-08-matrix.md#workflow-fixture-ordering-correction-before-corrective-tests) was updated before test edits and execution.
+
+**Missing teardown barrier:** workflow logical results can precede native child close, whose observation/finalization belongs to the still-running parent. The fixture now validates exactly two distinct child IDs and the junior/sibling lanes and task outcomes, then reads public Extension RPC `status` for both IDs until `processTerminal.state` is `observed`, before parent reap. A shared 10-second polling deadline is passed through prompt/receipt waits; each Extension RPC has a 3-second timer, with 50ms polling only while pending. No long sleep, synthetic terminal proof, weaker assertions, new worker engine or private API is used. The existing 150ms no-automatic-resume check and parent alive RPC remain after the barrier.
+
+Three evidence sets must remain distinct:
+
+| Evidence set                                   | Actual result / interpretation                                                                                                                                                                                                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Historical final pairing, `LgaZSo`             | **9 pass, 1 fail, 1 error**; both workflow child terminal receipts remain pending; original dependencies retained. Not overwritten or reclassified.                                                                                                                                   |
+| Executed diagnostic control, `UfVFZm`          | Separate owned harness: 1 pass, 49 assertions, 17.71s; both public child states transitioned pending → observed while parent/HTTP fixture remained alive. Supports ordering diagnosis, not sole-cause proof of the old failure. The file-status-only proposal was not runtime-tested. |
+| Actual repository corrective fixture, `VONtgs` | Workflow41 first: **1 pass, 0 fail, 5 filtered, 35 assertions, 17.44s, exit0**. Both exact children were already observed on their first public reads; no claim that this run measured pending → observed.                                                                            |
+| Actual repository allowed/denied controls      | **10 pass, 0 fail, 154 assertions, 155.55s, exit0** across the two focused CLI files; workflow fixture `qMkyD6` also passed both public observed checks. Overlaps the first run; not eleven unique tests or a full suite.                                                             |
+
+Commands, each preceded by `TMPDIR=/tmp/pi-jev-ticket-08-ordering-fix-5c8ab3df/fixtures`, `GIT_TERMINAL_PROMPT=0` and an owned `JEV_WORKER_EVIDENCE_DIR` under the durable packet:
+
+```bash
+bun test tests/junior-turn-bound-cli.test.ts --test-name-pattern BOUND-19-workflow41
+bun test tests/junior-turn-bound-cli.test.ts tests/junior-required-denied-cli.test.ts
+```
+
+| Run                     | Junior task / ID                                                            | Sibling task / ID                                                        |
+| ----------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Workflow-first `VONtgs` | 40 requests, cap failure/task exit1; `3bcb121a-46ea-41e8-a77d-f927d087b763` | 45 requests, complete/task exit0; `9ed509a4-f005-4ac8-b0fc-33b48a5ae779` |
+| Focused `qMkyD6`        | 40 requests, cap failure/task exit1; `a9dd57bb-ad02-4e17-97eb-9f53fb30c7fa` | 45 requests, complete/task exit0; `827ec648-6034-4366-a184-b0c5e2229255` |
+
+All four native runners have observed proof, native exit0/null signal (separate from task exit), and matching run/runner identities. Parent request count remains2 in both workflows. Denied direct/async/workflow junior requests remain0; the denied workflow's two ordinary siblings total90. Retained-denied spends40 before denial and adds zero afterward; async/cancel-resume still preserve retained budget and fresh-run independence. Unchanged strict cleanup passed for all eleven owned fixtures, saving receipts after parent reap and removing only owned disposable dependencies. No old session was revived or cleaned up.
+
+Durable packet: `/Users/naicoi/.pi/agent/sessions/--Users-naicoi-Projects-pi-jev-pilot--/subagent-artifacts/outputs/5c8ab3df-37f9-45c8-ac41-b86f0f557317/ticket-08/workflow-ordering-evidence/`. It contains exact command/exit logs, executed source/diff, raw status RPC request/replies, trace/results/session/native terminal receipts, cleanup, identity checks and `measured-summary.json`. The prior diagnosis and full evidence remain in parent artifact run `14ce3b79-fa63-4d4e-834f-43d6da462f44`.
+
+`bun run lint`, `bun run fmt:check` (57 files), `bun run typecheck` (147 files) and `git diff --check` all passed with exit0. Receipt verification also passed: public run IDs/native runner identities match, every real retained runner is observed, owned disposable cleanup completed, and original `LgaZSo` still has both pending receipts and retained dependencies.
+
+No controlled unsafe RED was rerun: the preserved historical RED and executed diagnostic control are the approved starting evidence, not a fresh original-versus-fix causality experiment. **Parent fresh full-suite verification and independent integrated reviewer gate remain pending.** No tracker/spec state, dependency, integration branch, publication or merge-readiness claim changes here.
+
+## Historical final fork pairing — bounded verification, workflow terminal gate OPEN
 
 Current integration starts from clean `4ccc1ed6beba0ee3f417e81b0905a950db254b9f` (tree `8ff153e5019d22b87f6a126d71f48cd65a5806aa`). It consumes the user-owned public fork `naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2`, tree `7201b00488f688479241a4e44be9b42e6a403a0e`. Bun regenerated the lock with Git locator and integrity `sha512-1KaSHfPWznMSt7ZjwNp+ZmGlJMjzTivUgt4bBBZCTludtTa6Zyp4YUYTsFzelLly4evumSNRpXeuxPqEJPzDrg==`; version 0.80.0 is a source label only. Official Pi installation uses `git:github.com/naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2`, verified in the separate new-head Git install proof referenced by the fork checkpoint. No npm fallback, publication or dependency-repository edit.
 
