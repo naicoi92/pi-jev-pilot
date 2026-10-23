@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -10,6 +11,22 @@ let process: ChildProcessWithoutNullStreams | undefined;
 let closed: Promise<void> | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let evidence: WorkerEvidence | undefined;
+interface StatusObservation {
+  request: { requestId: string; params: { id: string } };
+  reply: {
+    requestId: string;
+    success: boolean;
+    data?: {
+      details: {
+        runId: string;
+        lifecycleStatus?: {
+          processTerminal: { state: string; runId: string; runnerProcessInstanceId: string };
+        };
+      };
+    };
+  };
+}
+// Cover the unchanged 7-second reap escalation and 10-second strict evidence gate, plus I/O.
 afterEach(async () => {
   if (process && closed) await reapWorkerCli(process, closed);
   closed = undefined;
@@ -18,7 +35,7 @@ afterEach(async () => {
   server = undefined;
   await evidence?.finish();
   evidence = undefined;
-});
+}, 25000);
 
 const cases = [
   { name: "slot-standard", baseline: "max", background: false },
@@ -404,6 +421,21 @@ export default function(pi) {
  pi.on("session_start", (_event,ctx) => { if (${name === "coexistence"}) registration = registerRequiredChildExtensions({sessionId:ctx.sessionManager.getSessionId(),extensions:[{id:"existing-owner",path:${JSON.stringify(join(installedPackage, "src/worker-child.ts"))}}]}); });
  pi.on("session_shutdown",()=>registration?.dispose());
  pi.registerCommand("worker-reload", { handler: async (_args,ctx) => { await ctx.waitForIdle(); await ctx.reload(); } });
+ pi.registerCommand("worker-status", {handler:async(id,ctx)=>{
+  await ctx.waitForIdle();
+  const requestAt=Date.now();
+  const request={version:1,requestId:"worker-"+id+"-"+requestAt,method:"status",params:{id}};
+  await new Promise((resolve,reject)=>{
+   const channel="subagents:rpc:v1:reply:"+request.requestId;
+   const off=pi.events.on(channel,reply=>{
+    clearTimeout(timer);off();
+    appendFileSync(${JSON.stringify(join(directory, "status-rpc.jsonl"))},JSON.stringify({requestAt,replyAt:Date.now(),request,reply})+"\\n");
+    resolve();
+   });
+   const timer=setTimeout(()=>{off();reject(new Error("Public status RPC timed out: "+id));},3000);
+   pi.events.emit("subagents:rpc:v1:request",request);
+  });
+ }});
  pi.on("tool_call", (event,ctx) => {
   if (${name === "coexistence-jev-first"} && event.toolName==="subagent") { try { registerRequiredChildExtensions({sessionId:ctx.sessionManager.getSessionId(),extensions:[{id:"late-host",path:${JSON.stringify(join(installedPackage, "src/worker-child.ts"))}}]});throw new Error("Expected singleton collision"); } catch(error) { appendFileSync(${JSON.stringify(join(directory, "host-conflict.log"))},String(error)); } }
   if(event.toolName==="subagent") appendFileSync(${JSON.stringify(join(directory, "envelope.jsonl"))},JSON.stringify(event.input)+"\\n");});
@@ -449,7 +481,21 @@ export default function(pi) {
       "medium",
     ];
     process = spawn(Bun.which("node")!, args, { cwd: directory, env });
-    closed = new Promise<void>((done) => process!.once("close", () => done()));
+    const parentCommand = {
+      command: [Bun.which("node")!, ...args],
+      exitCode: -1,
+      output: "RPC records in trace.json; close timing in parent-close.json",
+    };
+    commands.push(parentCommand);
+    closed = new Promise<void>((done, reject) =>
+      process!.once("close", (exitCode, signal) => {
+        parentCommand.exitCode = exitCode ?? -1;
+        writeFile(
+          join(directory, "parent-close.json"),
+          JSON.stringify({ observedAt: Date.now(), exitCode, signal }),
+        ).then(done, reject);
+      }),
+    );
     const records: Record<string, unknown>[] = [];
     let stderr = "";
     let pending = "";
@@ -469,8 +515,7 @@ export default function(pi) {
         }
       }
     });
-    const wait = async (predicate: () => boolean) => {
-      const deadline = Date.now() + 40000;
+    const wait = async (predicate: () => boolean, deadline = Date.now() + 40000) => {
       while (!predicate()) {
         if (process!.exitCode !== null || Date.now() > deadline)
           throw new Error(
@@ -523,6 +568,74 @@ export default function(pi) {
     };
     const readResults = async () =>
       JSON.parse((await Bun.file(join(directory, "result.jsonl")).text()).trim().split("\n")[0]!);
+    const awaitWorkflowChildren = async (details: {
+      mode: string;
+      results: { runId: string }[];
+      workflowChildren?: { inventoryComplete: boolean; children: { runId: string }[] };
+    }) => {
+      if (details.mode !== "workflow") return;
+      const children = details.results.map((result) => result.runId);
+      expect(children.length).toBeGreaterThan(0);
+      for (const id of children) {
+        expect(id).toBeString();
+        expect(id).not.toBe("");
+      }
+      expect(new Set(children).size).toBe(children.length);
+      expect(details.workflowChildren?.inventoryComplete).toBe(true);
+      expect(details.workflowChildren!.children.map((child) => child.runId).sort()).toEqual(
+        [...children].sort(),
+      );
+      // Logical results do not prove native close. Keep the parent observer and HTTP server alive.
+      const deadline = Date.now() + 10000;
+      const pending = new Set(children);
+      const file = join(directory, "status-rpc.jsonl");
+      await writeFile(file, "");
+      let observations: StatusObservation[] = [];
+      let sequence = 0;
+      while (pending.size && Date.now() < deadline) {
+        for (const id of pending) {
+          const before = observations.length;
+          const promptId = `status-${sequence++}`;
+          process!.stdin.write(
+            JSON.stringify({ id: promptId, type: "prompt", message: `/worker-status ${id}` }) +
+              "\n",
+          );
+          await wait(
+            () => records.some((record) => record.type === "response" && record.id === promptId),
+            deadline,
+          );
+          expect(records.find((record) => record.id === promptId)!.success).toBe(true);
+          await wait(() => {
+            observations = readFileSync(file, "utf8")
+              .trim()
+              .split("\n")
+              .filter(Boolean)
+              .map((line) => JSON.parse(line));
+            return observations.length > before;
+          }, deadline);
+          const { request, reply } = observations.at(-1)!;
+          expect(request.params.id).toBe(id);
+          expect(reply.requestId).toBe(request.requestId);
+          expect(reply.success).toBe(true);
+          expect(reply.data!.details.runId).toBe(id);
+          const terminal = reply.data!.details.lifecycleStatus!.processTerminal;
+          expect(terminal.runId).toBe(id);
+          expect(terminal.runnerProcessInstanceId).toBeString();
+          expect(terminal.runnerProcessInstanceId).not.toBe("");
+          if (terminal.state === "observed") pending.delete(id);
+        }
+        if (pending.size) await Bun.sleep(50);
+      }
+      expect(
+        [...pending],
+        "All exact workflow children must be observed before parent close",
+      ).toEqual([]);
+      expect(process!.exitCode).toBeNull();
+      await writeFile(
+        join(directory, "workflow-barrier.json"),
+        JSON.stringify({ children, observedAt: Date.now(), parentExitCode: process!.exitCode }),
+      );
+    };
     let receipt: unknown;
     try {
       process.stdin.write(JSON.stringify({ id: "ready", type: "get_state" }) + "\n");
@@ -619,6 +732,7 @@ export default function(pi) {
       } else {
         await wait(() => records.some((record) => record.type === "tool_execution_end"));
         const result = await readResults();
+        await awaitWorkflowChildren(result.details);
         if (background) {
           await wait(() => childStarted);
           const statusFile = join(result.details.asyncDir, "status.json");

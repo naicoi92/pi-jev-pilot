@@ -1,5 +1,40 @@
 # Ticket 08 — validation evidence
 
+## Worker workflow teardown correction — bounded GREEN, original full gate RED
+
+Corrective baseline: clean `536542e9b913642c341ed37f5e8fb65084d51cc3`, tree `bb4638306f18cc8efd687bbe246d0557d1bcfce4`. Only `tests/worker-routing-cli.test.ts` and testing documentation change. The fork pin `5f8adccb235f1a45858c84b5110c105108947de2`, production, dependency lock, limiter and strict `WorkerEvidence.finish()`/`reapWorkerCli()` remain unchanged. The [worker corrective matrix](ticket-08-matrix.md#worker-workflow-teardown-correction-before-corrective-tests) preceded test edits and execution.
+
+**The actual original full run stays RED:** 442 pass, 1 fail, 1 error, 2479 assertions, exit1, without wrapper timeout. Its exact `i6PZ3P` child `670744c2-03f4-4ba6-9e4f-a3a53c6ecfd3`, runner instance `5b016c77-5666-4530-8c85-3349bf161ad1`, remains logical complete/task exit0/`CHILD_RECEIPT_OK` but terminal pending. Original dependencies, full-run evidence and historical `LgaZSo` were not changed. The exact bounded pre-fix reproduction passed; no forced RED or claim of deterministic reproduction.
+
+### Ordering and path coverage
+
+The original parent RPC trace ends with `tool_execution_end` at index31, `agent_end`42 and `agent_settled`43. There is no status barrier. The fixture then reaps the parent before strict evidence validation. The pinned executor's `src/runs/background/async-execution.ts` native runner `close` listener invokes `finalizeProcessTerminal`; logical workflow output does not establish that close observation. This proves a missing fixture barrier, not the sole historical cause.
+
+All 46 worker scenarios were inspected in source and existing full-run receipts. Only `junior-workflow-routing-off` actually executes a workflow script. `slot-workflow` and `workflow-guidance` inspect model-visible workflow advice but launch direct workers (`mode: single`). Existing async/lifecycle/resume paths already await real observed terminal receipts; error/cancellation and no-child paths remain separate.
+
+The new barrier is selected by the result's `mode: workflow`, compares every exact result run ID with the complete public workflow inventory, and awaits public Extension RPC `status` for every child. One shared 10-second deadline bounds prompt and receipt polling; each observer RPC has a 3-second timer. Pending polls yield50ms only while pending. Unknown/missing proof fails. Parent and HTTP server remain alive until observed proof; no terminal rewrite, PID-absence substitution, runner-directory rename or dependency edit. A25-second teardown-hook budget covers the unchanged7-second reap escalation,10-second strict evidence deadline and I/O; the120-second test budget is unchanged.
+
+### Actual focused results
+
+Each command used `GIT_TERMINAL_PROMPT=0` and a separate owned `JEV_WORKER_EVIDENCE_DIR`; no TMPDIR override. Exact commands, binding hashes, output and actual exit files are in the durable packet below.
+
+| Run                                                                                 | Actual result                                                                                                        |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Before fix: exact `WORKER-19-junior-workflow-routing-off`                           | 1 pass,0 fail,45 filtered,16 assertions,14.96s,exit0; fixture `4ieuBZ`, child `da4a8fca-d870-4f0f-aea2-3c736e3e09d5` |
+| After fix: routing-off workflow/custom workflow guidance/strategy workflow guidance | 3 pass,0 fail,43 filtered,128 assertions,37.12s,exit0                                                                |
+| Allowed + denied junior lifecycle CLI files                                         | 10 pass,0 fail,161 assertions,130.93s,exit0                                                                          |
+| Direct cancellation + lifecycle/reload + retained resume                            | 3 pass,0 fail,43 filtered,95 assertions,47.24s,exit0                                                                 |
+
+The corrected workflow fixture `Go3KO5` measured **six public pending replies followed by observed** for child `47c0db92-dd78-4447-9519-c75876924ae5`, runner `5e4d5c94-0b2e-401b-80d8-60fefabe7a2e`. Logical task remained exit0 with `CHILD_RECEIPT_OK`, one configured-model child request and two parent requests. Last observed reply:1792751032407; barrier receipt:1792751032428 with parent exitCode null; actual parent native close:1792751032447,exit0/null signal. This directly demonstrates why logical completion is insufficient and that the barrier precedes parent teardown.
+
+Allowed workflow control `QS9MAR`: junior40/task exit1 child `0857a4dc-b1c7-44a3-b263-95550508cb32`, sibling45/task exit0 child `ac800a41-ce0a-42f3-ae7c-1864c3037e87`; both public terminals observed. Denied direct/async/workflow controls retain zero junior requests; retained-denied retains40 admitted requests and zero after denial. All17 focused fixture receipts passed unchanged strict cleanup. A read-only audit found14 observed status-bearing async runs across these fixtures; this is not a count of all direct/native processes.
+
+Durable evidence: `/Users/naicoi/.pi/agent/sessions/--Users-naicoi-Projects-pi-jev-pilot--/subagent-artifacts/outputs/e3c4c015-475d-4eee-9ea1-f5362e554f88/ticket-08/workflow-ordering-evidence/`. It contains `run-focused.sh`, per-run exact command/source-hash bindings and actual exits, raw traces, result/envelope/provider configurations, sessions, public status RPC request/replies, native terminal receipts, `parent-close.json`, `workflow-barrier.json`, cleanup receipts, and read-only audit scripts/results. Original full RED remains under artifact run `356cb287-0464-4cdf-a03b-374b1a3a2c2a`.
+
+Supplemental gates passed with exit0: `bun run lint`, `bun run fmt:check` (57 files), `bun run typecheck` (147 files), `git diff --check`, and the protected-source comparison against the baseline. Staged files were empty before commit; only the three explicitly scoped files are included in the corrective commit.
+
+No new full suite was run. **Fresh independent parent review must precede any new full verification.** Focused GREEN is not full-suite acceptance or merge readiness. No tracker/spec-status, integration-branch, publication or merge change.
+
 ## Workflow fixture ordering correction — focused GREEN, full gate pending
 
 Corrective baseline: clean `e328ea71b005381db63571858783059e4c1345fb`, tree `db82d30e34673f170a0e4c2f1fcaa4c593351e02`. This change is test-fixture ordering only. The Git fork pin remains `5f8adccb235f1a45858c84b5110c105108947de2`; production, helper counter/policy, `WorkerEvidence.finish()` and `reapWorkerCli()` are unchanged. The [corrective matrix](ticket-08-matrix.md#workflow-fixture-ordering-correction-before-corrective-tests) was updated before test edits and execution.
