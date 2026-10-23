@@ -1,6 +1,12 @@
 # Ticket 08: preserve the upstream junior turn bound
 
-Status: operator instructed: follow Jev upstream and continue. Preserve `maxTurns: 40` for the named junior; no no-cap waiver, timeout substitute or removal of junior scope is approved. Implement through supported Pi APIs and verify before acceptance. Ticket 08 remains in progress.
+Status: operator instructed: follow Jev upstream and continue. Subsequently approved extending the dependency public contract to enforce per-junior required-helper admission: preserve the budget or reject the incompatible launch. Preserve `maxTurns: 40` for the named junior; no no-cap waiver, timeout substitute or removal of junior scope is approved. Implement through supported Pi APIs and verify before acceptance. Ticket 08 remains in progress.
+
+## Approved dependency scope
+
+Implement and independently review a public per-agent required-child-extension contract in a separate dependency source/worktree. Reuse existing mandatory-extension admission and retained recovery machinery. Keep capability ceilings authoritative: an incompatible junior launch must fail actionably before provider activity. Ordinary agents without the requirement retain existing behavior. Do not add a worker engine or native turn-budget subsystem.
+
+Approval does not authorize publishing, remote PR/issue creation, host/cache or installed node_modules patches, or changing the Jev dependency reference to an unpublished artifact. Dependency provenance, exact reviewed commit and a usable distribution path remain explicit gates before final public-package acceptance.
 
 ## Verified evidence
 
