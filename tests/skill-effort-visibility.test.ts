@@ -213,3 +213,38 @@ test("CLI-SV01 explicit continuation reuses preceding effort without rematching"
   });
   expect(String(uiRecords(fixture, "setStatus").at(-1)?.statusText)).toContain("kept · reused");
 }, 20000);
+
+for (const placement of ["whitespace", "prose", "fenced"] as const) {
+  test(`CLI-SV05 ${placement} second native wrapper never leaves current or later history`, async () => {
+    fixture = new PiFixture();
+    // Keep sentinel beyond ordinary matching's pre-existing 300-character preview.
+    // Matching stays enabled so an explicit-route fallback would issue HTTP here.
+    const prefix = "Documented procedure. ".repeat(20);
+    fixture.skills = [
+      { name: "a", body: `${prefix}A_INSTRUCTION_SENTINEL` },
+      { name: "b", body: `${prefix}B_INSTRUCTION_SENTINEL` },
+    ];
+    fixture.useDesignDefaults = true;
+    fixture.useGuidanceDefaults = true;
+    await fixture.start();
+    const path = `${fixture.directory}/agent/skills/b/SKILL.md`;
+    const second = `<skill name="b" location="${path}">\nReferences are relative to ${fixture.directory}/agent/skills/b.\n\n${prefix}B_INSTRUCTION_SENTINEL\n</skill>`;
+    const suffix =
+      placement === "whitespace"
+        ? `  ${second}\n\nReview failure`
+        : placement === "prose"
+          ? `Review failure\n\n${second}`
+          : `Review failure\n\n\`\`\`xml\n${second}\n\`\`\``;
+    await fixture.prompt(`/skill:a ${suffix}`);
+    expect(fixture.classifications).toHaveLength(0);
+    expect(JSON.stringify(fixture.generations)).toContain("A_INSTRUCTION_SENTINEL");
+    expect(JSON.stringify(fixture.generations)).toContain("B_INSTRUCTION_SENTINEL");
+    expect(JSON.stringify(fixture.generations)).not.toContain("<skill_relevance>");
+    await fixture.prompt("Why should we proceed with this independent review?");
+    expect(fixture.classifications).toHaveLength(1);
+    expect(JSON.stringify(fixture.classifications)).not.toContain("INSTRUCTION_SENTINEL");
+    expect(
+      (fixture.classifications[0]!.state as { recent_context: string }).recent_context,
+    ).toContain("[explicit skill instructions omitted]");
+  }, 20000);
+}

@@ -1,7 +1,7 @@
 // Context minimization adapted from Jev Pilot context.ts; see NOTICE.md.
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { nativeSkillTask } from "./native-skill.ts";
+import { createNativeSkillTaskVerifier, type NativeSkillTaskVerifier } from "./native-skill.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 interface ContextMessage {
@@ -10,53 +10,57 @@ interface ContextMessage {
   tools: { name: string; failed: boolean }[];
 }
 
-async function messagesOf(ctx: ExtensionContext, pi: ExtensionAPI): Promise<ContextMessage[]> {
+function messagesOf(ctx: ExtensionContext): ContextMessage[] {
   const source = ctx.sessionManager.buildSessionProjection().messages;
   const failed = new Set(
     source.flatMap((message) =>
       message.role === "toolResult" && message.isError ? [message.toolCallId] : [],
     ),
   );
-  const messages = await Promise.all(
-    source.map(async (message): Promise<ContextMessage[]> => {
-      if (message.role !== "user" && message.role !== "assistant") return [];
-      const content = message.content;
-      return [
-        {
-          role: message.role,
-          text: await historyText(
-            pi,
-            typeof content === "string"
-              ? content
-              : content
-                  .filter((part) => part.type === "text")
-                  .map((part) => part.text)
-                  .join("\n"),
-          ),
-          tools:
-            typeof content === "string"
-              ? []
-              : content.flatMap((part) =>
-                  part.type === "toolCall"
-                    ? [{ name: part.name, failed: failed.has(part.id) }]
-                    : [],
-                ),
-        },
-      ];
-    }),
-  );
-  return messages.flat();
+  return source.flatMap((message): ContextMessage[] => {
+    if (message.role !== "user" && message.role !== "assistant") return [];
+    const content = message.content;
+    return [
+      {
+        role: message.role,
+        text:
+          typeof content === "string"
+            ? content
+            : content
+                .filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join("\n"),
+        tools:
+          typeof content === "string"
+            ? []
+            : content.flatMap((part) =>
+                part.type === "toolCall" ? [{ name: part.name, failed: failed.has(part.id) }] : [],
+              ),
+      },
+    ];
+  });
 }
 
-async function historyText(pi: ExtensionAPI, text: string): Promise<string> {
-  const native = await nativeSkillTask(pi, text);
-  return native ? native.task || "[explicit skill instructions omitted]" : text;
-}
-
-function recentContext(messages: ContextMessage[], prompt: string): string {
+async function recentContext(
+  messages: ContextMessage[],
+  prompt: string,
+  nativeTask: NativeSkillTaskVerifier,
+): Promise<string> {
+  const texts = new Map<number, string>();
+  async function historyText(index: number): Promise<string> {
+    const cached = texts.get(index);
+    if (cached !== undefined) return cached;
+    const text = messages[index]!.text;
+    const native = await nativeTask(text);
+    const safe = native ? native.task || "[explicit skill instructions omitted]" : text;
+    texts.set(index, safe);
+    return safe;
+  }
   let list = messages;
-  if (list.at(-1)?.role === "user" && list.at(-1)?.text.trim() === prompt.trim())
+  if (list.at(-1)?.role === "user" && (await historyText(list.length - 1)).trim() === prompt.trim())
     list = list.slice(0, -1);
+  // Sanitizing a skill always yields task text or a nonempty omission marker,
+  // so raw nonempty text identifies the same newest assistant without reads.
   const newestAssistant = list.findLastIndex(
     (message) => message.role === "assistant" && message.text.trim(),
   );
@@ -64,7 +68,7 @@ function recentContext(messages: ContextMessage[], prompt: string): string {
   let used = 0;
   for (let index = list.length - 1; index >= 0 && lines.length < 4; index--) {
     const message = list[index]!;
-    const text = message.text.replace(/\s+/g, " ").trim();
+    const text = (await historyText(index)).replace(/\s+/g, " ").trim();
     const tools = message.tools.map((tool) => `${tool.name}${tool.failed ? " (failed)" : ""}`);
     if (!text && !tools.length) continue;
     const cap = index === newestAssistant ? 1100 : newestAssistant >= 0 ? 300 : 500;
@@ -156,8 +160,9 @@ export async function classifierState(
   prompt: string,
   toolNames: string[],
   pi: ExtensionAPI,
+  nativeTask: NativeSkillTaskVerifier = createNativeSkillTaskVerifier(pi),
 ): Promise<unknown> {
-  const messages = await messagesOf(ctx, pi);
+  const messages = messagesOf(ctx);
   const recentTools = {
     edits: 0,
     commands: 0,
@@ -179,7 +184,7 @@ export async function classifierState(
   const text = prompt.trim();
   return {
     prompt,
-    recent_context: recentContext(messages, prompt),
+    recent_context: await recentContext(messages, prompt, nativeTask),
     signals: {
       prompt_chars: text.length,
       files_mentioned: new Set([...text.matchAll(pathPattern)].map((match) => match[1])).size,
