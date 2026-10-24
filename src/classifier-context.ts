@@ -68,8 +68,9 @@ async function recentContext(
   let used = 0;
   for (let index = list.length - 1; index >= 0 && lines.length < 4; index--) {
     const message = list[index]!;
-    const text = (await historyText(index)).replace(/\s+/g, " ").trim();
     const tools = message.tools.map((tool) => `${tool.name}${tool.failed ? " (failed)" : ""}`);
+    if (!message.text.trim() && !tools.length) continue;
+    const text = message.text.trim() ? (await historyText(index)).replace(/\s+/g, " ").trim() : "";
     if (!text && !tools.length) continue;
     const cap = index === newestAssistant ? 1100 : newestAssistant >= 0 ? 300 : 500;
     const tail = index === newestAssistant ? 792 : 0;

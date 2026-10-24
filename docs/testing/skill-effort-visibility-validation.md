@@ -65,3 +65,17 @@ No cross-request/global cache. Default `classifierState` creates fresh verifier 
 | `bun run fmt:check`                                                                                                                                                                                          | 0: 76 files formatted                                                                                                                                                                                               | `/tmp/skill-effort-correction-fmt.log`            |
 
 Additional intermediate green (before final enabled-matching fixture refinement): `/tmp/skill-effort-correction-new-green.log`, 37 pass / 0 fail / 128 assertions. Initial type check also passed (`/tmp/skill-effort-correction-typecheck-initial.log`). Raw failure logs retained unmodified. Final quality gates rerun after documentation/fixture edits. AC-27/AC-28 both covered; independent fresh review and one clean combined-candidate full suite remain parent-owned. No live/paid inference or performance latency claim.
+
+### Blank-history correction
+
+Added the AC-28 regression to `tests/native-skill.test.ts` before changing the loop. RED on the unchanged implementation: 100 thinking-only assistant projections produced 100 empty-string verifier candidates before the four relevant user messages (104 total), exceeding the expected four. The implementation now skips raw blank/no-tool projections before `historyText`; tool-only projections still go through formatting without invoking the verifier, preserving their broad summary. Newest-assistant selection remains based on raw nonempty assistant text.
+
+| Command                                                                                           | Result           | Evidence                                                                                 |
+| ------------------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------- |
+| `bun test tests/native-skill.test.ts -t 'blank history skips verification'` before implementation | 1 (expected RED) | Assertion showed 100 empty candidates plus four relevant candidates; 104 verifier calls. |
+| `bun test tests/native-skill.test.ts tests/skill-effort-visibility.test.ts`                       | 0                | 38 passed, 0 failed, 135 assertions.                                                     |
+| `bun run lint`                                                                                    | 0                | `oxlint --deny-warnings src tests` passed.                                               |
+| `bun run typecheck`                                                                               | 0                | 160 files, no type errors.                                                               |
+| `bun run fmt:check`                                                                               | 0                | All matched files formatted (76 files).                                                  |
+
+One pre-final check caught the regression test's sync verifier fixture violating the async verifier type; corrected to return `Promise.resolve(undefined)`. Formatter run was `bun run fmt`, scoped format check then passed. Full suite not run; no install, live/paid inference, push or deployment.

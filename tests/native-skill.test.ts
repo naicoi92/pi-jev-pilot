@@ -115,7 +115,7 @@ for (const recent of ["plain", "skill"] as const) {
       candidates.push(text);
       return verify(text);
     });
-    expect(candidates).toHaveLength(4);
+    expect(candidates).toHaveLength(3);
     expect(candidates.join("\n")).not.toContain("Old task");
     expect(readSpy).toHaveBeenCalledTimes(recent === "plain" ? 0 : 1);
     expect(catalogs).toBe(recent === "plain" ? 0 : 1);
@@ -127,6 +127,43 @@ for (const recent of ["plain", "skill"] as const) {
     expect(JSON.stringify(state)).not.toContain("PRIVATE_");
   });
 }
+
+test("native-skill AC-28 blank history skips verification but relevant and tool-only projections remain", async () => {
+  directory = await mkdtemp(join(tmpdir(), "jev-native-history-"));
+  const pi = { getCommands: () => [] } as unknown as ExtensionAPI;
+  const messages = [
+    ...[1, 2, 3, 4].map((number) => ({ role: "user", content: `Relevant ${number}` })),
+    ...Array.from({ length: 100 }, () => ({
+      role: "assistant",
+      content: [{ type: "thinking", thinking: "internal reasoning" }],
+    })),
+  ];
+  const candidates: string[] = [];
+  const state = await classifierState(historyContext(messages), "New task", [], pi, (text) => {
+    candidates.push(text);
+    return Promise.resolve(undefined);
+  });
+  expect(candidates).toEqual(["Relevant 4", "Relevant 3", "Relevant 2", "Relevant 1"]);
+  expect(state).toMatchObject({
+    recent_context: [
+      "user: Relevant 1",
+      "user: Relevant 2",
+      "user: Relevant 3",
+      "user: Relevant 4",
+    ].join("\n"),
+  });
+
+  const toolOnly = await classifierState(
+    historyContext([{ role: "assistant", content: [{ type: "toolCall", id: "t", name: "read" }] }]),
+    "New task",
+    [],
+    pi,
+    () => {
+      throw new Error("tool-only projection must not be verified");
+    },
+  );
+  expect(toolOnly).toMatchObject({ recent_context: "assistant:  [tools: read]" });
+});
 
 test("native-skill AC-28 historical resource changes removal and catalog removal fail closed per request", async () => {
   directory = await mkdtemp(join(tmpdir(), "jev-native-history-"));
