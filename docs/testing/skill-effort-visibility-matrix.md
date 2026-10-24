@@ -1,0 +1,16 @@
+# Skill effort and visibility acceptance matrix
+
+Source: approved correction in implementation request; existing AC identifiers from `.scratch/jev-pilot-port/spec.md`. Explicit skill effort supersedes former SK14 zero-classifier assertion. No routing, effort/cache policy, worker, executor, or installed checkout changes.
+
+| Criterion                                                                        | Test IDs / seam                        | Expected-value source                                                                                                         |
+| -------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| AC-01 explicit native skill suffix selects effort through installed official Pi  | CLI-SV01                               | User request: one effort classifier request, medium to high, same physical model                                              |
+| AC-04 physical model and original answering instructions remain unchanged        | CLI-SV01, existing CLI-04              | User request: preserve native body, no additional skills                                                                      |
+| AC-09 explicit skill uses effort only; no consumer means zero HTTP               | CLI-SV01, CLI-SV02, existing CLI-09    | User request: no ordinary/design/advice rematching, existing flags                                                            |
+| AC-10 current and historical native instructions never reach classifier          | CLI-SV01, CLI-SV03, native-skill tests | User request: embedded closing tags, nested examples, non-ASCII, exact native boundary; unknown/changed resources fail closed |
+| AC-12 pending clears on result, timeout, service/schema error and cancellation   | visibility tests, CLI-SV04             | User request: static choosing widget, safe footer outcomes with elapsed time                                                  |
+| AC-14 explicit resource remains authoritative; empty suffix skips classification | CLI-SV02, updated SK14 explicit test   | User request: empty explicit resource still delivered, no extra skills                                                        |
+| AC-26 owner/revision guards stale work; lifecycle invalidation clears UI         | visibility tests, existing CLI-26      | User request: new session/reload/shutdown/model/thinking invalidation; stale finally cannot clear newer widget/status         |
+| Visibility: requested to effective, changed/kept/reused and truthful skips       | visibility tests, CLI-SV04             | User request: no false classifier-not-called claim on advice/skill-only classification                                        |
+
+Actual CLI tests use Pi 1.4.0 and local deterministic HTTP only. RPC verifies public UI protocol, not visual rendering. PTY rendering attempted separately if available. Existing focused suites cover ordinary prompts and continuations, skill matching, advice/design and effort branch ownership. Full suite deferred to parent review gate.

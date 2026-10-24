@@ -8,7 +8,9 @@ import {
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import { isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
-import { effortEnabled } from "./system-one.ts";
+import { nativeSkillTask } from "./native-skill.ts";
+import { EffortVisibility } from "./effort-visibility.ts";
+import { classify, systemOneConfig, effortEnabled } from "./system-one.ts";
 import { classifierState } from "./classifier-context.ts";
 import { decideMain, skillBlock } from "./skill-matching.ts";
 import type { SkillCandidate } from "./skill-policy.ts";
@@ -54,21 +56,35 @@ export default function (pi: ExtensionAPI): void {
       structuredContent: event.structuredContent,
     };
   });
+  const visibility = new EffortVisibility();
   let active: AbortController | undefined;
   let selectionRevision = 0;
+  let ownThinking: { level: ModelThinkingLevel; previousLevel: ModelThinkingLevel } | undefined;
   let pending: PendingEffort[] = [];
   const inputIds = new WeakMap<object, string>();
   const invalidateSelection = () => {
+    ownThinking = undefined;
     selectionRevision++;
+    visibility.clear();
     active?.abort();
     active = undefined;
   };
   // Selection events invalidate only outstanding work, never future prompts.
   // Our completed write clears active first so its notification cannot cancel it.
   pi.on("model_select", invalidateSelection);
-  pi.on("thinking_level_select", invalidateSelection);
+  pi.on("thinking_level_select", (event) => {
+    if (ownThinking?.level === event.level && ownThinking.previousLevel === event.previousLevel) {
+      ownThinking = undefined;
+      return;
+    }
+    ownThinking = undefined;
+    invalidateSelection();
+  });
   const dispose = () => {
     resetLoop();
+    selectionRevision++;
+    ownThinking = undefined;
+    visibility.clear();
     active?.abort();
     active = undefined;
     pending = [];
@@ -204,14 +220,19 @@ export default function (pi: ExtensionAPI): void {
     // Pi persisted the preceding queued user at message_end. Commit it before a
     // following continuation reads its predecessor, even in steering mode "all".
     commitPending(ctx);
-    const prompt =
+    let prompt =
       typeof event.message.content === "string"
         ? event.message.content
         : event.message.content
             .filter((part) => part.type === "text")
             .map((part) => part.text)
             .join("\n");
-    if (!prompt.trim() || explicitCommand(prompt)) return;
+    active?.abort();
+    const uiOwner = visibility.start(ctx.ui);
+    if (!prompt.trim() || /^\/\S/.test(prompt.trim())) {
+      visibility.finish(uiOwner, `effort skipped: ${prompt.trim() ? "command" : "empty input"}`);
+      return;
+    }
     let withEffort: boolean;
     try {
       withEffort = effortEnabled() && applicable(ctx);
@@ -220,6 +241,7 @@ export default function (pi: ExtensionAPI): void {
           "Select a configured physical Pi model with authentication before submitting work.",
         );
     } catch (error) {
+      visibility.finish(uiOwner, "effort skipped: invalid configuration");
       ctx.ui.notify(
         error instanceof Error ? error.message : "Invalid Jev Pilot configuration.",
         "error",
@@ -227,7 +249,6 @@ export default function (pi: ExtensionAPI): void {
       ctx.abort();
       return;
     }
-    active?.abort();
     const controller = new AbortController();
     active = controller;
     const initialRevision = selectionRevision;
@@ -236,27 +257,51 @@ export default function (pi: ExtensionAPI): void {
     const initialSession = ctx.sessionManager.getSessionId();
     const initialLeaf = ctx.sessionManager.getLeafId();
     const parentSignal = ctx.signal;
-    const cancel = () => controller.abort();
+    const cancel = () => {
+      controller.abort();
+      visibility.finish(uiOwner, "effort cancelled");
+    };
     parentSignal?.addEventListener("abort", cancel, { once: true });
     if (parentSignal?.aborted) cancel();
     try {
+      const native = await nativeSkillTask(pi, prompt);
+      if (controller.signal.aborted || initialRevision !== selectionRevision) return;
+      if (native) {
+        if (!native.verified || !native.task) {
+          visibility.finish(
+            uiOwner,
+            `effort skipped: ${native.verified ? "empty skill task" : "unverified skill resource"}`,
+          );
+          return;
+        }
+        prompt = native.task;
+        if (!withEffort) {
+          visibility.finish(
+            uiOwner,
+            `effort skipped: ${effortEnabled() ? "inapplicable" : "disabled"}`,
+          );
+          return;
+        }
+      }
+      const buildState = () =>
+        classifierState(
+          ctx,
+          prompt,
+          pi.getAllTools().map((tool) => tool.name),
+          pi,
+        );
       const previous = previousDecision(ctx);
       const reused = withEffort && previous !== null && isContinuation(prompt);
       const { result, skill, advice } = reused
         ? { result: { outcome: "classified" as const, decision: previous }, skill: undefined }
-        : await decideMain(
-            pi,
-            prompt,
-            () =>
-              classifierState(
-                ctx,
-                prompt,
-                pi.getAllTools().map((tool) => tool.name),
-              ),
-            controller.signal,
-            withEffort,
-            ctx.cwd,
-          );
+        : native
+          ? {
+              result: await classify(systemOneConfig(), await buildState(), controller.signal, {
+                tier: false,
+                effort: true,
+              }),
+            }
+          : await decideMain(pi, prompt, buildState, controller.signal, withEffort, ctx.cwd);
       if (
         controller.signal.aborted ||
         initialRevision !== selectionRevision ||
@@ -265,17 +310,32 @@ export default function (pi: ExtensionAPI): void {
         initialModel?.provider !== ctx.model?.provider ||
         initialModel?.id !== ctx.model?.id ||
         initialThinking !== pi.getThinkingLevel()
-      )
+      ) {
+        visibility.finish(uiOwner, "effort cancelled");
         return;
+      }
       active = undefined;
-      if (!result || (!skill && !advice && !withEffort)) return;
+      const skipReason = effortEnabled() ? "inapplicable" : "disabled";
+      if (!result || (!skill && !advice && !withEffort)) {
+        visibility.finish(
+          uiOwner,
+          `effort skipped: ${skipReason}${result ? ` · classification ${result.outcome}` : " · no decision questions"}`,
+        );
+        return;
+      }
       const existing =
         "jevPilotInputId" in event.message ? event.message.jevPilotInputId : undefined;
       const inputId = typeof existing === "string" ? existing : crypto.randomUUID();
       if (skill || advice || withEffort) inputIds.set(event.message, inputId);
       if (skill) pi.appendEntry(SKILL_TYPE, { inputId, skill });
       if (advice) pi.appendEntry(ADVICE_TYPE, { inputId, advice });
-      if (!withEffort) return;
+      if (!withEffort) {
+        visibility.finish(
+          uiOwner,
+          `effort skipped: ${skipReason} · classification ${result.outcome}`,
+        );
+        return;
+      }
       const current = pi.getThinkingLevel();
       const decision = result.outcome === "classified" ? result.decision : null;
       const requested = decision ? (selectEffort(decision, current, prompt) ?? current) : current;
@@ -290,18 +350,20 @@ export default function (pi: ExtensionAPI): void {
       };
       pi.appendEntry(APPLICATION_TYPE, { baseline: current, inputId, ...state });
       const applicationId = ctx.sessionManager.getLeafId()!;
+      if (effective !== current) ownThinking = { level: effective, previousLevel: current };
       pi.setThinkingLevel(requested);
       pending.push({
         sessionId: ctx.sessionManager.getSessionId(),
         signal: parentSignal ?? controller.signal,
         data: { applicationId, inputId, ...state },
       });
-      ctx.ui.setStatus(
-        "jev-pilot",
-        `jev · ${requested} → ${effective} · ${reused ? "reused" : result.outcome}`,
+      visibility.finish(
+        uiOwner,
+        `${requested} → ${effective} · ${effective === current ? "kept" : "changed"} · ${reused ? "reused" : result.outcome}`,
       );
     } catch (error) {
       if (!controller.signal.aborted) {
+        visibility.finish(uiOwner, "effort skipped: invalid configuration");
         ctx.ui.notify(
           error instanceof Error ? error.message : "Invalid Jev Pilot configuration.",
           "error",
@@ -309,18 +371,11 @@ export default function (pi: ExtensionAPI): void {
         ctx.abort();
       }
     } finally {
+      visibility.finish(uiOwner, "effort cancelled");
       parentSignal?.removeEventListener("abort", cancel);
       if (active === controller) active = undefined;
     }
   });
-}
-
-// Pi expands /skill:name before message_start; do not rematch or transmit its body.
-function explicitCommand(prompt: string): boolean {
-  return (
-    /^\/\S/.test(prompt.trim()) ||
-    /^<skill name="[^"]+" location="[^"]+">\nReferences are relative to /.test(prompt)
-  );
 }
 
 function userText(content: string | { type: string; text?: string }[]): string {

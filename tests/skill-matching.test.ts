@@ -107,7 +107,11 @@ for (const [name, confidence, gate, selected] of [
 test("SK14-eligibility explicit skill invocation bypasses ordinary matching", async () => {
   const f = await start();
   await f.prompt("/skill:slides make a deck");
-  expect(f.classifications).toHaveLength(0);
+  expect(f.classifications).toHaveLength(1);
+  expect(Object.keys(f.classifications[0]!.questions as object).sort()).toEqual([
+    "effort",
+    "risky",
+  ]);
   expect(providerText(f)).toContain("UNSELECTED_BODY_TOKEN");
   expect(providerText(f)).not.toContain("<skill_relevance>");
 }, 20000);
@@ -631,7 +635,7 @@ test("SK14-owned-user physical combined uses one persisted identity without raw 
     const f = await start({});
     await f.prompt("/skill:debugging run procedure");
     await f.prompt(task);
-    expect(f.classifications).toHaveLength(1);
+    expect(f.classifications).toHaveLength(2);
     expect(providerText(f, 1).split(body)).toHaveLength(2);
     expect(providerText(f, 1)).toContain("already loaded above; instructions unchanged");
   }, 20000);
