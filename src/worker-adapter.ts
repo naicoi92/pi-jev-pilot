@@ -13,6 +13,7 @@ import { TIER_ORDER } from "./tier-policy.ts";
 import { configuredTiers } from "./routing-settings.ts";
 import { crewConfig } from "./crew-config.ts";
 import { selectWorkerModel } from "./crew-policy.ts";
+import { WorkerVisibility, workerTarget } from "./worker-visibility.ts";
 
 function enabled(): boolean {
   const value = process.env.JEV_WORKER_ROUTING_ENABLED ?? "true";
@@ -52,6 +53,7 @@ function parentIdentity(ctx: ExtensionContext): string {
 /** Ordinary tool envelopes only; workflow inner launches remain executor-owned. */
 export function registerWorkerAdapter(pi: ExtensionAPI): void {
   let settings: unknown = {};
+  const visibility = new WorkerVisibility();
   let childExtension: RequiredChildExtensionRegistration | undefined;
   const deliverChildExtension = (_event: unknown, ctx: ExtensionContext) => {
     childExtension?.dispose();
@@ -66,6 +68,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
     });
   };
   pi.on("session_start", () => {
+    visibility.clear();
     settings = pi.getSettings();
     childExtension?.dispose();
     childExtension = undefined;
@@ -81,6 +84,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
       params: { id },
     });
   const clear = () => {
+    visibility.clear();
     for (const controller of active) controller.abort();
     active.clear();
     allowedLaunches.clear();
@@ -122,11 +126,13 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
       typeof event.runId !== "string"
     )
       return;
+    visibility.complete(event.runId, "state" in event ? event.state : undefined);
     const run = owned.get(event.runId);
     run?.signal?.removeEventListener("abort", run.cancel);
     owned.delete(event.runId);
   });
   pi.on("tool_result", (event, ctx) => {
+    if (event.toolName === "subagent") visibility.result(event.toolCallId, event.details);
     if (
       event.toolName !== "subagent" ||
       !allowedLaunches.delete(event.toolCallId) ||
@@ -148,178 +154,222 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
     if (event.toolName !== "subagent") return;
     const input = event.input as Record<string, unknown>;
     if (input.action) return;
-    const routing = enabled();
-    const automaticMain =
-      effortEnabled() ||
-      process.env.JEV_SKILLS_ENABLED !== "false" ||
-      guidanceEnabled("QUALITY") ||
-      guidanceEnabled("STRATEGY") ||
-      guidanceEnabled("DESIGN");
-    if (typeof input.agent === "string" && !childExtension && (routing || automaticMain)) {
-      try {
-        deliverChildExtension(undefined, ctx);
-      } catch (error) {
-        return {
-          block: true,
-          reason: `Jev child helper cannot register alongside an existing required-child-extension owner; original input is unchanged and no child launched. ${error instanceof Error ? error.message : String(error)}`,
-        };
-      }
-    }
-    if (!routing) return;
-    if (input.workflow) return;
-    if (typeof input.agent !== "string") return;
-    const options =
-      input.options && typeof input.options === "object"
-        ? (input.options as Record<string, unknown>)
-        : {};
-    const field = (name: string) => {
-      if (input[name] !== undefined && options[name] !== undefined && input[name] !== options[name])
-        throw new Error(`Conflicting subagent ${name} values at top level and options.`);
-      return options[name] ?? input[name];
+    const owner = visibility.start(event.toolCallId, ctx.ui);
+    const finish = (message: string) => visibility.finish(owner, message);
+    const block = (reason: string, summary: string) => {
+      visibility.finish(owner, `not launched · ${summary}`, true);
+      return { block: true as const, reason };
     };
-    const context = field("context");
-    const agentScope = field("agentScope");
-    if (context === "fork") return;
-    if (context === "profile")
-      return {
-        block: true,
-        reason:
-          "Jev adapter cannot resolve context: profile through the public preflight API in Pi 1.4 / pi-subagents 0.80; original input is unchanged and no child launched.",
-      };
-    if (context !== undefined && context !== "fresh")
-      return {
-        block: true,
-        reason: "Invalid subagent context; use fresh, fork or a supported executor profile path.",
-      };
-    if (
-      agentScope !== undefined &&
-      agentScope !== "user" &&
-      agentScope !== "project" &&
-      agentScope !== "both"
-    )
-      return { block: true, reason: "Invalid subagent agentScope; use user, project or both." };
-    if (typeof input.task !== "string" || !input.task.trim()) return;
-    const tiers = configuredTiers(settings);
-    for (const tier of TIER_ORDER) physical(ctx, tiers[tier]);
-    const crew = crewConfig(ctx.cwd);
-    for (const slot of crew.offered) physical(ctx, slot.model);
-    const controller = new AbortController();
-    const cancel = () => controller.abort();
-    ctx.signal?.addEventListener("abort", cancel, { once: true });
-    active.add(controller);
+    const cancelled = () =>
+      block("Jev worker classification cancelled; no child launched.", "cancelled");
     try {
-      if (ctx.signal?.aborted) controller.abort();
-      const preview = await resolveSubagentLaunchContract({
-        agent: input.agent,
-        task: input.task,
-        cwd: typeof input.cwd === "string" ? input.cwd : ctx.cwd,
-        context,
-        agentScope,
-        model: typeof input.model === "string" ? input.model : undefined,
-        parentModel: ctx.model?.api !== "pi-virtual" ? ctx.model : undefined,
-        availableModels: ctx.modelRegistry.getAvailable(),
-        scopedModelIds: ctx.scopedModels.map(({ model }) => `${model.provider}/${model.id}`),
-        projectTrusted: ctx.isProjectTrusted(),
-        parentSessionId: ctx.sessionManager.getSessionId(),
-        parentSessionFile: ctx.sessionManager.getSessionFile(),
-        parentLeafId: ctx.sessionManager.getLeafId(),
-        runtimeSnapshotHost: pi,
-      });
-      if (preview.ok && preview.contract.context === "fork") return;
-      // Runtime agents are executor-owned; a disk-only discovery miss is not authority to block them.
-      if (!preview.ok && preview.code !== "missing_agent")
-        return { block: true, reason: preview.message };
-      const specialized =
-        input.agent === "jev-pilot:junior"
-          ? (crew.junior?.model ?? tiers.balanced)
-          : ["jev-pilot:codex-review", "jev-pilot:opencode-review"].includes(input.agent)
-            ? tiers.fast
-            : undefined;
-      if (specialized) {
-        if (controller.signal.aborted)
-          return { block: true, reason: "Jev worker classification cancelled; no child launched." };
-        input.model = specialized;
-        allowedLaunches.add(event.toolCallId);
+      const routing = enabled();
+      const automaticMain =
+        effortEnabled() ||
+        process.env.JEV_SKILLS_ENABLED !== "false" ||
+        guidanceEnabled("QUALITY") ||
+        guidanceEnabled("STRATEGY") ||
+        guidanceEnabled("DESIGN");
+      if (typeof input.agent === "string" && !childExtension && (routing || automaticMain)) {
+        try {
+          deliverChildExtension(undefined, ctx);
+        } catch (error) {
+          visibility.finish(owner, "not launched · child helper registration conflict", true);
+          return {
+            block: true,
+            reason: `Jev child helper cannot register alongside an existing required-child-extension owner; original input is unchanged and no child launched. ${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
+      }
+      if (!routing) {
+        finish("unchanged · routing disabled · executor-owned");
         return;
       }
-      const baseline =
-        typeof input.model === "string" ? identity(input.model) : parentIdentity(ctx);
-      physical(ctx, baseline);
-      if (controller.signal.aborted)
-        return { block: true, reason: "Jev worker classification cancelled; no child launched." };
-      const result = await classify(
-        systemOneConfig(),
-        {
-          prompt: input.task.slice(0, 2000),
-          agentType: input.agent.slice(0, 128),
-          ...(typeof input.description === "string"
-            ? { description: input.description.slice(0, 512) }
-            : {}),
-        },
-        controller.signal,
-        { tier: true, effort: true, slots: crew.offered },
-        {
-          effort: WORKER_EFFORT_QUESTION,
-        },
-      );
-      if (controller.signal.aborted)
-        return { block: true, reason: "Jev worker classification cancelled; no child launched." };
-      if (result.outcome !== "classified") {
-        allowedLaunches.add(event.toolCallId);
+      if (input.workflow) {
+        finish("executor-owned · workflow inner launches");
         return;
       }
-      const selected = result.decision.tier
-        ? selectWorkerModel(
-            {
-              tier: result.decision.tier,
-              slot: result.decision.slot,
-              confidence: result.decision.confidence ?? null,
-              risky: result.decision.risky,
-            },
-            baseline,
-            tiers,
-            crew.offered,
-          )
-        : null;
-      // Policy comparison is not authority to replace an omitted executor default.
-      const requested = selectEffort(result.decision, "", input.task);
-      if (!selected && !requested) {
-        allowedLaunches.add(event.toolCallId);
+      if (typeof input.agent !== "string") {
+        finish("unchanged · unsupported envelope · executor-owned");
         return;
       }
-      const retained =
-        typeof input.model === "string"
-          ? input.model
-          : preview.ok
-            ? preview.contract.model
-            : undefined;
-      const finalIdentity = selected ?? (retained ? identity(retained) : undefined);
-      if (!finalIdentity)
-        return {
-          block: true,
-          reason:
+      const options =
+        input.options && typeof input.options === "object"
+          ? (input.options as Record<string, unknown>)
+          : {};
+      const field = (name: string) => {
+        if (
+          input[name] !== undefined &&
+          options[name] !== undefined &&
+          input[name] !== options[name]
+        )
+          throw new Error(`Conflicting subagent ${name} values at top level and options.`);
+        return options[name] ?? input[name];
+      };
+      const context = field("context");
+      const agentScope = field("agentScope");
+      if (context === "fork") {
+        finish("executor-owned · fork model + effort");
+        return;
+      }
+      if (context === "profile")
+        return block(
+          "Jev adapter cannot resolve context: profile through the public preflight API in Pi 1.4 / pi-subagents 0.80; original input is unchanged and no child launched.",
+          "profile preflight unavailable",
+        );
+      if (context !== undefined && context !== "fresh")
+        return block(
+          "Invalid subagent context; use fresh, fork or a supported executor profile path.",
+          "invalid context",
+        );
+      if (
+        agentScope !== undefined &&
+        agentScope !== "user" &&
+        agentScope !== "project" &&
+        agentScope !== "both"
+      )
+        return block(
+          "Invalid subagent agentScope; use user, project or both.",
+          "invalid agent scope",
+        );
+      if (typeof input.task !== "string" || !input.task.trim()) {
+        finish("unchanged · empty task · executor-owned");
+        return;
+      }
+      const tiers = configuredTiers(settings);
+      for (const tier of TIER_ORDER) physical(ctx, tiers[tier]);
+      const crew = crewConfig(ctx.cwd);
+      for (const slot of crew.offered) physical(ctx, slot.model);
+      const controller = new AbortController();
+      const cancel = () => controller.abort();
+      ctx.signal?.addEventListener("abort", cancel, { once: true });
+      active.add(controller);
+      try {
+        if (ctx.signal?.aborted) controller.abort();
+        const preview = await resolveSubagentLaunchContract({
+          agent: input.agent,
+          task: input.task,
+          cwd: typeof input.cwd === "string" ? input.cwd : ctx.cwd,
+          context,
+          agentScope,
+          model: typeof input.model === "string" ? input.model : undefined,
+          parentModel: ctx.model?.api !== "pi-virtual" ? ctx.model : undefined,
+          availableModels: ctx.modelRegistry.getAvailable(),
+          scopedModelIds: ctx.scopedModels.map(({ model }) => `${model.provider}/${model.id}`),
+          projectTrusted: ctx.isProjectTrusted(),
+          parentSessionId: ctx.sessionManager.getSessionId(),
+          parentSessionFile: ctx.sessionManager.getSessionFile(),
+          parentLeafId: ctx.sessionManager.getLeafId(),
+          runtimeSnapshotHost: pi,
+        });
+        if (preview.ok && preview.contract.context === "fork") {
+          finish("executor-owned · fork model + effort");
+          return;
+        }
+        // Runtime agents are executor-owned; a disk-only discovery miss is not authority to block them.
+        if (!preview.ok && preview.code !== "missing_agent")
+          return block(preview.message, "preflight rejected");
+        const specialized =
+          input.agent === "jev-pilot:junior"
+            ? (crew.junior?.model ?? tiers.balanced)
+            : ["jev-pilot:codex-review", "jev-pilot:opencode-review"].includes(input.agent)
+              ? tiers.fast
+              : undefined;
+        if (specialized) {
+          if (controller.signal.aborted) return cancelled();
+          input.model = specialized;
+          finish(
+            `Jev plan · selected ${workerTarget(specialized)} · specialized slot · launch unconfirmed`,
+          );
+          allowedLaunches.add(event.toolCallId);
+          return;
+        }
+        const baseline =
+          typeof input.model === "string" ? identity(input.model) : parentIdentity(ctx);
+        physical(ctx, baseline);
+        if (controller.signal.aborted) return cancelled();
+        const result = await classify(
+          systemOneConfig(),
+          {
+            prompt: input.task.slice(0, 2000),
+            agentType: input.agent.slice(0, 128),
+            ...(typeof input.description === "string"
+              ? { description: input.description.slice(0, 512) }
+              : {}),
+          },
+          controller.signal,
+          { tier: true, effort: true, slots: crew.offered },
+          {
+            effort: WORKER_EFFORT_QUESTION,
+          },
+        );
+        if (controller.signal.aborted) return cancelled();
+        const retainedTarget = workerTarget(
+          preview.ok ? preview.contract.model : input.model,
+          preview.ok ? preview.contract.thinking : undefined,
+        );
+        if (result.outcome !== "classified") {
+          finish(`unchanged · ${result.outcome} · retained ${retainedTarget} · launch unconfirmed`);
+          allowedLaunches.add(event.toolCallId);
+          return;
+        }
+        const selected = result.decision.tier
+          ? selectWorkerModel(
+              {
+                tier: result.decision.tier,
+                slot: result.decision.slot,
+                confidence: result.decision.confidence ?? null,
+                risky: result.decision.risky,
+              },
+              baseline,
+              tiers,
+              crew.offered,
+            )
+          : null;
+        // Policy comparison is not authority to replace an omitted executor default.
+        const requested = selectEffort(result.decision, "", input.task);
+        if (!selected && !requested) {
+          finish(`Jev plan · kept ${retainedTarget} · no applicable change · launch unconfirmed`);
+          allowedLaunches.add(event.toolCallId);
+          return;
+        }
+        const retained =
+          typeof input.model === "string"
+            ? input.model
+            : preview.ok
+              ? preview.contract.model
+              : undefined;
+        const finalIdentity = selected ?? (retained ? identity(retained) : undefined);
+        if (!finalIdentity)
+          return block(
             "Jev cannot resolve the retained worker target for an effort-only decision through public preflight; supply an exact worker model. Original input is unchanged and no child launched.",
-        };
-      const model = physical(ctx, finalIdentity);
-      const effective = requested ? clampThinkingLevel(model, requested) : undefined;
-      if (controller.signal.aborted)
-        return { block: true, reason: "Jev worker classification cancelled; no child launched." };
-      input.model = `${finalIdentity}${effective ? `:${effective}` : ""}`;
-      allowedLaunches.add(event.toolCallId);
-      pi.appendEntry("jev-pilot:worker-route", {
-        toolCallId: event.toolCallId,
-        physical: finalIdentity,
-        requested,
-        effective,
-        outcome: result.outcome,
-      });
+            "executor default/unknown for effort-only decision",
+          );
+        const model = physical(ctx, finalIdentity);
+        const effective = requested ? clampThinkingLevel(model, requested) : undefined;
+        if (controller.signal.aborted) return cancelled();
+        input.model = `${finalIdentity}${effective ? `:${effective}` : ""}`;
+        finish(
+          `Jev plan · ${selected ? "selected" : "kept"} ${workerTarget(finalIdentity, effective)}${requested ? ` · ${requested} → ${effective}` : ""} · launch unconfirmed`,
+        );
+        allowedLaunches.add(event.toolCallId);
+        pi.appendEntry("jev-pilot:worker-route", {
+          toolCallId: event.toolCallId,
+          physical: finalIdentity,
+          requested,
+          effective,
+          outcome: result.outcome,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) return cancelled();
+        throw error;
+      } finally {
+        active.delete(controller);
+        ctx.signal?.removeEventListener("abort", cancel);
+      }
     } catch (error) {
-      if (controller.signal.aborted)
-        return { block: true, reason: "Jev worker classification cancelled; no child launched." };
+      finish("decision error · launch unconfirmed");
       throw error;
-    } finally {
-      active.delete(controller);
-      ctx.signal?.removeEventListener("abort", cancel);
     }
   });
 }
