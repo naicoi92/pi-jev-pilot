@@ -8,6 +8,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import {
   DECISION_TYPE,
+  appendDecisionRow,
   decisionRenderer,
   latestDecisionRows,
   readDecisionRow,
@@ -290,4 +291,79 @@ test("AC-2 STATUS-2 disabled flag stays legible without claiming classification"
     if (previous === undefined) delete process.env.JEV_EFFORT_ENABLED;
     else process.env.JEV_EFFORT_ENABLED = previous;
   }
+});
+
+for (const sequence of [
+  "9".repeat(400),
+  "Infinity",
+  "9007199254740990",
+  "9007199254740991",
+  "0",
+  "01",
+])
+  test(`RC-3 RESTORE-OVERFLOW malformed ${sequence.length > 20 ? "400-digits" : sequence} history cannot poison persistence`, () => {
+    const branch: SessionEntry[] = [];
+    const pi = {
+      appendEntry(_customType: string, data: unknown) {
+        branch.push(entry(data));
+      },
+    } as unknown as ExtensionAPI;
+    const seed = workerFixture();
+    const old = seed.visibility.start("call", seed.ui, "worker");
+    seed.visibility.finish(old, "selected");
+    pi.appendEntry(DECISION_TYPE, { ...seed.entries[0], invocation: `w${sequence}-abcdef` });
+    const visibility = new WorkerVisibility((row) => appendDecisionRow(pi, row));
+    visibility.restore(branch);
+    const next = visibility.start("call", seed.ui, "worker");
+    visibility.finish(next, "selected");
+    expect(branch).toHaveLength(2);
+    expect(
+      readDecisionRow(branch[1]!.type === "custom" ? branch[1]!.data : undefined),
+    ).toBeDefined();
+    expect(next.label).toStartWith("w1-");
+    expect(next.label.length).toBeLessThanOrEqual(43);
+    expect(
+      readDecisionRow({ ...seed.entries[0], invocation: `w${sequence}-abcdef` }),
+    ).toBeUndefined();
+  });
+
+test("RC-3 RESTORE-OVERFLOW cap rollover persists distinct bounded labels through reload", () => {
+  const f = workerFixture();
+  const old = f.visibility.start("same-call", f.ui, "worker");
+  f.visibility.finish(old, "selected");
+  const branch = [entry({ ...f.entries[0], invocation: "w999999999-abcdef" })];
+  const visibility = new WorkerVisibility((row) =>
+    appendDecisionRow(
+      {
+        appendEntry(_type: string, data: unknown) {
+          branch.push(entry(data));
+        },
+      } as unknown as ExtensionAPI,
+      row,
+    ),
+  );
+  visibility.restore(branch);
+  const first = visibility.start("same-call", f.ui, "worker");
+  visibility.finish(first, "selected");
+  const second = visibility.start("same-call", f.ui, "worker");
+  visibility.finish(second, "selected");
+  expect(branch).toHaveLength(3);
+  expect(first.label).toMatch(/^w1-[a-f0-9]{32}$/);
+  expect(second.label).toMatch(/^w2-[a-f0-9]{32}$/);
+  const restored = new WorkerVisibility((row) =>
+    appendDecisionRow(
+      {
+        appendEntry(_type: string, data: unknown) {
+          branch.push(entry(data));
+        },
+      } as unknown as ExtensionAPI,
+      row,
+    ),
+  );
+  restored.restore(branch.slice(1));
+  const next = restored.start("same-call", f.ui, "worker");
+  restored.finish(next, "selected");
+  expect(next.label).toMatch(/^w3-[a-f0-9]{32}$/);
+  expect(new Set([first.label, second.label, next.label]).size).toBe(3);
+  expect(branch).toHaveLength(4);
 });

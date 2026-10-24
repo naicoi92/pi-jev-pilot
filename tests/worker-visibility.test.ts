@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { statusLines, type WorkerDecisionRow } from "../src/decision-visibility.ts";
 import { registerWorkerAdapter } from "../src/worker-adapter.ts";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -237,7 +238,7 @@ test("UNIT-WV-skips WV-04 fork workflow disabled and management never classify",
   expect(f.requests()).toBe(0);
 });
 
-test("UNIT-WV-specialized WV-04 specialized slots keep effort executor-owned", async () => {
+test("RC-1 UNIT-WV-specialized WV-04 specialized slots keep effort executor-owned", async () => {
   const f = await fixture();
   for (const [agent, model] of [
     ["jev-pilot:junior", "local/balanced"],
@@ -249,6 +250,14 @@ test("UNIT-WV-specialized WV-04 specialized slots keep effort executor-owned", a
     expect(f.visible()).toContain(
       `selected ${model} · effort executor-owned/unknown · specialized slot`,
     );
+    expect(f.entries.at(-1)).toMatchObject({
+      kind: "worker",
+      stage: "plan",
+      model,
+      requested: "unknown",
+      effective: "unknown",
+      outcome: "specialized",
+    });
   }
   expect(f.requests()).toBe(0);
 });
@@ -395,3 +404,66 @@ for (const transition of ["model_select", "thinking_level_select"])
     expect(f.visible()).toContain("not launched · cancelled");
     expect(f.visible()).not.toContain("choosing");
   });
+
+for (const path of ["runtime-miss", "fork"])
+  for (const [proof, agent, expected] of [
+    [true, "worker", "worker"],
+    [true, "PRIVATE_AGENT\n\u001b[31m", "unknown"],
+    [false, "worker", "unknown"],
+  ] as const)
+    test(`RC-2 RECEIPT-IDENTITY ${path} verified=${proof} safe=${expected} recovers only public identity`, async () => {
+      const f = await fixture();
+      const input =
+        path === "fork"
+          ? { agent: "worker", task: brief, context: "fork" }
+          : { agent: "runtime-only", task: brief };
+      await f.call(input);
+      const plan = f.entries.find(
+        (row) => (row as WorkerDecisionRow).kind === "worker",
+      ) as WorkerDecisionRow;
+      expect(plan.agent).toBe("unknown");
+      expect(f.visible()).toContain(`Jev worker unknown ${plan.invocation}`);
+      await f.fire("tool_result", {
+        toolName: "subagent",
+        toolCallId: "call",
+        details: {
+          mode: "single",
+          runId: "PRIVATE_RUN_ID",
+          results: [
+            {
+              agent,
+              model: "local/deep",
+              thinking: "high",
+              exitCode: 0,
+              usage: { turns: 1 },
+              ...(proof
+                ? {
+                    launchContractDigest: "a".repeat(64),
+                    launchResolvedExtensions: { source: "launch-resolved", version: 1 },
+                  }
+                : {}),
+            },
+          ],
+        },
+      });
+      const executor = f.entries.at(-1) as WorkerDecisionRow;
+      expect(executor).toMatchObject({
+        kind: "worker",
+        stage: "executor",
+        invocation: plan.invocation,
+        agent: expected,
+        outcome: proof ? "receipt" : "unconfirmed",
+      });
+      expect(plan.agent).toBe("unknown");
+      expect(f.visible()).toContain(`Jev worker ${expected} ${plan.invocation}`);
+      const branch = f.entries
+        .filter((row) => (row as WorkerDecisionRow).kind === "worker")
+        .map((data) => ({ type: "custom", customType: "jev-pilot:decision:v1", data }));
+      expect(
+        statusLines(
+          { getThinkingLevel: () => "low" } as ExtensionAPI,
+          { sessionManager: { getBranch: () => branch } } as unknown as ExtensionContext,
+        ).join("\n"),
+      ).toContain(`Jev worker executor · ${expected} ${plan.invocation}`);
+      expect(JSON.stringify(branch)).not.toContain("PRIVATE_");
+    });

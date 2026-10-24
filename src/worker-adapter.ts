@@ -304,7 +304,12 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
           input.model = specialized;
           finish(
             `Jev plan · selected ${workerTarget(specialized)} · specialized slot · launch unconfirmed`,
-            { model: safeIdentity(specialized), outcome: "specialized" },
+            {
+              model: safeIdentity(specialized),
+              requested: "unknown",
+              effective: "unknown",
+              outcome: "specialized",
+            },
           );
           allowedLaunches.add(event.toolCallId);
           return;

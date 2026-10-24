@@ -1,8 +1,10 @@
 import type { ExtensionUIContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Details } from "pi-subagents/shared-types";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   latestDecisionRows,
+  MAX_WORKER_SEQUENCE,
+  readWorkerInvocation,
   safeAgent,
   safeIdentity,
   safeEffort,
@@ -60,16 +62,37 @@ export class WorkerVisibility {
   private rows = new Map<string, WorkerRow>();
   private ui: ExtensionUIContext | undefined;
   private sequence = 0;
+  private rollover = false;
 
   constructor(private readonly persist?: (row: WorkerDecisionRow) => void) {}
 
   restore(branch: SessionEntry[]): void {
-    this.sequence = Math.max(
-      this.sequence,
-      ...latestDecisionRows(branch).flatMap((row) =>
-        row.kind === "worker" ? [Number(row.invocation.match(/^w(\d+)-/)?.[1]) || 0] : [],
-      ),
-    );
+    let legacySequence = 0;
+    let rolloverSequence = 0;
+    for (const row of latestDecisionRows(branch)) {
+      if (row.kind !== "worker") continue;
+      const invocation = readWorkerInvocation(row.invocation);
+      if (!invocation) continue;
+      if (invocation.rollover) rolloverSequence = Math.max(rolloverSequence, invocation.sequence);
+      else legacySequence = Math.max(legacySequence, invocation.sequence);
+    }
+    if (rolloverSequence && !this.rollover) {
+      this.rollover = true;
+      this.sequence = rolloverSequence;
+    } else
+      this.sequence = Math.max(this.sequence, this.rollover ? rolloverSequence : legacySequence);
+  }
+
+  private nextLabel(source: string): string {
+    // After exhaustion never reuse legacy hash labels, including after branch restore.
+    if (this.sequence >= MAX_WORKER_SEQUENCE) {
+      this.sequence = 0;
+      this.rollover = true;
+    }
+    const suffix = this.rollover
+      ? randomUUID().replaceAll("-", "")
+      : createHash("sha256").update(source).digest("hex").slice(0, 6);
+    return `w${++this.sequence}-${suffix}`;
   }
 
   start(
@@ -79,7 +102,7 @@ export class WorkerVisibility {
     retained?: unknown,
   ): WorkerVisibilityOwner {
     this.ui = ui;
-    const label = `w${++this.sequence}-${createHash("sha256").update(toolCallId).digest("hex").slice(0, 6)}`;
+    const label = this.nextLabel(toolCallId);
     const row: WorkerRow = {
       toolCallId,
       label,
@@ -184,6 +207,7 @@ export class WorkerVisibility {
       // turn report a target/effort, not a provider identity or a still-running process.
       verified = !!receipt && nativeReceipt(receipt, result);
       if (verified) {
+        row.agent = safeAgent(result?.agent);
         model = safeIdentity(
           typeof result?.model === "string"
             ? result.model.replace(/:(off|minimal|low|medium|high|xhigh|max)$/, "")
@@ -204,7 +228,7 @@ export class WorkerVisibility {
       for (const child of receipt.results.slice(0, HISTORY_ROWS)) {
         if (!child || typeof child !== "object") continue;
         const reported = nativeReceipt(receipt, child);
-        const label = `w${++this.sequence}-${createHash("sha256").update(`${row.label}:${child.index}`).digest("hex").slice(0, 6)}`;
+        const label = this.nextLabel(`${row.label}:${child.index}`);
         this.persist?.({
           ...row.plan,
           invocation: label,
@@ -221,6 +245,7 @@ export class WorkerVisibility {
     } else if (!row.executorRecorded)
       this.persist?.({
         ...row.plan,
+        agent: row.agent,
         stage: "executor",
         model,
         effective,

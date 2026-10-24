@@ -7,6 +7,18 @@ import type {
 import { Text } from "@earendil-works/pi-tui";
 
 export const DECISION_TYPE = "jev-pilot:decision:v1";
+export const MAX_WORKER_SEQUENCE = 999_999_999;
+/** Canonical bounded labels keep restored history out of numeric overflow paths. */
+export function readWorkerInvocation(
+  value: unknown,
+): { sequence: number; rollover: boolean } | undefined {
+  if (typeof value !== "string" || value.length > 43) return;
+  const match = /^w([1-9]\d{0,8})-([a-f0-9]{6}|[a-f0-9]{32})$/.exec(value);
+  if (!match) return;
+  const sequence = Number(match[1]);
+  if (!Number.isSafeInteger(sequence) || sequence < 1 || sequence > MAX_WORKER_SEQUENCE) return;
+  return { sequence, rollover: match[2]!.length === 32 };
+}
 const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max", "unknown"] as const;
 export type VisibleEffort = (typeof LEVELS)[number];
 const OUTCOMES = [
@@ -92,12 +104,7 @@ export function readDecisionRow(value: unknown): DecisionRow | undefined {
   if (row.kind === "main") {
     if (!LEVELS.includes(row.previous as VisibleEffort)) return;
   } else if (row.kind === "worker") {
-    if (
-      typeof row.invocation !== "string" ||
-      !/^w\d+-[a-f0-9]{6}$/.test(row.invocation) ||
-      safeAgent(row.agent) !== row.agent
-    )
-      return;
+    if (!readWorkerInvocation(row.invocation) || safeAgent(row.agent) !== row.agent) return;
     if (row.stage !== "plan" && row.stage !== "executor") return;
     if (row.retained !== "unknown" && safeIdentity(row.retained) !== row.retained) return;
   } else return;

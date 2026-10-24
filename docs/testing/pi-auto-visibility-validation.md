@@ -67,3 +67,53 @@ Each direct invocation creates one plan entry and at most one executor entry. No
 Persisted UI schema accepts only version/kind, validated model identity, enumerated effort/outcome, elapsed time, and worker agent/local invocation/stage/retained identity. Extra keys rejected, malformed entries ignored. Agent labels derive from successful public preflight catalog identity; before validation they remain unknown. Raw task, description, skill bodies, errors, arbitrary invocation IDs and run IDs never enter new UI records. Existing legacy policy-state entries are unchanged.
 
 Official Pi is verified host. Pi-Bolt runtime/visual compatibility **not verified**; no own CLI or hosted/paid run attempted. Shared configuration needs same public renderer APIs. Narrow wrapping unit-tested; TERM=dumb, RTL, screen-reader and interactive resize not separately PTY-tested. Main meaning is Pi-selected identity, not server-resolved identity. Plan alone never claims actual child launch. Reviewer gate required before separate parent-managed deployment; installed 394f936 remains untouched.
+
+## Independent review correction: P1/P1/P2
+
+Base candidate: `117969c00a559972762d169d3b772e858627c82b`, tree `98b40f8593b781fd11db12d44d559f535fb4d43d`. Matrix RC-1/2/3 recorded before regression tests. Corrections limited to worker adapter metadata, worker visibility, persisted invocation validation and their tests. No main routing, policy, executor, tool envelope, dependency, settings or installed-package changes. Installed `394f936` remains unchanged.
+
+- **RC-1:** specialized replacement resets persisted requested/effective effort to `unknown`; caller `local/deep:high` no longer leaks discarded preview effort into suffix-free selected target. Tests inspect actual adapter-persisted decision entry for junior and codex-review, not only widget.
+- **RC-2:** verified native single receipt sanitizes public `SingleResult.agent` into executor entry and live owner/widget. Historical plan stays unknown, same invocation retained. Six adapter cases cover runtime preflight miss and explicit fork, safe/unsafe verified identities, and unverified payload. `/jev status` reads executor identity from persisted rows. Workflow child evidence path remains independent.
+- **RC-3:** canonical invocation sequence is positive decimal, 1–999999999, at most nine digits; schema and defensive restore use same bounded reader. Reject oversized 400-digit history, literal Infinity, near-MAX_SAFE values, zero and leading zero. Parent-approved exhaustion handling resets sequence to 1 and uses fresh UUID-backed 32-hex suffix for all subsequent labels, including after restore of rollover rows. Legacy six-hex labels unchanged before cap. Constant-size sequence/rollover state, no label-history Set; existing latest-12 restore bound unchanged. UUID uniqueness is probabilistic, ordinary UUID collision risk; labels are correlation only, not security authority. Regression persists two post-cap labels and a post-reload third through public append seam.
+
+### Exact RED / GREEN
+
+Logs: `/tmp/durable-visibility-corrections/`. RED ran against unchanged production candidate `117969c00a55` after adding matrix and regressions:
+
+```sh
+bun test tests/worker-visibility.test.ts tests/decision-visibility.test.ts
+# red.log: exit 1; 42 pass, 9 fail, 183 assertions, 51 tests / 2 files
+# Failures: RC-1 specialized; RC-2 verified-safe runtime + fork;
+# RC-3 400 digits, both near-MAX_SAFE values, zero, leading zero, cap rollover.
+# Literal Infinity already rejected before correction, remains passing control.
+```
+
+Post-correction same-command regression GREEN: **51 pass, 0 fail, 209 assertions** (`green-regressions.log`). Final affected slice, **78 unique tests / 8 files, 381 assertions, zero failures** (`green-focused-final.log`):
+
+```sh
+bun test tests/decision-visibility.test.ts tests/decision-visibility-cli.test.ts \
+  tests/effort-visibility.test.ts tests/worker-visibility-state.test.ts \
+  tests/worker-visibility.test.ts tests/main-routing.test.ts \
+  tests/worker-visibility-cli.test.ts tests/worker-main-isolation.test.ts
+bun run lint
+bun run fmt:check
+bun check
+git diff --check
+```
+
+Added **13 tests** (six receipt cases, six malformed sequences, one rollover/reload); extended existing specialized test. RC coverage **3/3**. Smaller two-file slices and intermediate focused pass are overlapping checks, **not additional tests**. Initial typecheck caught fixture spread across `SessionEntry` union; fixture now uses existing typed entry factory, no runtime behavior change. Final typecheck checks **169 files**, clean. No full suite, paid inference, new PTY, install, push or deployment. Prior official-Pi + powerbar PTY remains prior evidence only; no both-host/Pi-Bolt verification claimed.
+
+### Outcome mapping inspection / scope proof
+
+Inspected actual production mappings, not only render enum fixtures: main summary mapping order is cancelled → timeout → error/invalid → reused → skipped → classified → kept; adapter passes structured outcomes for specialized, classifier timeout/error, kept and classified. Worker fallback maps blocked/cancelled, timeout/error, specialized/kept/executor-owned; verified receipt versus unconfirmed comes from native proof, workflow per-child proof stays independent. This correction changes no classifier request, outcome mapping, policy or main source. No extra classification added. `git diff 117969c00a55 -- src/extension.ts src/*policy.ts src/system-one.ts src/routing-settings.ts package.json bun.lock` is empty; adapter diff contains only requested/effective visibility metadata.
+
+### Raw ANSI artifact privacy / byte identity
+
+Independent full-byte read/hash comparison, including huge first lines; no raw content printed or rewritten. Bounded scan strips ANSI in memory, scans entire resulting text for credential-token, private-key, bearer-credential and email patterns; **zero findings**. Known task text matches synthetic fixture `Run deterministic worker.`; fixture uses isolated HOME, localhost, `fixture-not-a-credential`, synthetic agent/task. Operator checkout/powerbar paths remain (RED 13, GREEN 15 `/Users/...` occurrences); captures are not path-anonymized. This is bounded pattern/fixture review, **not exhaustive secrets certification**; parent secrets review remains required.
+
+| Committed artifact                      | Bytes / first line bytes | SHA-256                                                            | External byte-identical source             |
+| --------------------------------------- | ------------------------ | ------------------------------------------------------------------ | ------------------------------------------ |
+| `pi-auto-visibility-evidence/red.raw`   | 72212 / 59427            | `7eb40dce5a7c62df632af7c05b96052ce8807991c441429db71a6402e0793e3f` | `/tmp/durable-visibility/red.raw`          |
+| `pi-auto-visibility-evidence/green.raw` | 103608 / 85509           | `109c5d6633f9f962a2620d8c58515681a6276ab2e70cb50c374972905333fba5` | `/tmp/durable-visibility/green-final2.raw` |
+
+Scan metadata: `/tmp/durable-visibility-corrections/artifact-scan.log`. No real credential/private prompt detected; original raw evidence untouched. Parent fresh independent correction review required before separate deployment gate.
