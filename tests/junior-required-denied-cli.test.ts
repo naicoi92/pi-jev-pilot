@@ -8,6 +8,15 @@ interface RpcRecord {
   type: string;
   id?: string;
   success?: boolean;
+  message?: {
+    role: string;
+    content?: { type: string; text?: string }[];
+    customType?: string;
+    details?: { runs?: { runId: string }[] };
+  };
+  toolName?: string;
+  args?: { action?: string; id?: string };
+  toolCallId?: string;
 }
 interface ChildStatus {
   state: string;
@@ -15,14 +24,27 @@ interface ChildStatus {
   steps: { sessionFile: string }[];
 }
 interface ToolReceipt {
+  toolCallId: string;
+  isError: boolean;
   details: { asyncId?: string };
 }
 
-for (const scenario of ["direct41", "async41", "workflow41", "retained-denied"] as const) {
+for (const scenario of [
+  "direct41",
+  "async41",
+  "workflow41",
+  "retained-denied",
+  "retained-denied-controlled",
+] as const) {
   const name = `REQUIRED-19-${scenario} policy conflict before provider activity`;
   juniorCliTest(name, async (owner) => {
     const { evidence } = owner;
     const { directory } = evidence;
+    const retained = scenario.startsWith("retained-denied");
+    const controlled = scenario === "retained-denied-controlled";
+    const inputStateFile = join(directory, "parent-input.json");
+    const inputMarker = (id: string) => `REQUIRED-19 explicit input: ${id}`;
+    const notificationCheckpoint = join(directory, "notification-checkpoint.json");
     let child: ChildProcessWithoutNullStreams;
     let closed: Promise<void>;
     await evidence.checkCapacity();
@@ -92,11 +114,23 @@ for (const scenario of ["direct41", "async41", "workflow41", "retained-denied"] 
     const observer = join(directory, "observer.ts");
     await writeFile(
       observer,
-      `import {appendFileSync} from "node:fs";
+      `import {appendFileSync,writeFileSync} from "node:fs";
 import {registerSubagentCapabilityCeiling} from "pi-subagents/capability-ceiling";
 export default function(pi) {
+ let releaseNotification;
+ const notificationGate=new Promise(resolve=>{releaseNotification=resolve;});
+ pi.registerCommand("release-notification",{handler:async()=>{releaseNotification();}});
+ const inputState=${JSON.stringify(inputStateFile)};
+ pi.on("agent_settled",()=>{writeFileSync(inputState,JSON.stringify(null));});
+ pi.on("message_start",async e=>{
+  if(e.message.role==="user")writeFileSync(inputState,JSON.stringify(e.message.content.find(c=>c.type==="text")?.text ?? null));
+  if(e.message.role==="custom")writeFileSync(inputState,JSON.stringify(null));
+  if(${controlled} && e.message.customType==="subagent-notify"){
+  appendFileSync(${JSON.stringify(notificationCheckpoint)},JSON.stringify(e.message.details)+"\\n");
+  await notificationGate;
+ }});
  const deny=ctx=>registerSubagentCapabilityCeiling({sessionId:ctx.sessionManager.getSessionId(),source:"jev-required-denied-fixture",ceiling:{denyExtensions:true}});
- pi.on("session_start",(_e,ctx)=>{if(${JSON.stringify(scenario)}!=="retained-denied")deny(ctx);});
+ pi.on("session_start",(_e,ctx)=>{if(!${retained})deny(ctx);});
  pi.registerCommand("deny-helper",{handler:async(_args,ctx)=>{deny(ctx);}});
  pi.on("tool_result", e=>{if(e.toolName==="subagent")appendFileSync(${JSON.stringify(join(directory, "results.jsonl"))},JSON.stringify(e)+"\\n");});
  pi.registerCommand("bound-reload", {handler:async(_args,ctx)=>{await ctx.waitForIdle();await ctx.reload();}});
@@ -111,7 +145,7 @@ export default function(pi) {
       'return await runs.all([{key:"junior",agent:"jev-pilot:junior",task:"Run loop"},{key:"sibling",agent:"sibling",task:"Run loop"}]);',
     );
     const options = { context: "fresh", acceptance: false, mission: false };
-    const background = scenario === "async41" || scenario === "retained-denied";
+    const background = scenario === "async41" || retained;
     let nextLaunch: Record<string, unknown> | undefined =
       scenario === "workflow41"
         ? { workflow: "./workflow.js", async: false, options }
@@ -121,7 +155,17 @@ export default function(pi) {
             async: background,
             options,
           };
-    const requests: { model: string; ordinal: number }[] = [];
+    let expectedInput = inputMarker("launch");
+    let releaseJunior: () => void = () => {};
+    const juniorGate = new Promise<void>((resolve) => {
+      releaseJunior = resolve;
+    });
+    const requests: {
+      model: string;
+      ordinal: number;
+      input?: string | null;
+      launch?: Record<string, unknown>;
+    }[] = [];
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -129,9 +173,14 @@ export default function(pi) {
         const body = (await request.json()) as { model: string; messages: { role: string }[] };
         const { model } = body;
         const ordinal = body.messages.filter((m) => m.role === "assistant").length + 1;
-        requests.push({ model, ordinal });
+        const receipt: (typeof requests)[number] = { model, ordinal };
+        if (model === "parent") receipt.input = JSON.parse(readFileSync(inputStateFile, "utf8"));
+        requests.push(receipt);
+        if (controlled && model === "junior" && ordinal === 40) await juniorGate;
         let tool: { name: string; arguments: string } | undefined;
-        if (model === "parent" && nextLaunch) {
+        // Only an explicit public user message can consume its armed envelope.
+        if (model === "parent" && nextLaunch && receipt.input === expectedInput) {
+          receipt.launch = nextLaunch;
           tool = { name: "subagent", arguments: JSON.stringify(nextLaunch) };
           nextLaunch = undefined;
         } else if (model !== "parent") {
@@ -272,7 +321,7 @@ export default function(pi) {
         await Bun.sleep(20);
       }
     };
-    const prompt = async (id: string, message = "Run the authorized local child test.") => {
+    const prompt = async (id: string, message = inputMarker(id)) => {
       const offset = records.length;
       child!.stdin.write(JSON.stringify({ id, type: "prompt", message }) + "\n");
       await wait(() => records.some((r) => r.id === id));
@@ -305,7 +354,8 @@ export default function(pi) {
       await wait(() => records.some((r) => r.id === "ready"));
       const offset = await prompt("launch");
       await settled(offset);
-      if (scenario === "retained-denied") {
+      if (retained) {
+        releaseJunior();
         const id = (await results())[0]!.details.asyncId;
         const terminal = await status(id!);
         expect(terminal.state).toBe("failed");
@@ -315,6 +365,37 @@ export default function(pi) {
           "utf8",
         );
         expect(descriptor).toContain("jev-pilot-junior-turn-bound");
+        if (controlled) {
+          await wait(() => {
+            try {
+              return JSON.parse(readFileSync(notificationCheckpoint, "utf8")).runs.some(
+                (run: { runId: string }) => run.runId === id,
+              );
+            } catch {
+              return false;
+            }
+          });
+        }
+        if (controlled) await prompt("release", "/release-notification");
+        // Native process exit does not prove the parent handled its completion wake.
+        let notificationIndex = -1;
+        await wait(() => {
+          notificationIndex = records.findIndex(
+            (r, index) =>
+              index >= offset &&
+              r.type === "message_start" &&
+              r.message?.customType === "subagent-notify" &&
+              r.message.details?.runs?.some((run) => run.runId === id),
+          );
+          return notificationIndex >= 0;
+        });
+        await settled(notificationIndex);
+        if (controlled) {
+          expect(
+            requests.filter((r) => r.model === "parent" && r.input === null).length,
+          ).toBeGreaterThan(0);
+          expect(requests.some((r) => r.input === null && r.launch !== undefined)).toBe(false);
+        }
         await prompt("deny", "/deny-helper");
         nextLaunch = {
           action: "resume",
@@ -323,7 +404,38 @@ export default function(pi) {
           async: true,
           options,
         };
-        await settled(await prompt("denied-resume"));
+        expectedInput = inputMarker("denied-resume");
+        const resumeOffset = await prompt("denied-resume");
+        await settled(resumeOffset);
+        const resumeCalls = records.filter(
+          (r) =>
+            r.type === "tool_execution_start" &&
+            r.toolName === "subagent" &&
+            r.args?.action === "resume",
+        );
+        expect(resumeCalls).toHaveLength(1);
+        expect(resumeCalls[0]!.args!.id).toBe(id);
+        const explicitTurn = records.slice(resumeOffset, records.indexOf(resumeCalls[0]!));
+        expect(
+          explicitTurn
+            .filter((r) => r.type === "message_start" && r.message?.role === "user")
+            .map((r) => r.message!.content),
+        ).toEqual([[{ type: "text", text: inputMarker("denied-resume") }]]);
+        expect(
+          explicitTurn.some(
+            (r) => r.type === "message_start" && r.message?.customType === "subagent-notify",
+          ),
+        ).toBe(false);
+        const resumeReceipt = (await results()).filter(
+          (r) => r.toolCallId === resumeCalls[0]!.toolCallId,
+        );
+        expect(resumeReceipt).toHaveLength(1);
+        expect(resumeReceipt[0]!.isError).toBe(true);
+        expect(
+          requests
+            .filter((r) => r.launch?.action === "resume")
+            .map((r) => ({ input: r.input, id: r.launch!.id })),
+        ).toEqual([{ input: inputMarker("denied-resume"), id }]);
         expect(JSON.stringify((await results()).at(-1))).toMatch(
           /denies extensions.*requires: jev-pilot-junior-turn-bound/,
         );
@@ -335,6 +447,7 @@ export default function(pi) {
         );
       }
       // Independent ordinary sibling under the same UUID-only denial remains uncapped.
+      expectedInput = inputMarker("ordinary-sibling");
       nextLaunch = { agent: "sibling", task: "Run ordinary loop", async: false, options };
       await settled(await prompt("ordinary-sibling"));
       expect(requests.filter((r) => r.model === "sibling")).toHaveLength(
