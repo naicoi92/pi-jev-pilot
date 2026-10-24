@@ -115,6 +115,16 @@ On the physical effort path, plain `continue`, `go on`, `keep going`, `carry on`
 
 Service errors, malformed answers and deadline expiry retain the current valid model/effort. Deadline expiry **aborts the HTTP request**, then allows ordinary generation. Explicit parent cancellation **stops** classifier/model work; it does not launch fallback generation. Invalid configuration stops work with an actionable error. Pi itself rejects a selected model without authentication.
 
+### See Jev decisions without the footer
+
+During selection, Jev shows a transient `Jev · choosing effort` widget. Completed meaningful decisions remain in conversation as collapsed `Jev main` rows, independent of footer replacements such as powerbar. Use Pi's tool-output expansion shortcut (default **Ctrl+O**) for previous/requested/effective effort and the Pi-selected main identity. Jev never switches the main model. Empty input and slash commands create no decision rows.
+
+Run **`/jev status`**, including before the first task, for loaded capabilities, enabled/disabled flags, current main identity/effort, latest main decision and up to 12 recent worker snapshots. This read-only command uses a public notification: no classifier request, provider call or model-facing message.
+
+Each supported worker invocation has its own validated agent name and short local label. Durable **plan** and **executor** rows share that label; plans do not prove launch. Native executor receipts report target model/effort, not server-resolved identity. Async acknowledgement/completion remains explicitly unconfirmed. Public workflow result receipts can expose up to 12 individual executor-reported children; their inner routing remains executor-owned, never falsely described as Jev-selected. Existing worker widget retains 4 visible / 12 recent rows. UI records contain only allowlisted identifiers, effort enums, stage, outcome and elapsed time—not task/description text, raw errors, skill bodies or raw invocation/run IDs.
+
+Requires public `appendEntry` and `registerEntryRenderer` APIs, verified visually in official Pi **1.4.0** with installed powerbar. Pi-Bolt runtime compatibility is **not verified**. See [visibility matrix](docs/testing/pi-auto-visibility-matrix.md) and [validation](docs/testing/pi-auto-visibility-validation.md). Terminal rendering uses Pi's built-in width-aware `Text`; keyboard-only operation, no color-only signals or custom animations. PTY exercised 180×70; narrow wrapping checked at 20 columns. Screen-reader, RTL and Pi-Bolt visual behavior not independently exercised.
+
 ## Know what leaves the device
 
 System One receives:

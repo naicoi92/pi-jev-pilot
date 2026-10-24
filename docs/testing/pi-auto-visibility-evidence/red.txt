@@ -1,0 +1,30 @@
+{
+  "AC-1 main pending": true,
+  "AC-1 durable main": false,
+  "AC-2 status before task": false,
+  "worker independent widget": true,
+  "AC-3 durable plan": false,
+  "AC-3 receipt": true,
+  "native exit": true
+}
+exit 0
+{
+  calls: 2,
+  generations: [
+    {
+      model: "parent",
+      effort: "low",
+    }, {
+      model: "selected",
+      effort: "medium",
+    }, {
+      model: "parent",
+      effort: "medium",
+    }, {
+      model: "parent",
+      effort: "medium",
+    }
+  ],
+  dir: "/var/folders/kx/1fk4553s26d5ygj1wrzbv5200000gn/T/jev-durable-pty-CBh1dx",
+  exit: 1,
+}

@@ -10,6 +10,13 @@ import {
 import { isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
 import { nativeSkillTask } from "./native-skill.ts";
 import { EffortVisibility } from "./effort-visibility.ts";
+import {
+  appendDecisionRow,
+  registerDecisionVisibility,
+  safeIdentity,
+  safeEffort,
+  type VisibleOutcome,
+} from "./decision-visibility.ts";
 import { classify, systemOneConfig, effortEnabled } from "./system-one.ts";
 import { classifierState } from "./classifier-context.ts";
 import { decideMain, skillBlock } from "./skill-matching.ts";
@@ -25,6 +32,7 @@ const RESTORED_TYPE = "jev-pilot:effort-restored";
 
 /** User-selected physical main model; session effort, skills and advice only. */
 export default function (pi: ExtensionAPI): void {
+  registerDecisionVisibility(pi);
   const executionChildren = new Set<string>();
   pi.events.on("jev-pilot:execution-child:v1", (value: unknown) => {
     if (
@@ -229,8 +237,46 @@ export default function (pi: ExtensionAPI): void {
             .join("\n");
     active?.abort();
     const uiOwner = visibility.start(ctx.ui);
+    const uiSession = ctx.sessionManager.getSessionId();
+    const uiRevision = selectionRevision;
+    const started = Date.now();
+    const uiModel = safeIdentity(ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
+    const previousEffort = safeEffort(pi.getThinkingLevel());
+    let requestedEffort = previousEffort;
+    let effectiveEffort = previousEffort;
+    let recorded = false;
+    const finish = (owner: number, summary: string) => {
+      if (!visibility.finish(owner, summary)) return;
+      if (recorded || !prompt.trim() || /^\/\S/.test(prompt.trim())) return;
+      if (uiSession !== ctx.sessionManager.getSessionId() || uiRevision !== selectionRevision)
+        return;
+      recorded = true;
+      const outcome: VisibleOutcome = summary.includes("cancelled")
+        ? "cancelled"
+        : summary.includes("timeout")
+          ? "timeout"
+          : /error|invalid configuration|invalid-response/.test(summary)
+            ? "error"
+            : summary.includes("reused")
+              ? "reused"
+              : summary.includes("skipped")
+                ? "skipped"
+                : summary.includes("classified")
+                  ? "classified"
+                  : "kept";
+      appendDecisionRow(pi, {
+        version: 1,
+        kind: "main",
+        model: uiModel,
+        previous: previousEffort,
+        requested: requestedEffort,
+        effective: effectiveEffort,
+        outcome,
+        elapsedMs: Date.now() - started,
+      });
+    };
     if (!prompt.trim() || /^\/\S/.test(prompt.trim())) {
-      visibility.finish(uiOwner, `effort skipped: ${prompt.trim() ? "command" : "empty input"}`);
+      finish(uiOwner, `effort skipped: ${prompt.trim() ? "command" : "empty input"}`);
       return;
     }
     let withEffort: boolean;
@@ -241,7 +287,7 @@ export default function (pi: ExtensionAPI): void {
           "Select a configured physical Pi model with authentication before submitting work.",
         );
     } catch (error) {
-      visibility.finish(uiOwner, "effort skipped: invalid configuration");
+      finish(uiOwner, "effort skipped: invalid configuration");
       ctx.ui.notify(
         error instanceof Error ? error.message : "Invalid Jev Pilot configuration.",
         "error",
@@ -259,7 +305,7 @@ export default function (pi: ExtensionAPI): void {
     const parentSignal = ctx.signal;
     const cancel = () => {
       controller.abort();
-      visibility.finish(uiOwner, "effort cancelled");
+      finish(uiOwner, "effort cancelled");
     };
     parentSignal?.addEventListener("abort", cancel, { once: true });
     if (parentSignal?.aborted) cancel();
@@ -268,7 +314,7 @@ export default function (pi: ExtensionAPI): void {
       if (controller.signal.aborted || initialRevision !== selectionRevision) return;
       if (native) {
         if (!native.verified || !native.task) {
-          visibility.finish(
+          finish(
             uiOwner,
             `effort skipped: ${native.verified ? "empty skill task" : "unverified skill resource"}`,
           );
@@ -276,10 +322,7 @@ export default function (pi: ExtensionAPI): void {
         }
         prompt = native.task;
         if (!withEffort) {
-          visibility.finish(
-            uiOwner,
-            `effort skipped: ${effortEnabled() ? "inapplicable" : "disabled"}`,
-          );
+          finish(uiOwner, `effort skipped: ${effortEnabled() ? "inapplicable" : "disabled"}`);
           return;
         }
       }
@@ -311,13 +354,13 @@ export default function (pi: ExtensionAPI): void {
         initialModel?.id !== ctx.model?.id ||
         initialThinking !== pi.getThinkingLevel()
       ) {
-        visibility.finish(uiOwner, "effort cancelled");
+        finish(uiOwner, "effort cancelled");
         return;
       }
       active = undefined;
       const skipReason = effortEnabled() ? "inapplicable" : "disabled";
       if (!result || (!skill && !advice && !withEffort)) {
-        visibility.finish(
+        finish(
           uiOwner,
           `effort skipped: ${skipReason}${result ? ` · classification ${result.outcome}` : " · no decision questions"}`,
         );
@@ -330,16 +373,15 @@ export default function (pi: ExtensionAPI): void {
       if (skill) pi.appendEntry(SKILL_TYPE, { inputId, skill });
       if (advice) pi.appendEntry(ADVICE_TYPE, { inputId, advice });
       if (!withEffort) {
-        visibility.finish(
-          uiOwner,
-          `effort skipped: ${skipReason} · classification ${result.outcome}`,
-        );
+        finish(uiOwner, `effort skipped: ${skipReason} · classification ${result.outcome}`);
         return;
       }
       const current = pi.getThinkingLevel();
       const decision = result.outcome === "classified" ? result.decision : null;
       const requested = decision ? (selectEffort(decision, current, prompt) ?? current) : current;
       const effective = clampThinkingLevel(ctx.model!, requested);
+      requestedEffort = safeEffort(requested);
+      effectiveEffort = safeEffort(effective);
       // setThinkingLevel appends before the owning user is persisted. Record its
       // baseline first so a branch excluding that user can discard this change.
       const state: DecisionState = {
@@ -357,13 +399,13 @@ export default function (pi: ExtensionAPI): void {
         signal: parentSignal ?? controller.signal,
         data: { applicationId, inputId, ...state },
       });
-      visibility.finish(
+      finish(
         uiOwner,
         `${requested} → ${effective} · ${effective === current ? "kept" : "changed"} · ${reused ? "reused" : result.outcome}`,
       );
     } catch (error) {
       if (!controller.signal.aborted) {
-        visibility.finish(uiOwner, "effort skipped: invalid configuration");
+        finish(uiOwner, "effort skipped: invalid configuration");
         ctx.ui.notify(
           error instanceof Error ? error.message : "Invalid Jev Pilot configuration.",
           "error",
@@ -371,7 +413,7 @@ export default function (pi: ExtensionAPI): void {
         ctx.abort();
       }
     } finally {
-      visibility.finish(uiOwner, "effort cancelled");
+      finish(uiOwner, "effort cancelled");
       parentSignal?.removeEventListener("abort", cancel);
       if (active === controller) active = undefined;
     }

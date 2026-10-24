@@ -1,10 +1,33 @@
-import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionUIContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Details } from "pi-subagents/shared-types";
 import { createHash } from "node:crypto";
+import {
+  latestDecisionRows,
+  safeAgent,
+  safeIdentity,
+  safeEffort,
+  type WorkerDecisionRow,
+  type VisibleOutcome,
+} from "./decision-visibility.ts";
 
 const KEY = "jev-pilot-workers";
 const VISIBLE_ROWS = 4;
 const HISTORY_ROWS = 12;
+function nativeReceipt(
+  details: Partial<Details>,
+  result: Details["results"][number] | undefined,
+): boolean {
+  return (
+    typeof details.runId === "string" &&
+    !!details.runId &&
+    typeof result?.launchContractDigest === "string" &&
+    /^[a-f0-9]{64}$/.test(result.launchContractDigest) &&
+    result.launchResolvedExtensions?.source === "launch-resolved" &&
+    result.launchResolvedExtensions.version === 1 &&
+    typeof result.exitCode === "number" &&
+    (result.usage?.turns ?? 0) > 0
+  );
+}
 const LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
 /** Only model identifiers and enumerated effort cross this UI boundary, never task text. */
@@ -24,6 +47,11 @@ interface WorkerRow {
   executor?: string;
   asyncId?: string;
   blocked?: boolean;
+  started: number;
+  agent: string;
+  plan: WorkerDecisionRow;
+  planRecorded?: boolean;
+  executorRecorded?: boolean;
 }
 export type WorkerVisibilityOwner = WorkerRow;
 
@@ -33,11 +61,43 @@ export class WorkerVisibility {
   private ui: ExtensionUIContext | undefined;
   private sequence = 0;
 
-  start(toolCallId: string, ui: ExtensionUIContext): WorkerVisibilityOwner {
+  constructor(private readonly persist?: (row: WorkerDecisionRow) => void) {}
+
+  restore(branch: SessionEntry[]): void {
+    this.sequence = Math.max(
+      this.sequence,
+      ...latestDecisionRows(branch).flatMap((row) =>
+        row.kind === "worker" ? [Number(row.invocation.match(/^w(\d+)-/)?.[1]) || 0] : [],
+      ),
+    );
+  }
+
+  start(
+    toolCallId: string,
+    ui: ExtensionUIContext,
+    agent?: unknown,
+    retained?: unknown,
+  ): WorkerVisibilityOwner {
     this.ui = ui;
+    const label = `w${++this.sequence}-${createHash("sha256").update(toolCallId).digest("hex").slice(0, 6)}`;
     const row: WorkerRow = {
       toolCallId,
-      label: `w${++this.sequence}-${createHash("sha256").update(toolCallId).digest("hex").slice(0, 6)}`,
+      label,
+      agent: safeAgent(agent),
+      started: Date.now(),
+      plan: {
+        version: 1,
+        kind: "worker",
+        invocation: label,
+        agent: safeAgent(agent),
+        stage: "plan",
+        retained: safeIdentity(retained),
+        model: "unknown",
+        requested: "unknown",
+        effective: "unknown",
+        outcome: "unconfirmed",
+        elapsedMs: 0,
+      },
       decision: "choosing model + effort…",
     };
     this.rows.delete(toolCallId);
@@ -47,16 +107,70 @@ export class WorkerVisibility {
     return row;
   }
 
-  finish(owner: WorkerVisibilityOwner, decision: string, blocked = false): void {
+  finish(
+    owner: WorkerVisibilityOwner,
+    decision: string,
+    blocked = false,
+    metadata: Partial<
+      Pick<WorkerDecisionRow, "retained" | "model" | "requested" | "effective" | "outcome">
+    > = {},
+  ): void {
     if (this.rows.get(owner.toolCallId) !== owner) return;
     owner.decision = decision;
     owner.blocked = blocked;
+    const outcome: VisibleOutcome = blocked
+      ? decision.includes("cancelled")
+        ? "cancelled"
+        : "blocked"
+      : decision.includes("timeout")
+        ? "timeout"
+        : /error|invalid/.test(decision)
+          ? "error"
+          : decision.includes("specialized")
+            ? "specialized"
+            : decision.includes("kept")
+              ? "kept"
+              : decision.includes("executor-owned")
+                ? "executor-owned"
+                : "unconfirmed";
+    owner.plan = {
+      ...owner.plan,
+      ...metadata,
+      elapsedMs: Date.now() - owner.started,
+      outcome: metadata.outcome ?? outcome,
+    };
+    if (!owner.planRecorded) {
+      owner.planRecorded = true;
+      this.persist?.(owner.plan);
+    }
+    this.render();
+  }
+
+  describe(
+    owner: WorkerVisibilityOwner,
+    agent: unknown,
+    retained: unknown,
+    thinking: unknown,
+  ): void {
+    if (this.rows.get(owner.toolCallId) !== owner) return;
+    owner.agent = safeAgent(agent);
+    owner.plan = {
+      ...owner.plan,
+      agent: owner.agent,
+      retained: safeIdentity(retained),
+      model: safeIdentity(retained),
+      requested: safeEffort(thinking),
+      effective: safeEffort(thinking),
+    };
     this.render();
   }
 
   result(toolCallId: string, details: unknown): void {
     const row = this.rows.get(toolCallId);
-    if (!row || row.asyncId || row.blocked) return;
+    if (!row || row.asyncId || row.blocked || row.executor?.startsWith("executor receipt")) return;
+    let model = "unknown";
+    let effective = safeEffort(undefined);
+    let verified = false;
     const receipt = details as (Partial<Details> & { asyncId?: unknown }) | undefined;
     if (typeof receipt?.asyncId === "string" && receipt.asyncId) {
       row.asyncId = receipt.asyncId;
@@ -68,19 +182,52 @@ export class WorkerVisibility {
           : undefined;
       // A generic tool success is not a child receipt. Native receipt + an executed
       // turn report a target/effort, not a provider identity or a still-running process.
-      const verified =
-        typeof receipt?.runId === "string" &&
-        !!receipt.runId &&
-        typeof result?.launchContractDigest === "string" &&
-        /^[a-f0-9]{64}$/.test(result.launchContractDigest) &&
-        result.launchResolvedExtensions?.source === "launch-resolved" &&
-        result.launchResolvedExtensions.version === 1 &&
-        typeof result.exitCode === "number" &&
-        (result.usage?.turns ?? 0) > 0;
+      verified = !!receipt && nativeReceipt(receipt, result);
+      if (verified) {
+        model = safeIdentity(
+          typeof result?.model === "string"
+            ? result.model.replace(/:(off|minimal|low|medium|high|xhigh|max)$/, "")
+            : undefined,
+        );
+        effective = safeEffort(result?.thinking);
+      }
       row.executor = verified
         ? `executor receipt · target ${workerTarget(result?.model, result?.thinking)}`
         : "executor result · launch unconfirmed";
     }
+    if (
+      !row.executorRecorded &&
+      receipt?.mode !== "single" &&
+      Array.isArray(receipt?.results) &&
+      receipt.results.length
+    ) {
+      for (const child of receipt.results.slice(0, HISTORY_ROWS)) {
+        if (!child || typeof child !== "object") continue;
+        const reported = nativeReceipt(receipt, child);
+        const label = `w${++this.sequence}-${createHash("sha256").update(`${row.label}:${child.index}`).digest("hex").slice(0, 6)}`;
+        this.persist?.({
+          ...row.plan,
+          invocation: label,
+          agent: safeAgent(child.agent),
+          stage: "executor",
+          retained: "unknown",
+          model: reported ? safeIdentity(child.model) : "unknown",
+          requested: "unknown",
+          effective: reported ? safeEffort(child.thinking) : "unknown",
+          outcome: reported ? "receipt" : "executor-owned",
+          elapsedMs: Date.now() - row.started,
+        });
+      }
+    } else if (!row.executorRecorded)
+      this.persist?.({
+        ...row.plan,
+        stage: "executor",
+        model,
+        effective,
+        outcome: verified ? "receipt" : "unconfirmed",
+        elapsedMs: Date.now() - row.started,
+      });
+    row.executorRecorded = true;
     this.render();
   }
 
@@ -108,7 +255,7 @@ export class WorkerVisibility {
         .slice(-VISIBLE_ROWS)
         .map(
           (row) =>
-            `Jev worker ${row.label} · ${row.decision}${row.executor ? ` · ${row.executor}` : ""}`,
+            `Jev worker ${row.agent} ${row.label} · ${row.decision}${row.executor ? ` · ${row.executor}` : ""}`,
         ),
     );
     this.ui?.setStatus?.(

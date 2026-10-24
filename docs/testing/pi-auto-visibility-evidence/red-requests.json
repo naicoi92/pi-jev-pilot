@@ -1,0 +1,30 @@
+{
+  "calls": [
+    {
+      "tier": true
+    },
+    {
+      "tier": false
+    }
+  ],
+  "generations": [
+    {
+      "model": "parent",
+      "effort": "low"
+    },
+    {
+      "model": "selected",
+      "effort": "medium"
+    },
+    {
+      "model": "parent",
+      "effort": "medium"
+    },
+    {
+      "model": "parent",
+      "effort": "medium"
+    }
+  ],
+  "dir": "/var/folders/kx/1fk4553s26d5ygj1wrzbv5200000gn/T/jev-durable-pty-CBh1dx",
+  "exit": 1
+}

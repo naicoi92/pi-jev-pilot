@@ -1,0 +1,38 @@
+[
+  {
+    "version": 1,
+    "kind": "main",
+    "model": "local/parent",
+    "previous": "low",
+    "requested": "medium",
+    "effective": "medium",
+    "outcome": "classified",
+    "elapsedMs": 1035
+  },
+  {
+    "version": 1,
+    "kind": "worker",
+    "invocation": "w1-2b535f",
+    "agent": "receipt-worker",
+    "stage": "plan",
+    "retained": "local/configured",
+    "model": "local/selected",
+    "requested": "medium",
+    "effective": "medium",
+    "outcome": "classified",
+    "elapsedMs": 1013
+  },
+  {
+    "version": 1,
+    "kind": "worker",
+    "invocation": "w1-2b535f",
+    "agent": "receipt-worker",
+    "stage": "executor",
+    "retained": "local/configured",
+    "model": "local/selected",
+    "requested": "medium",
+    "effective": "medium",
+    "outcome": "receipt",
+    "elapsedMs": 1634
+  }
+]

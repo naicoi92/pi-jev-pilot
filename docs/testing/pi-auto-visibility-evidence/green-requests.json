@@ -1,0 +1,28 @@
+{
+  "calls": [
+    {
+      "tier": false
+    },
+    {
+      "tier": true
+    }
+  ],
+  "generations": [
+    {
+      "model": "parent",
+      "effort": "medium"
+    },
+    {
+      "model": "selected",
+      "effort": "medium"
+    },
+    {
+      "model": "parent",
+      "effort": "medium"
+    }
+  ],
+  "beforeTaskRequests": 0,
+  "requestCheck": true,
+  "dir": "/var/folders/kx/1fk4553s26d5ygj1wrzbv5200000gn/T/jev-durable-pty-T702HY",
+  "exit": 0
+}

@@ -18,12 +18,13 @@ export class EffortVisibility {
     return owner;
   }
 
-  finish(owner: number, outcome: string): void {
-    if (owner !== this.owner || !this.pending) return;
+  finish(owner: number, outcome: string): boolean {
+    if (owner !== this.owner || !this.pending) return false;
     const { ui, started } = this.pending;
     this.pending = undefined;
     ui.setWidget(KEY, undefined);
     ui.setStatus(KEY, `jev · ${outcome} · ${Date.now() - started}ms`);
+    return true;
   }
 
   clear(): void {

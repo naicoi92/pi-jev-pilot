@@ -1,0 +1,32 @@
+{
+  "AC-1 main pending": true,
+  "AC-1 durable main": true,
+  "AC-2 status before task": true,
+  "worker independent widget": true,
+  "AC-3 durable plan": true,
+  "AC-3 receipt": true,
+  "AC-5 public reload durable main": true,
+  "AC-5 public reload durable worker": true,
+  "AC-1 public expand details": true,
+  "native exit": true
+}
+exit 0
+{
+  calls: 2,
+  generations: [
+    {
+      model: "parent",
+      effort: "medium",
+    }, {
+      model: "selected",
+      effort: "medium",
+    }, {
+      model: "parent",
+      effort: "medium",
+    }
+  ],
+  beforeTaskRequests: 0,
+  requestCheck: true,
+  dir: "/var/folders/kx/1fk4553s26d5ygj1wrzbv5200000gn/T/jev-durable-pty-T702HY",
+  exit: 0,
+}

@@ -14,6 +14,12 @@ import { configuredTiers } from "./routing-settings.ts";
 import { crewConfig } from "./crew-config.ts";
 import { selectWorkerModel } from "./crew-policy.ts";
 import { WorkerVisibility, workerTarget } from "./worker-visibility.ts";
+import {
+  appendDecisionRow,
+  safeIdentity,
+  safeEffort,
+  type WorkerDecisionRow,
+} from "./decision-visibility.ts";
 
 function enabled(): boolean {
   const value = process.env.JEV_WORKER_ROUTING_ENABLED ?? "true";
@@ -53,7 +59,7 @@ function parentIdentity(ctx: ExtensionContext): string {
 /** Ordinary tool envelopes only; workflow inner launches remain executor-owned. */
 export function registerWorkerAdapter(pi: ExtensionAPI): void {
   let settings: unknown = {};
-  const visibility = new WorkerVisibility();
+  const visibility = new WorkerVisibility((row) => appendDecisionRow(pi, row));
   let childExtension: RequiredChildExtensionRegistration | undefined;
   const deliverChildExtension = (_event: unknown, ctx: ExtensionContext) => {
     childExtension?.dispose();
@@ -67,8 +73,9 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
       ],
     });
   };
-  pi.on("session_start", () => {
+  pi.on("session_start", (_event, ctx) => {
     visibility.clear();
+    visibility.restore(ctx.sessionManager.getBranch());
     settings = pi.getSettings();
     childExtension?.dispose();
     childExtension = undefined;
@@ -154,8 +161,18 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
     if (event.toolName !== "subagent") return;
     const input = event.input as Record<string, unknown>;
     if (input.action) return;
-    const owner = visibility.start(event.toolCallId, ctx.ui);
-    const finish = (message: string) => visibility.finish(owner, message);
+    const owner = visibility.start(
+      event.toolCallId,
+      ctx.ui,
+      undefined,
+      typeof input.model === "string" ? identity(input.model) : undefined,
+    );
+    const finish = (
+      message: string,
+      metadata?: Partial<
+        Pick<WorkerDecisionRow, "retained" | "model" | "requested" | "effective" | "outcome">
+      >,
+    ) => visibility.finish(owner, message, false, metadata);
     const block = (reason: string, summary: string) => {
       visibility.finish(owner, `not launched · ${summary}`, true);
       return { block: true as const, reason };
@@ -262,6 +279,13 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
           parentLeafId: ctx.sessionManager.getLeafId(),
           runtimeSnapshotHost: pi,
         });
+        if (preview.ok)
+          visibility.describe(
+            owner,
+            preview.contract.agent.name,
+            preview.contract.model ? identity(preview.contract.model) : undefined,
+            preview.contract.thinking,
+          );
         if (preview.ok && preview.contract.context === "fork") {
           finish("executor-owned · fork model + effort");
           return;
@@ -280,6 +304,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
           input.model = specialized;
           finish(
             `Jev plan · selected ${workerTarget(specialized)} · specialized slot · launch unconfirmed`,
+            { model: safeIdentity(specialized), outcome: "specialized" },
           );
           allowedLaunches.add(event.toolCallId);
           return;
@@ -309,7 +334,18 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
           preview.ok ? preview.contract.thinking : undefined,
         );
         if (result.outcome !== "classified") {
-          finish(`unchanged · ${result.outcome} · retained ${retainedTarget} · launch unconfirmed`);
+          finish(
+            `unchanged · ${result.outcome} · retained ${retainedTarget} · launch unconfirmed`,
+            {
+              retained: safeIdentity(
+                preview.ok ? identity(preview.contract.model ?? "") : input.model,
+              ),
+              model: safeIdentity(
+                preview.ok ? identity(preview.contract.model ?? "") : input.model,
+              ),
+              outcome: result.outcome === "timeout" ? "timeout" : "error",
+            },
+          );
           allowedLaunches.add(event.toolCallId);
           return;
         }
@@ -329,7 +365,13 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
         // Policy comparison is not authority to replace an omitted executor default.
         const requested = selectEffort(result.decision, "", input.task);
         if (!selected && !requested) {
-          finish(`Jev plan · kept ${retainedTarget} · no applicable change · launch unconfirmed`);
+          finish(`Jev plan · kept ${retainedTarget} · no applicable change · launch unconfirmed`, {
+            retained: safeIdentity(
+              preview.ok ? identity(preview.contract.model ?? "") : input.model,
+            ),
+            model: safeIdentity(preview.ok ? identity(preview.contract.model ?? "") : input.model),
+            outcome: "kept",
+          });
           allowedLaunches.add(event.toolCallId);
           return;
         }
@@ -351,6 +393,13 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
         input.model = `${finalIdentity}${effective ? `:${effective}` : ""}`;
         finish(
           `Jev plan · ${selected ? "selected" : "kept"} ${workerTarget(finalIdentity, effective)}${requested ? ` · ${requested} → ${effective}` : ""} · launch unconfirmed`,
+          {
+            retained: safeIdentity(retained ? identity(retained) : undefined),
+            model: safeIdentity(finalIdentity),
+            requested: safeEffort(requested),
+            effective: safeEffort(effective),
+            outcome: "classified",
+          },
         );
         allowedLaunches.add(event.toolCallId);
         pi.appendEntry("jev-pilot:worker-route", {
