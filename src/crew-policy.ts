@@ -1,6 +1,12 @@
 // Adapted from pinned Jev Pilot crew.ts and jev-model-router.ts; see NOTICE.md.
 import type { Slot } from "./crew-config.ts";
-import { riskTier, selectTier, type Tiers, type TierDecision } from "./tier-policy.ts";
+import {
+  admitsExpert,
+  riskTier,
+  selectTier,
+  type Tiers,
+  type TierDecision,
+} from "./tier-policy.ts";
 /** Encode every slot, not just collisions, so arbitrary valid public names stay distinct from tiers. */
 export const slotKey = (name: string): string => `slot::${name}`;
 export function selectWorkerModel(
@@ -9,7 +15,7 @@ export function selectWorkerModel(
   tiers: Tiers,
   offered: Slot[],
 ): string | null {
-  if ((decision.risky ?? 0) > 0.7) {
+  if ((decision.risky ?? 0) > 0.7 && !admitsExpert(decision, tiers)) {
     const tier = riskTier(tiers);
     return tier ? (tiers[tier] ?? null) : null;
   }
