@@ -254,7 +254,8 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
         return;
       }
       const tiers = configuredTiers(settings);
-      for (const tier of TIER_ORDER) physical(ctx, tiers[tier]);
+      const configured = TIER_ORDER.filter((tier) => tiers[tier]);
+      for (const tier of configured) physical(ctx, tiers[tier]!);
       const crew = crewConfig(ctx.cwd);
       for (const slot of crew.offered) physical(ctx, slot.model);
       const controller = new AbortController();
@@ -293,12 +294,19 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
         // Runtime agents are executor-owned; a disk-only discovery miss is not authority to block them.
         if (!preview.ok && preview.code !== "missing_agent")
           return block(preview.message, "preflight rejected");
+        const reviewer = ["jev-pilot:codex-review", "jev-pilot:opencode-review"].includes(
+          input.agent,
+        );
         const specialized =
           input.agent === "jev-pilot:junior"
             ? (crew.junior?.model ?? tiers.balanced)
-            : ["jev-pilot:codex-review", "jev-pilot:opencode-review"].includes(input.agent)
+            : reviewer
               ? tiers.fast
               : undefined;
+        if (!specialized && (input.agent === "jev-pilot:junior" || reviewer)) {
+          finish("unchanged · specialized slot not configured · executor-owned");
+          return;
+        }
         if (specialized) {
           if (controller.signal.aborted) return cancelled();
           input.model = specialized;
@@ -328,7 +336,12 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
               : {}),
           },
           controller.signal,
-          { tier: true, effort: true, slots: crew.offered },
+          {
+            tier: configured.length > 0 || crew.offered.length > 0,
+            effort: true,
+            tiers: configured,
+            slots: crew.offered,
+          },
           {
             effort: WORKER_EFFORT_QUESTION,
           },

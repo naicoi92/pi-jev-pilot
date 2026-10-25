@@ -15,7 +15,7 @@ afterEach(() => {
 const tiers = { fast: "local/fast", balanced: "local/balanced", deep: "local/deep/model" };
 
 test("routing-settings worker tiers unconfigured until supplied; obsolete main flag ignored", () => {
-  expect(() => configuredTiers()).toThrow("jevPilot.tiers.fast");
+  expect(configuredTiers()).toEqual({});
   for (const mainRoutingEnabled of [true, false, null, "invalid"])
     expect(
       configuredTiers({ packages: ["kept"], jevPilot: { mainRoutingEnabled, tiers } }),
@@ -28,7 +28,7 @@ for (const value of [null, [], true, 1, "true"]) {
     expect(() => configuredTiers({ jevPilot: { tiers: value } })).toThrow("jevPilot.tiers");
   });
 }
-for (const value of [null, true, 1, {}, [], "", "unqualified", "local/white space"]) {
+for (const value of [null, true, 1, {}, [], "unqualified", "local/white space"]) {
   test(`routing-settings malformed tier ${JSON.stringify(value)} actionable`, () => {
     expect(() => configuredTiers({ jevPilot: { tiers: { ...tiers, balanced: value } } })).toThrow(
       "jevPilot.tiers.balanced",
@@ -36,10 +36,19 @@ for (const value of [null, true, 1, {}, [], "", "unqualified", "local/white spac
   });
 }
 
+for (const value of [undefined, "", " ", "\t\n"]) {
+  test(`routing-settings tier value ${JSON.stringify(value)} is not configured`, () => {
+    for (const tier of Object.keys(tiers) as (keyof typeof tiers)[]) {
+      const { [tier]: _omitted, ...others } = tiers;
+      expect(configuredTiers({ jevPilot: { tiers: { ...tiers, [tier]: value } } })).toEqual(others);
+    }
+  });
+}
+
 for (const value of ["true", "false", "", "invalid"]) {
   test(`routing-settings legacy environment ${JSON.stringify(value)} ignored; JSON authoritative`, () => {
     for (const key of keys) process.env[key] = value;
-    expect(() => configuredTiers()).toThrow("jevPilot.tiers.fast");
+    expect(configuredTiers()).toEqual({});
     expect(configuredTiers({ jevPilot: { tiers } })).toEqual(tiers);
     expect(() => configuredTiers({ jevPilot: null })).toThrow("jevPilot");
   });

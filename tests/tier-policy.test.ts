@@ -98,3 +98,16 @@ test("TIER-03 duplicate mappings retain the exact current identity", () => {
     }),
   ).toBeNull();
 });
+
+test("SPARSE-01 risk override selects the highest configured tier when deep is absent", () => {
+  const sparse = { fast: tiers.fast, balanced: tiers.balanced };
+  expect(selectTier({ tier: "fast", confidence: 0.01, risky: 0.71 }, tiers.fast, sparse)).toBe(
+    tiers.balanced,
+  );
+  expect(selectTier({ tier: "fast", confidence: 0.01, risky: 0.7 }, tiers.balanced, sparse)).toBe(
+    null,
+  );
+});
+test("SPARSE-01 risk override changes nothing when no tier is configured", () => {
+  expect(selectTier({ tier: "fast", confidence: 0.9, risky: 0.99 }, tiers.fast, {})).toBeNull();
+});

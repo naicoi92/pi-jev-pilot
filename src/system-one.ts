@@ -23,6 +23,8 @@ export interface DecisionQuestions {
   quality?: boolean;
   strategy?: boolean;
   design?: boolean;
+  /** Availability snapshot: configured tiers offered and accepted. Omitted means every tier. */
+  tiers?: Tier[];
   slots?: Slot[];
   junior?: boolean;
 }
@@ -173,6 +175,15 @@ const tierQuestion = {
   },
 };
 
+/** One list drives both the request criteria and the accepted response choices. */
+function tierChoices(enabled: DecisionQuestions): string[] {
+  const tiers = enabled.tiers ?? TIER_ORDER;
+  return [
+    ...TIER_ORDER.filter((tier) => tiers.includes(tier)),
+    ...(enabled.slots ?? []).map((slot) => slotKey(slot.name)),
+  ];
+}
+
 function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | null {
   const answers = object(object(value)?.answers);
   const risk = object(answers?.risky);
@@ -183,12 +194,10 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
     ? readDecision(value)
     : { effort: null, effortConfidence: null, risky: risky as number | null };
   if (!decision) return null;
-  if (enabled.tier || enabled.strategy) {
+  const choices = tierChoices(enabled);
+  if ((enabled.tier || enabled.strategy) && choices.length) {
     const tier = object(answers?.tier);
     const slot = enabled.slots?.find((candidate) => slotKey(candidate.name) === tier?.choice);
-    const choices = enabled.slots?.length
-      ? ["balanced", "deep", ...enabled.slots.map((candidate) => slotKey(candidate.name))]
-      : [...TIER_ORDER];
     if (!tier || !choices.includes(tier.choice as string)) return null;
     if (tier.confidence !== undefined && !probability(tier.confidence)) return null;
     const distribution = tier.probabilities === undefined ? null : object(tier.probabilities);
@@ -274,22 +283,24 @@ export async function classify(
   )
     throw new Error("No applicable Jev questions.");
   const asked = {
-    ...(enabled.tier || enabled.strategy
+    ...((enabled.tier || enabled.strategy) && tierChoices(enabled).length
       ? {
           tier: {
             ...tierQuestion,
-            criteria: enabled.slots?.length
-              ? {
-                  balanced: tierQuestion.criteria.balanced,
-                  deep: tierQuestion.criteria.deep,
-                  ...Object.fromEntries(
-                    enabled.slots.map((slot) => [
-                      slotKey(slot.name),
-                      `${slot.model} (a custom model). ${slot.when}`,
-                    ]),
-                  ),
-                }
-              : tierQuestion.criteria,
+            criteria: {
+              ...Object.fromEntries(
+                TIER_ORDER.filter((tier) => tierChoices(enabled).includes(tier)).map((tier) => [
+                  tier,
+                  tierQuestion.criteria[tier],
+                ]),
+              ),
+              ...Object.fromEntries(
+                (enabled.slots ?? []).map((slot) => [
+                  slotKey(slot.name),
+                  `${slot.model} (a custom model). ${slot.when}`,
+                ]),
+              ),
+            },
           },
         }
       : {}),
@@ -360,6 +371,7 @@ export async function classify(
         ? (readAnswers(value, {
             tier: false,
             effort: false,
+            tiers: enabled.tiers,
             strategy: enabled.strategy,
             quality: enabled.quality,
             junior: enabled.junior,
