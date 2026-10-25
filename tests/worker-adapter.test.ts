@@ -265,7 +265,9 @@ for (const transition of [
     });
     await f.fire("session_shutdown");
     expect(f.controls).toEqual([]);
-    expect(f.entries).toEqual([]);
+    // Cancellation may leave a visible cancelled decision row, but never a route record.
+    expect(f.entries).not.toContainEqual(expect.objectContaining({ toolCallId: "pending" }));
+    expect(f.entries).not.toContainEqual(expect.objectContaining({ outcome: "classified" }));
   });
 
 test("WORKER-13 host-first collision preserves owner across duplicate and adapter shutdown", async () => {
@@ -344,6 +346,7 @@ test("CREW-18 offered custom keys stay distinct from real tiers", async () => {
   }
   const tier = (f.payloads[0]!.questions as Record<string, { criteria: unknown }>).tier!;
   expect(Object.keys(tier.criteria as object)).toEqual([
+    "fast",
     "balanced",
     "deep",
     "slot::fast",
@@ -413,4 +416,146 @@ test("routing-settings ordinary worker consumes public effective JSON tiers afte
   process.env.JEV_WORKER_ROUTING_ENABLED = "false";
   await f.call({ ...input });
   expect(f.requests()).toBe(1);
+});
+
+const tierNames = ["fast", "balanced", "deep"] as const;
+const configuredModels = { fast: "local/fast", balanced: "local/balanced", deep: "local/deep" };
+const sentQuestions = (f: Awaited<ReturnType<typeof fixture>>, index = 0) =>
+  f.payloads[index]!.questions as Record<string, { criteria: object }>;
+const answer = (choice: string, risky = 0, tier: Record<string, unknown> = {}) => ({
+  answers: {
+    tier: { choice, confidence: 0.95, ...tier },
+    effort: { choice: "medium", confidence: 0.45 },
+    risky: { noul: risky },
+  },
+});
+const configure = async (f: Awaited<ReturnType<typeof fixture>>, tiers: unknown) => {
+  f.settings({ jevPilot: { tiers } });
+  await f.fire("session_start");
+};
+
+for (const absent of ["missing", "", "   "])
+  for (const hidden of tierNames)
+    test(`SPARSE-01 ${absent === "missing" ? "absent" : JSON.stringify(absent)} ${hidden} tier is hidden from classification`, async () => {
+      const f = await fixture();
+      const tiers: Record<string, string> = { ...configuredModels };
+      if (absent === "missing") delete tiers[hidden];
+      else tiers[hidden] = absent;
+      await configure(f, tiers);
+      await f.call({ agent: "worker", model: "local/deep", task: "Implement work" });
+      expect(Object.keys(sentQuestions(f).tier!.criteria)).toEqual(
+        tierNames.filter((name) => name !== hidden),
+      );
+    });
+
+test("SPARSE-01 a response choosing a hidden tier is a schema error that changes nothing", async () => {
+  const f = await fixture();
+  await configure(f, { balanced: "local/balanced", deep: "local/deep" });
+  f.response(answer("fast"));
+  const input = { agent: "worker", model: "local/deep", task: "Implement work" };
+  await f.call(input);
+  expect(f.requests()).toBe(1);
+  expect(input.model).toBe("local/deep");
+});
+
+for (const value of [null, true, 1, {}, [], "unqualified", "local/white space"])
+  test(`SPARSE-01 malformed tier ${JSON.stringify(value)} names the setting and sends nothing`, async () => {
+    const f = await fixture();
+    await configure(f, { ...configuredModels, balanced: value });
+    const input = { agent: "worker", model: "local/deep", task: "Implement work" };
+    await expect(f.call(input)).rejects.toThrow("jevPilot.tiers.balanced");
+    expect(f.requests()).toBe(0);
+    expect(input.model).toBe("local/deep");
+  });
+
+for (const tiers of [undefined, {}, { fast: "", balanced: " ", deep: "\t" }]) {
+  test(`SPARSE-01 no tier configured (${JSON.stringify(tiers)}) sends no tier question and keeps the baseline`, async () => {
+    const f = await fixture();
+    f.settings(tiers === undefined ? {} : { jevPilot: { tiers } });
+    await f.fire("session_start");
+    f.response(answer("balanced"));
+    const input = { agent: "worker", model: "local/deep", task: "Implement work" };
+    await f.call(input);
+    expect(f.requests()).toBe(1);
+    expect(Object.keys(sentQuestions(f))).toEqual(["effort", "risky"]);
+    expect(input.model).toBe("local/deep:medium");
+  });
+}
+
+test("SPARSE-01 no tier and no slot with a high-risk answer changes only effort", async () => {
+  const f = await fixture();
+  await configure(f, {});
+  f.response(answer("balanced", 0.95));
+  const input = { agent: "worker", model: "local/deep", task: "Deploy to production" };
+  await f.call(input);
+  expect(input.model).toBe("local/deep:high");
+});
+
+test("SPARSE-01 configured tiers and offered custom slots are offered together", async () => {
+  const f = await fixture();
+  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
+  await writeFile(
+    process.env.JEV_CREW_CONFIG,
+    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/fast" }] }),
+  );
+  await configure(f, { fast: "local/fast", deep: "local/deep" });
+  await f.call({ agent: "worker", model: "local/deep", task: "Read the logs" });
+  expect(Object.keys(sentQuestions(f).tier!.criteria)).toEqual(["fast", "deep", "slot::alpha"]);
+});
+
+test("SPARSE-01 only offered slots are asked when no tier is configured", async () => {
+  const f = await fixture();
+  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
+  await writeFile(
+    process.env.JEV_CREW_CONFIG,
+    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/fast" }] }),
+  );
+  await configure(f, {});
+  f.response(answer("slot::alpha"));
+  const input = { agent: "worker", model: "local/deep", task: "Read the logs" };
+  await f.call(input);
+  expect(Object.keys(sentQuestions(f).tier!.criteria)).toEqual(["slot::alpha"]);
+  expect(input.model).toBe("local/fast:medium");
+});
+
+test("SPARSE-01 the request snapshot also validates response probability distributions", async () => {
+  const f = await fixture();
+  await configure(f, { fast: "local/fast", balanced: "local/balanced" });
+  f.response(answer("balanced", 0, { probabilities: { balanced: 0.5, deep: 0.5 } }));
+  const rejected = { agent: "worker", model: "local/fast", task: "Implement work" };
+  await f.call(rejected);
+  expect(rejected.model).toBe("local/fast");
+  f.response(answer("balanced", 0, { probabilities: { fast: 0.4, balanced: 0.6 } }));
+  const accepted = { agent: "worker", model: "local/fast", task: "Implement work" };
+  await f.call(accepted);
+  expect(accepted.model).toBe("local/balanced:medium");
+});
+
+test("SPARSE-01 high risk selects deep, else the highest configured tier, else nothing", async () => {
+  const f = await fixture();
+  f.response(answer("fast", 0.95, { confidence: 0.01 }));
+  const cases: [Record<string, string>, string, string][] = [
+    [configuredModels, "local/fast", "local/deep:high"],
+    [{ fast: "local/fast", balanced: "local/balanced" }, "local/fast", "local/balanced:high"],
+    [{ fast: "local/fast" }, "local/deep", "local/fast:high"],
+    [{}, "local/deep", "local/deep:high"],
+  ];
+  for (const [tiers, baseline, expected] of cases) {
+    await configure(f, tiers);
+    const input = { agent: "worker", model: baseline, task: "Deploy to production" };
+    await f.call(input);
+    expect(input.model).toBe(expected);
+  }
+});
+
+test("SPARSE-01 specialized agents without their tier keep the executor model and ask nothing", async () => {
+  const f = await fixture();
+  await configure(f, {});
+  const junior = { agent: "jev-pilot:junior", task: "Do work", model: "local/deep" };
+  const reviewer = { agent: "jev-pilot:codex-review", task: "Review work", model: "local/deep" };
+  await f.call(junior);
+  await f.call(reviewer);
+  expect(junior.model).toBe("local/deep");
+  expect(reviewer.model).toBe("local/deep");
+  expect(f.requests()).toBe(0);
 });

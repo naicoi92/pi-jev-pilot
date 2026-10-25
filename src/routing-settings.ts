@@ -11,18 +11,22 @@ function pilot(settings: unknown): Record<string, unknown> {
   return "jevPilot" in effective ? object(effective.jevPilot, "jevPilot") : {};
 }
 
-/** Resolve JSON tiers only for an applicable ordinary worker launch. */
+/**
+ * Resolve JSON tiers only for an applicable ordinary worker launch. An absent, empty or
+ * whitespace-only value leaves the tier unconfigured; any other invalid value is an error.
+ */
 export function configuredTiers(settings: unknown = {}): Tiers {
-  return Object.fromEntries(
-    TIER_ORDER.map((tier) => {
-      const config = pilot(settings);
-      const tiers = "tiers" in config ? object(config.tiers, "jevPilot.tiers") : {};
-      const value = tiers[tier];
-      if (typeof value !== "string" || !/^[^/\s]+\/\S+$/.test(value))
-        throw new Error(
-          `Set jevPilot.tiers.${tier} in Pi settings to a qualified physical provider/model identity.`,
-        );
-      return [tier, value];
-    }),
-  ) as Tiers;
+  const config = pilot(settings);
+  const tiers = "tiers" in config ? object(config.tiers, "jevPilot.tiers") : {};
+  const configured: Tiers = {};
+  for (const tier of TIER_ORDER) {
+    const value = tiers[tier];
+    if (value === undefined || (typeof value === "string" && !value.trim())) continue;
+    if (typeof value !== "string" || !/^[^/\s]+\/\S+$/.test(value))
+      throw new Error(
+        `Set jevPilot.tiers.${tier} in Pi settings to a qualified physical provider/model identity.`,
+      );
+    configured[tier] = value;
+  }
+  return configured;
 }

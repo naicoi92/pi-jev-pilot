@@ -57,3 +57,10 @@ test("CREW-03 custom choices require original downgrade confidence", () => {
     ),
   ).toBe("local/cheap");
 });
+test("SPARSE-01 risk override falls back to the highest configured tier, then to nothing", () => {
+  const decision = { tier: "fast", slot: "deep", confidence: 0.9, risky: 0.95 } as const;
+  expect(
+    selectWorkerModel(decision, tiers.fast, { fast: tiers.fast, balanced: tiers.balanced }, slots),
+  ).toBe(tiers.balanced);
+  expect(selectWorkerModel(decision, tiers.fast, {}, slots)).toBeNull();
+});
