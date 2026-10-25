@@ -972,7 +972,7 @@ export default function(pi) {
           expect(Object.keys(criteria)).toEqual(
             name === "slot-standard"
               ? ["fast", "balanced", "deep"]
-              : ["balanced", "deep", "slot::deep", "slot::alpha"],
+              : ["fast", "balanced", "deep", "slot::deep", "slot::alpha"],
           );
           if (name !== "slot-standard")
             expect(criteria["slot::deep"]).toContain("Never for writing or changing code.");
