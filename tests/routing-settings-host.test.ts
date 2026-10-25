@@ -65,6 +65,8 @@ test("routing-settings main lifecycle never registers, removes or selects any mo
       hooks.set(name, [...(hooks.get(name) ?? []), handler]);
     },
     events: { on() {} },
+    registerEntryRenderer() {},
+    registerCommand() {},
     getSettings: () => settings,
     registerVirtualModel() {
       registrations++;
@@ -79,7 +81,12 @@ test("routing-settings main lifecycle never registers, removes or selects any mo
   const ctx = {
     cwd: directory,
     modelRegistry: { find: () => foreign },
-    ui: { notify() {} },
+    sessionManager: {
+      getBranch: () => [],
+      getSessionId: () => "settings-binding",
+      getLeafId: () => null,
+    },
+    ui: { notify() {}, setWidget() {}, setStatus() {} },
   } as unknown as ExtensionContext;
   process.env.JEV_MAIN_ROUTING_ENABLED = "true";
   for (const mainRoutingEnabled of [true, false, null, "invalid"]) {

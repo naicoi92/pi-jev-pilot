@@ -47,6 +47,8 @@ export class PiFixture {
   dropInputIdentity = false;
   jevBeforeControls = false;
   singleThinkingLevel = false;
+  /** Package directory passed to `pi install`; defaults to this checkout. */
+  packageSource = root;
   configuredModelKey = true;
   sawClassifierBearer = false;
   classifierHeaderChecks = 0;
@@ -289,7 +291,7 @@ export default function (pi: ExtensionAPI) {
         : { JEV_STRATEGY_ENABLED: "false", JEV_QUALITY_ENABLED: "false" }),
       ...env,
     };
-    const install = Bun.spawn([process.execPath, "run", cli, "install", root], {
+    const install = Bun.spawn([process.execPath, "run", cli, "install", this.packageSource], {
       cwd: this.directory,
       env: childEnv,
       stdout: "pipe",
