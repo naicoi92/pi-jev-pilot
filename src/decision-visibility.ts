@@ -5,6 +5,7 @@ import type {
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { loadLedger, resetLedger, summarizeLedger } from "./ledger.ts";
 
 export const DECISION_TYPE = "jev-pilot:decision:v1";
 export const MAX_WORKER_SEQUENCE = 999_999_999;
@@ -171,15 +172,31 @@ export function statusLines(pi: ExtensionAPI, ctx: ExtensionContext): string[] {
 export function registerDecisionVisibility(pi: ExtensionAPI): void {
   pi.registerEntryRenderer(DECISION_TYPE, decisionRenderer);
   pi.registerCommand("jev", {
-    description: "Read-only Jev status (no inference): /jev status",
+    description: "Read-only Jev status and ledger report (no inference): /jev status | report",
     handler: async (args, ctx) => {
-      if (args.trim() && args.trim() !== "status") {
-        ctx.ui.notify("Usage: /jev status", "info");
-        return;
-      }
-      ctx.ui.notify(statusLines(pi, ctx).join("\n"), "info");
+      const command = args.trim();
+      if (command === "report") ctx.ui.notify(reportText(), "info");
+      else if (command === "report reset") ctx.ui.notify(resetText(), "info");
+      else if (command === "status" || command === "")
+        ctx.ui.notify(statusLines(pi, ctx).join("\n"), "info");
+      else ctx.ui.notify("Usage: /jev status | report | report reset", "info");
     },
   });
+}
+function reportText(): string {
+  try {
+    return summarizeLedger(loadLedger());
+  } catch (error) {
+    return `The Jev Pilot ledger could not be read: ${error instanceof Error ? error.message : String(error)} Nothing was changed.`;
+  }
+}
+function resetText(): string {
+  try {
+    resetLedger();
+    return "The Jev Pilot decision ledger was cleared. Configuration and tuning were not changed.";
+  } catch (error) {
+    return `The Jev Pilot ledger could not be cleared: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 export function appendDecisionRow(pi: ExtensionAPI, row: DecisionRow): void {
   if (readDecisionRow(row)) pi.appendEntry(DECISION_TYPE, row);

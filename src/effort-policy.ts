@@ -35,7 +35,8 @@ function isFollowUp(prompt: string): boolean {
   return spaced + Math.ceil(count / 1.5) <= 8;
 }
 
-function effortScore(decision: EffortDecision): number | null {
+/** The rubric level (0..4) a decision resolves to, after the close-call lean. */
+export function effortScore(decision: EffortDecision): number | null {
   const ranked = Object.entries(decision.effortProbabilities ?? {})
     .map(([level, probability]) => ({ level: Number(level), probability }))
     .filter(

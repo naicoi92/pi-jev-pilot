@@ -7,7 +7,7 @@ import {
   getSupportedThinkingLevels,
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
-import { isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
+import { effortScore, isContinuation, selectEffort, type EffortDecision } from "./effort-policy.ts";
 import { nativeSkillTask } from "./native-skill.ts";
 import { EffortVisibility } from "./effort-visibility.ts";
 import {
@@ -17,11 +17,19 @@ import {
   safeEffort,
   type VisibleOutcome,
 } from "./decision-visibility.ts";
-import { classify, systemOneConfig, effortEnabled } from "./system-one.ts";
+import { classify, systemOneConfig, effortEnabled, type Decision } from "./system-one.ts";
 import { classifierState } from "./classifier-context.ts";
 import { decideMain, skillBlock } from "./skill-matching.ts";
 import type { SkillCandidate } from "./skill-policy.ts";
-import { guidanceEnabled, observeLoop, stepBackNote } from "./guidance-policy.ts";
+import { guidanceEnabled, observeLoop, QUALITY_BARS, stepBackNote } from "./guidance-policy.ts";
+import { ledgerEnabled, recordCorrection, recordTurn } from "./ledger.ts";
+import {
+  completedEntry,
+  lastUserTurnId,
+  newDraft,
+  ToolTally,
+  type LedgerDraft,
+} from "./ledger-turn.ts";
 
 const SKILL_TYPE = "jev-pilot:skill";
 const ADVICE_TYPE = "jev-pilot:advice";
@@ -53,7 +61,12 @@ export default function (pi: ExtensionAPI): void {
     runs.clear();
     loopNoted = false;
   };
+  // Observed only for the ledger: top-level tool results of the running turn.
+  const tally = new ToolTally();
+  let ledgerDraft: LedgerDraft | undefined;
+  pi.on("agent_start", () => tally.reset());
   pi.on("tool_result", (event, ctx) => {
+    if (!event.parentToolCallId) tally.observe(event.isError);
     if (ctx.signal?.aborted || event.parentToolCallId || loopNoted || !guidanceEnabled("QUALITY"))
       return;
     const circle = observeLoop(event.toolName, event.input, event.isError, edits, runs);
@@ -90,6 +103,8 @@ export default function (pi: ExtensionAPI): void {
   });
   const dispose = () => {
     resetLoop();
+    ledgerDraft = undefined;
+    tally.reset();
     selectionRevision++;
     ownThinking = undefined;
     visibility.clear();
@@ -148,9 +163,23 @@ export default function (pi: ExtensionAPI): void {
     dispose();
     restoreThinking(ctx, true);
   });
-  pi.on("agent_end", () => {
+  pi.on("agent_end", (event, ctx) => {
     resetLoop();
     pending = [];
+    // The draft belongs to the session that started the turn; replacement drops it.
+    const draft = ledgerDraft;
+    ledgerDraft = undefined;
+    if (!draft || draft.sessionId !== ctx.sessionManager.getSessionId()) return;
+    const id = lastUserTurnId(draft.sessionId, ctx.sessionManager.getBranch());
+    if (!id) return;
+    try {
+      recordTurn(completedEntry(draft, tally, event.messages, id, Date.now()));
+    } catch (error) {
+      ctx.ui.notify(
+        `Jev Pilot could not record the decision ledger: ${error instanceof Error ? error.message : String(error)}`,
+        "warning",
+      );
+    }
   });
   pi.on("context", (event, ctx) => {
     commitPending(ctx);
@@ -280,7 +309,9 @@ export default function (pi: ExtensionAPI): void {
       return;
     }
     let withEffort: boolean;
+    let recording: boolean;
     try {
+      recording = ledgerEnabled();
       withEffort = effortEnabled() && applicable(ctx);
       if (withEffort && (!ctx.model || !ctx.modelRegistry.hasConfiguredAuth(ctx.model)))
         throw new Error(
@@ -295,6 +326,12 @@ export default function (pi: ExtensionAPI): void {
       ctx.abort();
       return;
     }
+    // The new user is not persisted yet: this is the preceding turn on this branch.
+    const precedingTurn = recording
+      ? lastUserTurnId(uiSession, ctx.sessionManager.getBranch())
+      : undefined;
+    const draft = recording ? newDraft(uiSession, started, previousEffort) : undefined;
+    ledgerDraft = draft;
     const controller = new AbortController();
     active = controller;
     const initialRevision = selectionRevision;
@@ -335,6 +372,7 @@ export default function (pi: ExtensionAPI): void {
         );
       const previous = previousDecision(ctx);
       const reused = withEffort && previous !== null && isContinuation(prompt);
+      const classifyStarted = Date.now();
       const { result, skill, advice } = reused
         ? { result: { outcome: "classified" as const, decision: previous }, skill: undefined }
         : native
@@ -358,6 +396,23 @@ export default function (pi: ExtensionAPI): void {
         return;
       }
       active = undefined;
+      const read: Decision | undefined =
+        result?.adviceDecision ?? (result?.outcome === "classified" ? result.decision : undefined);
+      if (draft) {
+        draft.answered = !reused && result?.outcome === "classified";
+        draft.ms = result && !reused ? Date.now() - classifyStarted : null;
+        draft.strategy = read?.strategy ?? null;
+        draft.strategyConfidence = read?.strategyConfidence ?? null;
+        draft.advised = !!advice?.includes("<execution_strategy>");
+      }
+      // A correction marks the preceding completed turn by identity, never by time.
+      if (!reused && precedingTurn && typeof read?.corrects === "number" && draft) {
+        try {
+          recordCorrection(precedingTurn, read.corrects >= QUALITY_BARS.corrects);
+        } catch {
+          // The ledger is observational; a failed write never blocks the turn.
+        }
+      }
       const skipReason = effortEnabled() ? "inapplicable" : "disabled";
       if (!result || (!skill && !advice && !withEffort)) {
         finish(
@@ -382,6 +437,12 @@ export default function (pi: ExtensionAPI): void {
       const effective = clampThinkingLevel(ctx.model!, requested);
       requestedEffort = safeEffort(requested);
       effectiveEffort = safeEffort(effective);
+      if (draft) {
+        draft.effortLevel = decision ? effortScore(decision) : null;
+        draft.effortConfidence = decision?.effortConfidence ?? null;
+        draft.requested = requestedEffort;
+        draft.started = effectiveEffort;
+      }
       // setThinkingLevel appends before the owning user is persisted. Record its
       // baseline first so a branch excluding that user can discard this change.
       const state: DecisionState = {
