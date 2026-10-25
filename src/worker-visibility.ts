@@ -63,8 +63,35 @@ export class WorkerVisibility {
   private ui: ExtensionUIContext | undefined;
   private sequence = 0;
   private rollover = false;
+  /** Launch-allowed calls awaiting their tool result, and executor-accepted async runs
+   * awaiting completion. Kept outside the bounded history so eviction cannot lose them. */
+  private launched = new Map<string, WorkerRow>();
+  private asyncRuns = new Set<string>();
+  private reportedRunning = 0;
 
-  constructor(private readonly persist?: (row: WorkerDecisionRow) => void) {}
+  constructor(
+    private readonly persist?: (row: WorkerDecisionRow) => void,
+    private readonly onRunning?: (count: number) => void,
+  ) {}
+
+  private notifyRunning(): void {
+    const count = this.launched.size + this.asyncRuns.size;
+    if (count === this.reportedRunning) return;
+    this.reportedRunning = count;
+    this.onRunning?.(count);
+  }
+
+  /** The adapter threw after deciding, so the executor never receives the call. */
+  refuse(owner: WorkerVisibilityOwner): void {
+    if (this.launched.get(owner.toolCallId) === owner) this.launched.delete(owner.toolCallId);
+    this.notifyRunning();
+  }
+
+  /** The agent is idle: any call still awaiting a result can no longer be running. */
+  settle(): void {
+    this.launched.clear();
+    this.notifyRunning();
+  }
 
   restore(branch: SessionEntry[]): void {
     let legacySequence = 0;
@@ -123,6 +150,7 @@ export class WorkerVisibility {
       },
       decision: "choosing model + effort…",
     };
+    this.launched.delete(toolCallId);
     this.rows.delete(toolCallId);
     this.rows.set(toolCallId, row);
     while (this.rows.size > HISTORY_ROWS) this.rows.delete(this.rows.keys().next().value!);
@@ -141,6 +169,9 @@ export class WorkerVisibility {
     if (this.rows.get(owner.toolCallId) !== owner) return;
     owner.decision = decision;
     owner.blocked = blocked;
+    if (blocked) this.launched.delete(owner.toolCallId);
+    else this.launched.set(owner.toolCallId, owner);
+    this.notifyRunning();
     const outcome: VisibleOutcome = blocked
       ? decision.includes("cancelled")
         ? "cancelled"
@@ -189,6 +220,11 @@ export class WorkerVisibility {
   }
 
   result(toolCallId: string, details: unknown): void {
+    if (this.launched.delete(toolCallId)) {
+      const asyncId = (details as { asyncId?: unknown } | undefined)?.asyncId;
+      if (typeof asyncId === "string" && asyncId) this.asyncRuns.add(asyncId);
+      this.notifyRunning();
+    }
     const row = this.rows.get(toolCallId);
     if (!row || row.asyncId || row.blocked || row.executor?.startsWith("executor receipt")) return;
     let model = "unknown";
@@ -257,6 +293,7 @@ export class WorkerVisibility {
   }
 
   complete(runId: string, state: unknown): void {
+    if (this.asyncRuns.delete(runId)) this.notifyRunning();
     const row = [...this.rows.values()].find((row) => row.asyncId === runId);
     if (!row) return;
     const outcome =
@@ -266,6 +303,9 @@ export class WorkerVisibility {
   }
 
   clear(): void {
+    this.launched.clear();
+    this.asyncRuns.clear();
+    this.notifyRunning();
     this.rows.clear();
     this.ui?.setWidget?.(KEY, undefined);
     this.ui?.setStatus?.(KEY, undefined);

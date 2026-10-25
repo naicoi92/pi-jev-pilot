@@ -5,7 +5,13 @@ import { dirname } from "node:path";
 import { parseFrontmatter, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isContinuation } from "./effort-policy.ts";
 import { designBlock } from "./design-policy.ts";
-import { guidanceEnabled, qualityAdvice, strategyAdvice } from "./guidance-policy.ts";
+import {
+  advisedStrategy,
+  guidanceEnabled,
+  qualityAdvice,
+  strategyAdvice,
+  type Strategy,
+} from "./guidance-policy.ts";
 import {
   classify,
   systemOneConfig,
@@ -66,7 +72,12 @@ export async function decideMain(
   signal: AbortSignal,
   withEffort: boolean,
   cwd = process.cwd(),
-): Promise<{ result: Classification | null; skill?: SkillCandidate; advice?: string }> {
+): Promise<{
+  result: Classification | null;
+  skill?: SkillCandidate;
+  advice?: string;
+  strategy?: Strategy;
+}> {
   const crew = crewConfig(cwd);
   const enabled: DecisionQuestions = { tier: false, effort: withEffort, junior: !!crew.junior };
   const quality = !isContinuation(prompt) && guidanceEnabled("QUALITY");
@@ -87,6 +98,10 @@ export async function decideMain(
     return {
       result,
       skill,
+      strategy:
+        adviceDecision && strategy
+          ? advisedStrategy(adviceDecision, crew.offered.length > 0)
+          : undefined,
       advice:
         [
           strategy ? crewAdvice(crew, true) : null,

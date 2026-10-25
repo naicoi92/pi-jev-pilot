@@ -9,6 +9,8 @@ export interface Wide {
   ranked: { name: string; probability: number | null }[];
   gate: number | null;
 }
+/** Session entry type recording the skill selected for one user input. */
+export const SKILL_ENTRY_TYPE = "jev-pilot:skill";
 export const MAX_CHOICES = 255;
 export const NO_SKILL = "(none)";
 export const GATE_QUESTIONS = {

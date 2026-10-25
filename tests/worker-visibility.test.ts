@@ -98,7 +98,8 @@ async function fixture(defaultContext = "fresh") {
       },
     },
   } as unknown as ExtensionContext;
-  registerWorkerAdapter(pi as unknown as ExtensionAPI);
+  const running: number[] = [];
+  registerWorkerAdapter(pi as unknown as ExtensionAPI, (count) => running.push(count));
   const fire = async (name: string, event: unknown = {}) => {
     let result;
     for (const handler of hooks.get(name) ?? []) result = await handler(event, ctx);
@@ -145,6 +146,7 @@ async function fixture(defaultContext = "fresh") {
     widgets,
     statuses,
     snapshots,
+    running,
     visible: () => (widgets.get("jev-pilot-workers") ?? []).join("\n"),
     delay: (value: number) => {
       delay = value;
@@ -467,3 +469,32 @@ for (const path of ["runtime-miss", "fork"])
       ).toContain(`Jev worker executor · ${expected} ${plan.invocation}`);
       expect(JSON.stringify(branch)).not.toContain("PRIVATE_");
     });
+
+test("P12 WORKERS-4 adapter reports only launch-allowed workers until result or async completion", async () => {
+  const f = await fixture();
+  expect(
+    await f.call({ agent: "worker", task: brief, context: "profile" }, "blocked"),
+  ).toMatchObject({
+    block: true,
+  });
+  expect(f.running).toEqual([]);
+  await f.call({ agent: "worker", task: brief }, "sync");
+  expect(f.running.at(-1)).toBe(1);
+  await f.fire("tool_result", {
+    toolName: "subagent",
+    toolCallId: "sync",
+    details: { mode: "single", results: [] },
+  });
+  expect(f.running.at(-1)).toBe(0);
+  await f.call({ agent: "worker", task: brief }, "async");
+  await f.fire("tool_result", {
+    toolName: "subagent",
+    toolCallId: "async",
+    details: { asyncId: "run-9" },
+  });
+  expect(f.running.at(-1)).toBe(1);
+  await f.fire("agent_settled", { aborted: false });
+  expect(f.running.at(-1)).toBe(1);
+  f.pi.events.emit("subagent:async-complete", { runId: "run-9", state: "complete" });
+  expect(f.running.at(-1)).toBe(0);
+});

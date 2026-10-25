@@ -9,6 +9,7 @@ import type {
 import {
   DECISION_TYPE,
   appendDecisionRow,
+  decisionLines,
   decisionRenderer,
   latestDecisionRows,
   readDecisionRow,
@@ -48,34 +49,63 @@ function rendered(data: unknown, expanded: boolean, width = 100) {
     .map((line) => line.trimEnd())
     .join("\n");
 }
-test("AC-1 MAIN-1 public entry renderer collapses main decision", () => {
-  expect(rendered(main, false)).toBe(
-    "Jev main · local/parent · high → medium · classified · 123ms",
+const timedOut: DecisionRow = { ...main, outcome: "timeout" };
+test("AC-1 MAIN-1 public entry renderer collapses a main fallback warning", () => {
+  expect(rendered(timedOut, false)).toBe(
+    "Jev main · local/parent · high → medium · timeout · 123ms",
   );
 });
 test("AC-1 MAIN-1 public entry renderer expands previous requested effective effort", () => {
-  expect(rendered(main, true)).toContain(
+  expect(rendered(timedOut, true)).toContain(
     "Previous effort: low\nRequested effort: high\nEffective effort: medium\nMain model (Pi-selected): local/parent",
   );
   expect(
-    rendered(main, true, 20)
+    rendered(timedOut, true, 20)
       ?.split("\n")
       .every((line) => line.length <= 20),
   ).toBe(true);
 });
-for (const outcome of [
-  "classified",
-  "reused",
-  "kept",
-  "skipped",
-  "timeout",
-  "error",
-  "cancelled",
-] as const) {
-  test(`AC-6 MAIN-2 safe ${outcome} outcome renders`, () => {
+for (const outcome of ["timeout", "error"] as const) {
+  test(`AC-6 MAIN-2 safe ${outcome} warning renders`, () => {
     expect(rendered({ ...main, outcome }, false)).toContain(` · ${outcome} · 123ms`);
   });
 }
+for (const outcome of ["classified", "reused", "kept", "skipped", "cancelled"] as const) {
+  test(`P12 HIDE-1 ordinary ${outcome} main row is not rendered but stays readable evidence`, () => {
+    expect(rendered({ ...main, outcome }, false)).toBeUndefined();
+    expect(readDecisionRow({ ...main, outcome })).toBeDefined();
+  });
+}
+const worker = (outcome: string): DecisionRow => ({
+  version: 1,
+  kind: "worker",
+  invocation: "w1-abcdef",
+  agent: "worker",
+  stage: "executor",
+  retained: "local/old",
+  model: "local/new",
+  requested: "high",
+  effective: "medium",
+  outcome: outcome as DecisionRow["outcome"],
+  elapsedMs: 3,
+});
+for (const outcome of [
+  "classified",
+  "kept",
+  "specialized",
+  "executor-owned",
+  "receipt",
+  "unconfirmed",
+  "cancelled",
+])
+  test(`P12 HIDE-2 ordinary ${outcome} worker row is not rendered`, () => {
+    expect(rendered(worker(outcome), true)).toBeUndefined();
+  });
+for (const outcome of ["timeout", "error", "blocked"])
+  test(`P12 HIDE-3 worker ${outcome} warning stays expandable`, () => {
+    expect(rendered(worker(outcome), false)).toContain(`${outcome}`);
+    expect(rendered(worker(outcome), true)).toContain("Retained → selected target");
+  });
 test("AC-4 SAFE-1 persisted extra private fields are rejected", () => {
   for (const invalid of [
     { ...main, task: "SECRET" },
@@ -218,7 +248,7 @@ test("AC-3 WORKER-4 async acknowledgement never claims verified launch", () => {
     model: "unknown",
     effective: "unknown",
   });
-  expect(rendered(f.entries[1], true, 180)).toContain("model/effort unconfirmed");
+  expect(decisionLines(f.entries[1]!, true).join("\n")).toContain("model/effort unconfirmed");
   expect(JSON.stringify(f.entries)).not.toContain("PRIVATE");
 });
 test("AC-5 RESTORE-2 clearing lifecycle rejects stale worker persistence", () => {

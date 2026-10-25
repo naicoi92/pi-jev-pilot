@@ -74,7 +74,7 @@ for (const outcome of [
   "disabled",
   "inapplicable",
 ] as const) {
-  test(`CLI-SV04 public UI protocol clears pending and reports ${outcome}`, async () => {
+  test(`CLI-SV04 public UI protocol reports ${outcome}`, async () => {
     fixture = new PiFixture();
     if (outcome === "inapplicable") fixture.reasoning = false;
     if (outcome === "service-error") fixture.status = 503;
@@ -93,10 +93,8 @@ for (const outcome of [
     );
     await fixture.prompt("Please review the complete patch with particular care for failure modes");
     const widgets = uiRecords(fixture, "setWidget");
-    expect(
-      widgets.some((r) => JSON.stringify(r.widgetLines) === '["Jev · choosing effort…"]'),
-    ).toBe(true);
-    expect(widgets.at(-1)?.widgetLines).toBeUndefined();
+    // The live line is a component widget, which RPC ignores; no legacy text widget remains.
+    expect(widgets.every((r) => r.widgetLines === undefined)).toBe(true);
     const status = String(uiRecords(fixture, "setStatus").at(-1)?.statusText);
     expect(status).toContain(outcome);
     expect(status).toMatch(/\d+ms$/);

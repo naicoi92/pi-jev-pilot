@@ -57,9 +57,12 @@ function parentIdentity(ctx: ExtensionContext): string {
 }
 
 /** Ordinary tool envelopes only; workflow inner launches remain executor-owned. */
-export function registerWorkerAdapter(pi: ExtensionAPI): void {
+export function registerWorkerAdapter(
+  pi: ExtensionAPI,
+  onWorkersRunning?: (count: number) => void,
+): void {
   let settings: unknown = {};
-  const visibility = new WorkerVisibility((row) => appendDecisionRow(pi, row));
+  const visibility = new WorkerVisibility((row) => appendDecisionRow(pi, row), onWorkersRunning);
   let childExtension: RequiredChildExtensionRegistration | undefined;
   const deliverChildExtension = (_event: unknown, ctx: ExtensionContext) => {
     childExtension?.dispose();
@@ -107,6 +110,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
     childExtension = undefined;
   });
   pi.on("agent_settled", (event) => {
+    visibility.settle();
     allowedLaunches.clear();
     if (event.aborted) clear();
   });
@@ -423,6 +427,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
       }
     } catch (error) {
       finish("decision error · launch unconfirmed");
+      visibility.refuse(owner);
       throw error;
     }
   });
