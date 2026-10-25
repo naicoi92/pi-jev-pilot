@@ -213,12 +213,12 @@ export function resetLedger(): void {
   rmSync(ledgerPath(), { force: true });
 }
 
-function percentile(values: number[], p: number): number | null {
+export function percentile(values: number[], p: number): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]!;
 }
-function share(part: number, whole: number): string {
+export function share(part: number, whole: number): string {
   return whole === 0 ? "—" : `${Math.round((100 * part) / whole)}%`;
 }
 function plural(n: number, word: string): string {

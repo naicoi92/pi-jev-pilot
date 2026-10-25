@@ -2,6 +2,7 @@
 import { DESIGN_QUESTION, readDesign } from "./design-policy.ts";
 import { EFFORT_ORDER, type EffortDecision } from "./effort-policy.ts";
 import { TIER_ORDER, type Tier } from "./tier-policy.ts";
+import { effectiveTunables } from "./tuning.ts";
 import type { Slot } from "./crew-config.ts";
 import { slotKey } from "./crew-policy.ts";
 
@@ -59,10 +60,7 @@ export function systemOneConfig(): SystemOneConfig {
   const model = process.env.JEV_SYSTEM_ONE_MODEL ?? "jev-latest";
   if (!model.trim())
     throw new Error("Set JEV_SYSTEM_ONE_MODEL to a decision model ID (default: jev-latest).");
-  const timeoutMs = Number(process.env.JEV_TIMEOUT_MS ?? 1500);
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0)
-    throw new Error("Set JEV_TIMEOUT_MS to a positive integer in milliseconds (default: 1500).");
-  return { url, apiKey, model, timeoutMs };
+  return { url, apiKey, model, timeoutMs: effectiveTunables().timeoutMs };
 }
 
 const rubric = [

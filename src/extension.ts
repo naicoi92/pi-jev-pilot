@@ -23,6 +23,7 @@ import { decideMain, skillBlock } from "./skill-matching.ts";
 import type { SkillCandidate } from "./skill-policy.ts";
 import { guidanceEnabled, observeLoop, QUALITY_BARS, stepBackNote } from "./guidance-policy.ts";
 import { ledgerEnabled, recordCorrection, recordTurn } from "./ledger.ts";
+import { dueProposals, effectiveTunables } from "./tuning.ts";
 import {
   completedEntry,
   lastUserTurnId,
@@ -179,6 +180,18 @@ export default function (pi: ExtensionAPI): void {
         `Jev Pilot could not record the decision ledger: ${error instanceof Error ? error.message : String(error)}`,
         "warning",
       );
+      return;
+    }
+    // A proposal is only announced; nothing changes until the user runs /jev tune apply.
+    try {
+      const first = dueProposals()[0];
+      if (first)
+        ctx.ui.notify(
+          `Jev learned from your last turns: ${first.why}. /jev tune shows the change, /jev tune apply takes it.`,
+          "info",
+        );
+    } catch {
+      // Tuning evidence is advisory; an unreadable file is reported by /jev tune.
     }
   });
   pi.on("context", (event, ctx) => {
@@ -433,12 +446,15 @@ export default function (pi: ExtensionAPI): void {
       }
       const current = pi.getThinkingLevel();
       const decision = result.outcome === "classified" ? result.decision : null;
-      const requested = decision ? (selectEffort(decision, current, prompt) ?? current) : current;
+      const tuned = effectiveTunables();
+      const requested = decision
+        ? (selectEffort(decision, current, prompt, tuned) ?? current)
+        : current;
       const effective = clampThinkingLevel(ctx.model!, requested);
       requestedEffort = safeEffort(requested);
       effectiveEffort = safeEffort(effective);
       if (draft) {
-        draft.effortLevel = decision ? effortScore(decision) : null;
+        draft.effortLevel = decision ? effortScore(decision, tuned.effortCloseMargin) : null;
         draft.effortConfidence = decision?.effortConfidence ?? null;
         draft.requested = requestedEffort;
         draft.started = effectiveEffort;
