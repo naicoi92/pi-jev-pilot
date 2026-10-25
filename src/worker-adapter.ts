@@ -18,7 +18,7 @@ import { TIER_ORDER } from "./tier-policy.ts";
 import { cascadeTiers, type TierCascade } from "./tier-fallback.ts";
 import { configuredTiers } from "./routing-settings.ts";
 import { crewConfig } from "./crew-config.ts";
-import { selectWorkerModel } from "./crew-policy.ts";
+import { selectsSlot, selectWorkerModel } from "./crew-policy.ts";
 import { WorkerVisibility, workerTarget } from "./worker-visibility.ts";
 import {
   appendDecisionRow,
@@ -398,22 +398,22 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
           allowedLaunches.add(event.toolCallId);
           return;
         }
-        const chosen = result.decision.tier
-          ? selectWorkerModel(
-              {
-                tier: result.decision.tier,
-                slot: result.decision.slot,
-                confidence: result.decision.confidence ?? null,
-                risky: result.decision.risky,
-                expertNeeded: result.decision.expertNeeded ?? null,
-              },
-              baseline,
-              tiers,
-              crew.offered,
-            )
+        const tierDecision = result.decision.tier
+          ? {
+              tier: result.decision.tier,
+              slot: result.decision.slot,
+              confidence: result.decision.confidence ?? null,
+              risky: result.decision.risky,
+              expertNeeded: result.decision.expertNeeded ?? null,
+            }
+          : null;
+        const chosen = tierDecision
+          ? selectWorkerModel(tierDecision, baseline, tiers, crew.offered)
           : null;
         // A selected tier that cannot be launched cascades to the next lower configured tier. Only
-        // signals known before launch count; child-run errors stay executor-surfaced.
+        // signals known before launch count; child-run errors stay executor-surfaced, and a custom slot pick
+        // stays outside tier handling.
+        const slotPicked = tierDecision !== null && selectsSlot(tierDecision, tiers);
         const unusable = async (target: string): Promise<string | undefined> => {
           try {
             physical(ctx, target);
@@ -423,7 +423,11 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
             return (error instanceof Error ? error.message : String(error)) || "launch rejected";
           }
         };
-        const cascade = chosen ? await cascadeTiers(tiers, chosen, unusable) : undefined;
+        const cascade = chosen
+          ? slotPicked
+            ? ({ model: chosen, failures: [] } satisfies TierCascade)
+            : await cascadeTiers(tiers, chosen, unusable)
+          : undefined;
         if (controller.signal.aborted) return cancelled();
         const selected = cascade?.model ?? null;
         let degraded = "";

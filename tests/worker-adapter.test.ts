@@ -947,3 +947,34 @@ test("FALLBACK-04 the fallback is cancelled with the call and leaves the input u
   expect(input.model).toBe("local/fast");
   expect(f.notices).toEqual([]);
 });
+
+test("FALLBACK-04 an errored subagent tool_result from a rate-limited child run is not cascaded", async () => {
+  const f = await fixture();
+  await configure(f, configuredModels);
+  expect(await fallbackCall(f, "deep")).toBe("local/deep:medium");
+  const requests = f.requests();
+  await f.fire("tool_result", {
+    toolName: "subagent",
+    toolCallId: "call",
+    isError: true,
+    content: [{ type: "text", text: "429 rate limit exceeded for local/deep" }],
+    details: {},
+  });
+  expect(f.requests()).toBe(requests);
+  expect(f.notices).toEqual([]);
+  expect(f.controls).toEqual([]);
+});
+
+test("FALLBACK-04 a custom slot pick sharing a tier model stays outside tier handling when launch preflight rejects it", async () => {
+  const f = await fixture();
+  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
+  await writeFile(
+    process.env.JEV_CREW_CONFIG,
+    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/deep" }] }),
+  );
+  await configure(f, configuredModels);
+  const available = f.ctx.modelRegistry.getAvailable();
+  f.ctx.modelRegistry.getAvailable = () => available.filter((model) => model.id !== "deep");
+  expect(await fallbackCall(f, "slot::alpha", "local/fast")).toBe("local/deep:medium");
+  expect(f.notices).toEqual([]);
+});

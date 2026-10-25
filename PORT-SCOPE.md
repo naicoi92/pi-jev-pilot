@@ -10,7 +10,7 @@ Current verified host target: official Pi 1.4.0. Revalidate contracts on upgrade
 
 ## Confirmed behavior
 
-- Ordinary-worker routing retains three configurable tiers: `fast`, `balanced`, `deep`, with upstream classification rubric and confidence policy. Resolve configured physical models through Pi's qualified provider/model registry.
+- Ordinary-worker routing retains four optional configurable tiers: `fast`, `balanced`, `deep`, `expert` (the last is the approved extension in `.scratch/expert-tier/spec.md`), with upstream classification rubric and confidence policy. Resolve configured physical models through Pi's qualified provider/model registry.
 - Main selection stays user-owned and physical: no `jev/auto`, main tier dispatch, router registration or main-router state/status. Worker tiers are JSON-only `jevPilot.tiers`; obsolete `mainRoutingEnabled` is ignored and should be removed. Legacy routing environment mappings remain ignored; unrelated auth/env settings are unchanged.
 - Effort remains a separate decision, unchanged pending separate cache investigation. Preserve upstream rubric and thresholds, applying only supported Pi levels; expose requested versus effective settings when adaptation is required.
 - Custom slots preserve `name`, `model`, `when`, maximum eight slots, mode eligibility and default read-only bulk-work description. They are classifier candidates, not automatically bound worker roles.
@@ -29,7 +29,7 @@ Automatic main-model routing is removed by operator decision; no replacement rou
 
 Excluded feature IDs: 02 mid-turn effort escalation (including escalation triggered by quality/circle detection; step-back advice may remain under feature 07 without changing effort); 11 external CLI review; 12 proactive worker health/fallback; 15 pet; 16 broad live controls/session statistics. Minimal report/tuning/config interfaces required by selected capabilities remain in scope. Registry/config validation is not proactive health probing. Do not reintroduce excluded features via upstream imports.
 
-No automatic benchmark feeds, model score/cost optimizer, execution-profile system, invented expert tier, or Pi-specific reviewer-role product behavior.
+No automatic benchmark feeds, model score/cost optimizer, execution-profile system, or Pi-specific reviewer-role product behavior. The optional `expert` tier is the approved extension specified in `.scratch/expert-tier/spec.md`.
 
 ## Proposed capability map
 

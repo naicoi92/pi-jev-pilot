@@ -9,13 +9,19 @@ import {
 } from "./tier-policy.ts";
 /** Encode every slot, not just collisions, so arbitrary valid public names stay distinct from tiers. */
 export const slotKey = (name: string): string => `slot::${name}`;
+type SlotDecision = TierDecision & { slot?: string };
+const riskForcesTier = (decision: SlotDecision, tiers: Tiers): boolean =>
+  (decision.risky ?? 0) > 0.7 && !admitsExpert(decision, tiers);
+/** True when the selected model comes from a custom slot, which stays outside tier handling. */
+export const selectsSlot = (decision: SlotDecision, tiers: Tiers): boolean =>
+  Boolean(decision.slot) && !riskForcesTier(decision, tiers);
 export function selectWorkerModel(
-  decision: TierDecision & { slot?: string },
+  decision: SlotDecision,
   current: string,
   tiers: Tiers,
   offered: Slot[],
 ): string | null {
-  if ((decision.risky ?? 0) > 0.7 && !admitsExpert(decision, tiers)) {
+  if (riskForcesTier(decision, tiers)) {
     const tier = riskTier(tiers);
     return tier ? (tiers[tier] ?? null) : null;
   }

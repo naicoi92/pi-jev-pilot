@@ -149,7 +149,7 @@ New sessions do not inherit another session's decisions; resume/reload, forks/tr
 
 ## Ordinary workers — incomplete checkpoint
 
-`JEV_WORKER_ROUTING_ENABLED` defaults to `true` and accepts only `true`/`false`. Ordinary direct/async `subagent` calls require configured authenticated `jevPilot.tiers` physical identities. Enable the exact tested fork executor separately with official Pi:
+`JEV_WORKER_ROUTING_ENABLED` defaults to `true` and accepts only `true`/`false`. Ordinary direct/async `subagent` calls require configured authenticated `jevPilot.tiers` tiers. Enable the exact tested fork executor separately with official Pi:
 
 ```bash
 pi install git:github.com/naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2
@@ -202,7 +202,7 @@ Set `JEV_CREW_CONFIG` to a persistent JSON file. Relative paths resolve against 
 
 Only `mode`, `slots`, `junior` are allowed; mode defaults to `standard`, slots to `[]`. Only `name`, `model`, optional `when` are allowed within slots. Names match `^[a-z][a-z0-9-]{0,23}$`, must be unique, and cannot be the pinned command/feature words: `effort raise subagents skills strategy quality design model pet all reset status mode models crew junior reviewer tune remove delete on off help list default set when`. At most **eight** slots are accepted. Missing or blank `when` uses the original **read-only bulk work, never writing/changing code** description. A description is not permission. Models require exact qualified physical registry identities without a thinking suffix. Malformed files/types, unknown fields, excess slots or an explicitly unknown junior name are actionable errors, not silent mode resets. Eligible targets and authentication are validated without health requests, probes or fallback workers.
 
-`standard` offers only fast/balanced/deep. `budget` and `junior-lead` offer custom slots **in addition to** every configured tier. Custom selection requires confidence **.6**; risk **strictly greater than .7 forces deep (else the highest configured tier, else no change) and cannot be overwritten by a custom slot**, the approved ticket-07 correction. Valid ordinary Jev selections override caller model and configured worker effort as described above. The physical main model does not become a custom dispatch candidate.
+`standard` offers every configured tier. `budget` and `junior-lead` offer custom slots **in addition to** every configured tier. Custom selection requires confidence **.6**; risk **strictly greater than .7 forces deep (else the highest configured tier, else no change) and cannot be overwritten by a custom slot**, the approved ticket-07 correction. Valid ordinary Jev selections override caller model and configured worker effort as described above. The physical main model does not become a custom dispatch candidate.
 
 Public names including `fast`, `balanced`, `deep` remain legal. Classifier keys use `slot::<name>` for every custom candidate to avoid collisions with the actual tier keys; returned keys map back to the configured names before policy/dispatch. Unknown keys fail open without guessing a target. Qualified model and `when` text are included in candidate descriptions sent to System One; do not put secrets there.
 
