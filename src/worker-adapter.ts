@@ -374,6 +374,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
                 slot: result.decision.slot,
                 confidence: result.decision.confidence ?? null,
                 risky: result.decision.risky,
+                expertNeeded: result.decision.expertNeeded ?? null,
               },
               baseline,
               tiers,

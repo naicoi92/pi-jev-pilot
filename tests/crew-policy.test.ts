@@ -64,3 +64,22 @@ test("SPARSE-01 risk override falls back to the highest configured tier, then to
   ).toBe(tiers.balanced);
   expect(selectWorkerModel(decision, tiers.fast, {}, slots)).toBeNull();
 });
+
+test("EXPERT-02 admitted expert survives the risk override and a failed gate resolves to deep", () => {
+  const all = { ...tiers, expert: "local/expert" };
+  const expert = { tier: "expert", confidence: 0.95, risky: 0.95 } as const;
+  expect(selectWorkerModel({ ...expert, expertNeeded: 0.95 }, tiers.fast, all, slots)).toBe(
+    all.expert,
+  );
+  expect(selectWorkerModel({ ...expert, expertNeeded: 0.9 }, tiers.fast, all, slots)).toBe(
+    all.deep,
+  );
+  expect(
+    selectWorkerModel(
+      { tier: "fast", confidence: 0.9, risky: 0.95, expertNeeded: 0.99 },
+      tiers.fast,
+      all,
+      slots,
+    ),
+  ).toBe(all.deep);
+});

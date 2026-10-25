@@ -58,7 +58,7 @@ async function fixture(defaultContext = "fresh") {
       entries.push(value);
     },
   };
-  const models = ["fast", "balanced", "deep"].map((id) => ({
+  const models = ["fast", "balanced", "deep", "expert"].map((id) => ({
     provider: "local",
     id,
     api: "openai-completions",
@@ -101,7 +101,7 @@ async function fixture(defaultContext = "fresh") {
   let requests = 0;
   const payloads: Record<string, unknown>[] = [];
   let delay = 0;
-  let response = {
+  let response: { answers: Record<string, unknown> } = {
     answers: {
       tier: { choice: "balanced", confidence: 0.95 },
       effort: { choice: "medium", confidence: 0.45 },
@@ -135,7 +135,7 @@ async function fixture(defaultContext = "fresh") {
     delay: (value: number) => {
       delay = value;
     },
-    response: (value: typeof response) => {
+    response: (value: { answers: Record<string, unknown> }) => {
       response = value;
     },
   };
@@ -557,5 +557,217 @@ test("SPARSE-01 specialized agents without their tier keep the executor model an
   await f.call(reviewer);
   expect(junior.model).toBe("local/deep");
   expect(reviewer.model).toBe("local/deep");
+  expect(f.requests()).toBe(0);
+});
+
+const expertModels = { ...configuredModels, expert: "local/expert" };
+const withExpertNeeded = (choice: string, expertNeeded: unknown, risky = 0) => ({
+  answers: {
+    ...answer(choice, risky).answers,
+    ...(expertNeeded === undefined ? {} : { expert_needed: expertNeeded }),
+  },
+});
+const askExpert = async (
+  f: Awaited<ReturnType<typeof fixture>>,
+  response: { answers: Record<string, unknown> },
+  baseline = "local/deep",
+) => {
+  f.response(response);
+  const input = { agent: "worker", model: baseline, task: "Resolve the open design decision" };
+  await f.call(input);
+  return input.model;
+};
+
+test("EXPERT-02 tier order is fast, balanced, deep, expert and expert is offered when configured", async () => {
+  const f = await fixture();
+  await configure(f, expertModels);
+  await f.call({ agent: "worker", model: "local/deep", task: "Resolve the design decision" });
+  expect(Object.keys(sentQuestions(f).tier!.criteria)).toEqual([
+    "fast",
+    "balanced",
+    "deep",
+    "expert",
+  ]);
+});
+
+for (const absent of ["missing", "", "  "])
+  test(`EXPERT-02 expert ${absent === "missing" ? "absent" : JSON.stringify(absent)} sends no expert choice, question or placeholder and the unchanged deep rubric`, async () => {
+    const reference = await fixture();
+    await configure(reference, configuredModels);
+    await reference.call({ agent: "worker", model: "local/deep", task: "Resolve design" });
+    const f = await fixture();
+    await configure(
+      f,
+      absent === "missing" ? configuredModels : { ...configuredModels, expert: absent },
+    );
+    f.response(answer("deep"));
+    const input = { agent: "worker", model: "local/fast", task: "Resolve design" };
+    await f.call(input);
+    expect(Object.keys(sentQuestions(f))).toEqual(["tier", "effort", "risky"]);
+    expect(Object.keys(sentQuestions(f).tier!.criteria)).toEqual(["fast", "balanced", "deep"]);
+    expect(JSON.stringify(f.payloads[0])).not.toContain("expert");
+    expect(f.payloads[0]!.questions).toEqual(reference.payloads[0]!.questions);
+    expect(input.model).toBe("local/deep:medium");
+  });
+
+test("EXPERT-02 a response without an expert answer is accepted when expert is absent", async () => {
+  const f = await fixture();
+  await configure(f, configuredModels);
+  expect(await askExpert(f, answer("deep"), "local/fast")).toBe("local/deep:medium");
+});
+
+test("EXPERT-02 expert configured adds the choice, the fixed expert_needed question and differentiated rubrics", async () => {
+  const reference = await fixture();
+  await configure(reference, configuredModels);
+  await reference.call({ agent: "worker", model: "local/deep", task: "Resolve design" });
+  const f = await fixture();
+  await configure(f, expertModels);
+  await f.call({
+    agent: "worker",
+    model: "local/deep",
+    task: "Resolve design",
+    description: "per call text",
+  });
+  const asked = f.payloads[0]!.questions as Record<
+    string,
+    { type?: string; instructions?: string; criteria: Record<string, string> }
+  >;
+  expect(f.requests()).toBe(1);
+  expect(Object.keys(asked).sort()).toEqual(["effort", "expert_needed", "risky", "tier"]);
+  expect(asked.expert_needed!.type).toBe("noul");
+  expect(Object.keys(asked.expert_needed!.criteria).sort()).toEqual(["false", "true"]);
+  expect(asked.tier!.criteria.deep).not.toBe(
+    sentQuestions(reference).tier!.criteria["deep" as never],
+  );
+  expect(asked.tier!.criteria.expert).toContain("exceptionally difficult");
+  const fixed = JSON.stringify(asked.expert_needed);
+  expect(fixed).not.toContain("per call text");
+  expect(fixed).not.toContain("Resolve design");
+  expect(JSON.stringify(asked.tier)).not.toMatch(/architect(?!ural)|oracle/i);
+});
+
+test("EXPERT-02 expert_needed 0.91 admits expert", async () => {
+  const f = await fixture();
+  await configure(f, expertModels);
+  expect(await askExpert(f, withExpertNeeded("expert", { noul: 0.91 }))).toBe(
+    "local/expert:medium",
+  );
+  expect(f.requests()).toBe(1);
+});
+
+test("EXPERT-02 expert_needed accepts the probability spelling", async () => {
+  const f = await fixture();
+  await configure(f, expertModels);
+  expect(await askExpert(f, withExpertNeeded("expert", { probability: 0.99 }))).toBe(
+    "local/expert:medium",
+  );
+});
+
+for (const [name, value] of [
+  ["exactly 0.9", { noul: 0.9 }],
+  ["below", { noul: 0.2 }],
+  ["missing", undefined],
+  ["out of range", { noul: 1.5 }],
+  ["non-numeric", { noul: "0.99" }],
+  ["wrong shape", 0.99],
+] as const)
+  test(`EXPERT-02 expert_needed ${name} falls back to deep`, async () => {
+    const f = await fixture();
+    await configure(f, expertModels);
+    expect(await askExpert(f, withExpertNeeded("expert", value), "local/fast")).toBe(
+      "local/deep:medium",
+    );
+  });
+
+test("EXPERT-02 a rejected expert choice never silently uses expert and keeps the baseline without deep", async () => {
+  const f = await fixture();
+  await configure(f, { fast: "local/fast", balanced: "local/balanced", expert: "local/expert" });
+  expect(await askExpert(f, withExpertNeeded("expert", { noul: 0.9 }), "local/fast")).toBe(
+    "local/fast:medium",
+  );
+  expect(await askExpert(f, withExpertNeeded("expert", { noul: 0.95 }), "local/fast")).toBe(
+    "local/expert:medium",
+  );
+});
+
+test("EXPERT-02 a non-expert choice is unaffected by a high expert_needed answer", async () => {
+  const f = await fixture();
+  await configure(f, expertModels);
+  expect(await askExpert(f, withExpertNeeded("balanced", { noul: 0.99 }))).toBe(
+    "local/balanced:medium",
+  );
+});
+
+test("EXPERT-02 high risk alone never selects expert", async () => {
+  const f = await fixture();
+  await configure(f, expertModels);
+  expect(await askExpert(f, withExpertNeeded("fast", { noul: 0.99 }, 0.95), "local/fast")).toBe(
+    "local/deep:high",
+  );
+  expect(await askExpert(f, withExpertNeeded("deep", { noul: 0.99 }, 0.95), "local/fast")).toBe(
+    "local/deep:high",
+  );
+});
+
+test("EXPERT-02 risk override picks the highest non-expert tier when deep is absent", async () => {
+  const f = await fixture();
+  await configure(f, { fast: "local/fast", balanced: "local/balanced", expert: "local/expert" });
+  expect(await askExpert(f, withExpertNeeded("fast", { noul: 0.99 }, 0.95), "local/fast")).toBe(
+    "local/balanced:high",
+  );
+  await configure(f, { expert: "local/expert" });
+  expect(await askExpert(f, withExpertNeeded("expert", { noul: 0.2 }, 0.95), "local/deep")).toBe(
+    "local/deep:high",
+  );
+});
+
+test("EXPERT-02 risk override cannot suppress an admitted expert choice or bypass a failed gate", async () => {
+  const f = await fixture();
+  await configure(f, expertModels);
+  expect(await askExpert(f, withExpertNeeded("expert", { noul: 0.95 }, 0.95), "local/fast")).toBe(
+    "local/expert:high",
+  );
+  expect(await askExpert(f, withExpertNeeded("expert", { noul: 0.9 }, 0.95), "local/fast")).toBe(
+    "local/deep:high",
+  );
+});
+
+test("EXPERT-02 a malformed response stays a schema error with expert configured", async () => {
+  const f = await fixture();
+  await configure(f, expertModels);
+  expect(await askExpert(f, { answers: { tier: { choice: "expert" } } })).toBe("local/deep");
+  expect(await askExpert(f, withExpertNeeded("expert", { noul: 0.99 }, 0.0), "local/deep")).toBe(
+    "local/expert:medium",
+  );
+  f.response({
+    answers: {
+      ...withExpertNeeded("expert", { noul: 0.99 }).answers,
+      tier: { choice: "expert", confidence: 7 },
+    },
+  });
+  const input = { agent: "worker", model: "local/deep", task: "Resolve" };
+  await f.call(input);
+  expect(input.model).toBe("local/deep");
+});
+
+test("EXPERT-02 existing confidence gates still apply to the admitted expert model", async () => {
+  const f = await fixture();
+  await configure(f, expertModels);
+  f.response({
+    answers: {
+      ...withExpertNeeded("expert", { noul: 0.99 }).answers,
+      tier: { choice: "expert", confidence: 0.1 },
+    },
+  });
+  const input = { agent: "worker", model: "local/deep", task: "Resolve" };
+  await f.call(input);
+  expect(input.model).toBe("local/deep:medium");
+});
+
+test("EXPERT-02 malformed expert identity names the setting and sends nothing", async () => {
+  const f = await fixture();
+  await configure(f, { ...configuredModels, expert: null });
+  const input = { agent: "worker", model: "local/deep", task: "Resolve" };
+  await expect(f.call(input)).rejects.toThrow("jevPilot.tiers.expert");
   expect(f.requests()).toBe(0);
 });
