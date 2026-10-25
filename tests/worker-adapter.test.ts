@@ -35,6 +35,7 @@ async function fixture(defaultContext = "fresh") {
   const listeners = new Map<string, Function[]>();
   const controls: unknown[] = [];
   const entries: unknown[] = [];
+  const notices: string[] = [];
   const signal = new AbortController();
   const session = crypto.randomUUID();
   let settings: unknown = {
@@ -86,7 +87,7 @@ async function fixture(defaultContext = "fresh") {
       getLeafId: () => "leaf",
       getBranch: () => [],
     },
-    ui: { notify() {} },
+    ui: { notify: (message: string) => notices.push(message) },
   } as unknown as ExtensionContext;
   registerWorkerAdapter(pi as unknown as ExtensionAPI);
   const fire = async (name: string, event: unknown = {}) => {
@@ -130,6 +131,7 @@ async function fixture(defaultContext = "fresh") {
     signal,
     controls,
     entries,
+    notices,
     requests: () => requests,
     payloads,
     delay: (value: number) => {
@@ -209,20 +211,6 @@ test("WORKER-26 cleanup stops only routed async identity and is idempotent", asy
   f.signal.abort();
   expect(f.controls).toMatchObject([{ method: "stop", params: { id: "exact-owned-run" } }]);
   expect(f.controls).toHaveLength(1);
-});
-
-test("WORKER-13 invalid physical mapping fails actionably without launching", async () => {
-  const f = await fixture();
-  f.settings({
-    jevPilot: {
-      tiers: { fast: "local/fast", balanced: "local/balanced", deep: "missing/unknown" },
-    },
-  });
-  await f.fire("session_start");
-  await expect(f.call({ agent: "worker", task: "Do work" })).rejects.toThrow(
-    "exact physical Pi model",
-  );
-  expect(f.requests()).toBe(0);
 });
 
 test("WORKER-26 completion releases exact ownership before repeated cleanup", async () => {
@@ -770,4 +758,192 @@ test("EXPERT-02 malformed expert identity names the setting and sends nothing", 
   const input = { agent: "worker", model: "local/deep", task: "Resolve" };
   await expect(f.call(input)).rejects.toThrow("jevPilot.tiers.expert");
   expect(f.requests()).toBe(0);
+});
+
+test("FALLBACK-04 an unresolvable selected tier is reported with its setting and the next lower tier runs at its highest supported effort", async () => {
+  const f = await fixture();
+  await configure(f, { ...configuredModels, deep: "missing/unknown" });
+  f.response(answer("deep"));
+  const input = { agent: "worker", model: "local/fast", task: "Implement work" };
+  await f.call(input);
+  expect(input.model).toBe("local/balanced:high");
+  expect(f.requests()).toBe(1);
+  expect(f.notices).toHaveLength(1);
+  expect(f.notices[0]).toContain("deep");
+  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
+  expect(f.notices[0]).toContain("missing/unknown");
+});
+
+const fallbackCall = async (
+  f: Awaited<ReturnType<typeof fixture>>,
+  choice: string,
+  baseline = "local/fast",
+  risky = 0,
+  tier: Record<string, unknown> = {},
+) => {
+  f.response(
+    risky || choice === "expert"
+      ? withExpertNeeded(choice, { noul: 0.99 }, risky)
+      : answer(choice, risky, tier),
+  );
+  const input = { agent: "worker", model: baseline, task: "Implement work" };
+  await f.call(input);
+  return input.model;
+};
+const registryModel = (f: Awaited<ReturnType<typeof fixture>>, id: string) =>
+  f.ctx.modelRegistry.find("local", id)! as unknown as Record<string, unknown>;
+
+for (const [levels, highest] of [
+  [{}, "high"],
+  [{ xhigh: "xhigh" }, "xhigh"],
+  [{ xhigh: "xhigh", max: "max" }, "max"],
+  [{ high: null, xhigh: "xhigh" }, "xhigh"],
+] as const)
+  test(`FALLBACK-04 a fallback tier whose model supports up to ${highest} runs at ${highest}`, async () => {
+    const f = await fixture();
+    await configure(f, { ...configuredModels, deep: "missing/unknown" });
+    registryModel(f, "balanced").thinkingLevelMap = levels;
+    expect(await fallbackCall(f, "deep")).toBe(`local/balanced:${highest}`);
+  });
+
+test("FALLBACK-04 a fallback tier whose model has no reasoning runs at off", async () => {
+  const f = await fixture();
+  await configure(f, { ...configuredModels, deep: "missing/unknown" });
+  registryModel(f, "balanced").reasoning = false;
+  expect(await fallbackCall(f, "deep")).toBe("local/balanced:off");
+});
+
+test("FALLBACK-04 a usable selected tier keeps the classified effort and reports nothing", async () => {
+  const f = await fixture();
+  await configure(f, { ...configuredModels, fast: "missing/unknown" });
+  expect(await fallbackCall(f, "balanced")).toBe("local/balanced:medium");
+  expect(f.notices).toEqual([]);
+});
+
+test("FALLBACK-04 an admitted expert tier that cannot run cascades downward through every unusable tier", async () => {
+  const f = await fixture();
+  await configure(f, { ...expertModels, expert: "missing/expert", deep: "missing/deep" });
+  expect(await fallbackCall(f, "expert")).toBe("local/balanced:high");
+  expect(f.notices).toHaveLength(1);
+  const report = f.notices[0]!;
+  expect(report).toContain("jevPilot.tiers.expert");
+  expect(report).toContain("jevPilot.tiers.deep");
+  expect(report).not.toContain("Jev tier balanced");
+  expect(report).toContain("Falling back to tier balanced");
+  expect(report.indexOf("jevPilot.tiers.expert")).toBeLessThan(
+    report.indexOf("jevPilot.tiers.deep"),
+  );
+});
+
+test("FALLBACK-04 the cascade stops at the first lower tier that runs", async () => {
+  const f = await fixture();
+  await configure(f, { ...configuredModels, deep: "missing/deep", balanced: "local/balanced" });
+  expect(await fallbackCall(f, "deep")).toBe("local/balanced:high");
+});
+
+test("FALLBACK-04 expert is never a fallback for an unusable deep tier", async () => {
+  const f = await fixture();
+  await configure(f, { fast: "local/fast", deep: "missing/deep", expert: "local/expert" });
+  expect(await fallbackCall(f, "deep", "local/balanced")).toBe("local/fast:high");
+});
+
+test("FALLBACK-04 no configured tier runs retains the baseline model and reports every tier tried", async () => {
+  const f = await fixture();
+  await configure(f, { balanced: "missing/balanced", deep: "missing/deep" });
+  expect(await fallbackCall(f, "deep", "local/fast")).toBe("local/fast:medium");
+  expect(f.notices).toHaveLength(1);
+  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
+  expect(f.notices[0]).toContain("jevPilot.tiers.balanced");
+  expect(f.notices[0]).toContain("keeping the retained worker model");
+});
+
+test("FALLBACK-04 the lowest tier unusable has nothing below it and retains the baseline", async () => {
+  const f = await fixture();
+  await configure(f, { fast: "missing/fast", deep: "local/deep" });
+  expect(await fallbackCall(f, "fast", "local/deep")).toBe("local/deep:medium");
+  expect(f.notices[0]).toContain("jevPilot.tiers.fast");
+});
+
+test("FALLBACK-04 a tier model without configured authentication is reported and cascades", async () => {
+  const f = await fixture();
+  await configure(f, configuredModels);
+  f.ctx.modelRegistry.hasConfiguredAuth = (model) => model.id !== "deep";
+  expect(await fallbackCall(f, "deep")).toBe("local/balanced:high");
+  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
+  expect(f.notices[0]).toContain("Configure Pi authentication");
+});
+
+test("FALLBACK-04 a tier model that launch preflight rejects, as a rate-limited provider drops out of the available models, is reported and cascades", async () => {
+  const f = await fixture();
+  await configure(f, configuredModels);
+  const available = f.ctx.modelRegistry.getAvailable();
+  f.ctx.modelRegistry.getAvailable = () => available.filter((model) => model.id !== "deep");
+  expect(await fallbackCall(f, "deep")).toBe("local/balanced:high");
+  expect(f.notices).toHaveLength(1);
+  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
+  expect(f.notices[0]).toContain("local/deep");
+});
+
+test("FALLBACK-04 high risk moving work to an unusable deep tier cascades at the highest supported effort", async () => {
+  const f = await fixture();
+  await configure(f, { ...configuredModels, deep: "missing/deep" });
+  expect(await fallbackCall(f, "fast", "local/fast", 0.95, { confidence: 0.01 })).toBe(
+    "local/balanced:high",
+  );
+  registryModel(f, "balanced").thinkingLevelMap = { xhigh: "xhigh" };
+  expect(await fallbackCall(f, "fast", "local/fast", 0.95, { confidence: 0.01 })).toBe(
+    "local/balanced:xhigh",
+  );
+});
+
+test("FALLBACK-04 tiers sharing an unusable model are all reported and the cascade continues below them", async () => {
+  const f = await fixture();
+  await configure(f, { fast: "local/fast", balanced: "missing/shared", deep: "missing/shared" });
+  expect(await fallbackCall(f, "deep", "local/balanced")).toBe("local/fast:high");
+  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
+  expect(f.notices[0]).toContain("jevPilot.tiers.balanced");
+});
+
+test("FALLBACK-04 an unusable tier that is not selected is not probed or reported", async () => {
+  const f = await fixture();
+  await configure(f, { ...configuredModels, deep: "missing/unknown" });
+  expect(await fallbackCall(f, "balanced")).toBe("local/balanced:medium");
+  expect(f.notices).toEqual([]);
+});
+
+test("FALLBACK-04 an invalid tier setting is still a configuration error even when another tier is unresolvable", async () => {
+  const f = await fixture();
+  await configure(f, { fast: "local/fast", balanced: null, deep: "missing/unknown" });
+  const input = { agent: "worker", model: "local/fast", task: "Implement work" };
+  await expect(f.call(input)).rejects.toThrow("jevPilot.tiers.balanced");
+  expect(f.requests()).toBe(0);
+  expect(f.notices).toEqual([]);
+});
+
+test("FALLBACK-04 a custom slot with an unresolvable model still fails before classification", async () => {
+  const f = await fixture();
+  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
+  await writeFile(
+    process.env.JEV_CREW_CONFIG,
+    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/missing" }] }),
+  );
+  await configure(f, { ...configuredModels, deep: "missing/unknown" });
+  await expect(
+    f.call({ agent: "worker", model: "local/fast", task: "Implement work" }),
+  ).rejects.toThrow("exact physical");
+  expect(f.requests()).toBe(0);
+});
+
+test("FALLBACK-04 the fallback is cancelled with the call and leaves the input untouched", async () => {
+  const f = await fixture();
+  await configure(f, { ...configuredModels, deep: "missing/unknown" });
+  f.response(answer("deep"));
+  f.delay(100);
+  const input = { agent: "worker", model: "local/fast", task: "Implement work" };
+  const pending = f.call(input);
+  while (!f.requests()) await Bun.sleep(5);
+  await f.fire("model_select");
+  expect(await pending).toMatchObject({ block: true });
+  expect(input.model).toBe("local/fast");
+  expect(f.notices).toEqual([]);
 });

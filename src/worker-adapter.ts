@@ -1,5 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { clampThinkingLevel } from "@earendil-works/pi-ai";
+import {
+  clampThinkingLevel,
+  type Api,
+  type Model,
+  type ModelThinkingLevel,
+} from "@earendil-works/pi-ai";
 import { resolveSubagentLaunchContract } from "pi-subagents/preflight";
 import {
   registerRequiredChildExtensions,
@@ -10,6 +15,7 @@ import { classify, systemOneConfig, WORKER_EFFORT_QUESTION, effortEnabled } from
 import { guidanceEnabled } from "./guidance-policy.ts";
 import { selectEffort } from "./effort-policy.ts";
 import { TIER_ORDER } from "./tier-policy.ts";
+import { cascadeTiers, type TierCascade } from "./tier-fallback.ts";
 import { configuredTiers } from "./routing-settings.ts";
 import { crewConfig } from "./crew-config.ts";
 import { selectWorkerModel } from "./crew-policy.ts";
@@ -38,6 +44,30 @@ function physical(ctx: ExtensionContext, value: string) {
   if (!ctx.modelRegistry.hasConfiguredAuth(model))
     throw new Error(`Configure Pi authentication for Jev worker target ${value}.`);
   return model;
+}
+const EFFORT_SCALE: readonly ModelThinkingLevel[] = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+/** Support varies per model, so the top of the scale is a request that the model clamps. */
+function highestSupportedEffort(model: Model<Api>): ModelThinkingLevel {
+  return clampThinkingLevel(model, EFFORT_SCALE[EFFORT_SCALE.length - 1]!);
+}
+function tierReport(cascade: TierCascade): string {
+  const failed = cascade.failures.map(
+    ({ tier, setting, reason }) => `Jev tier ${tier} (${setting}) cannot run: ${reason}`,
+  );
+  return [
+    ...failed,
+    cascade.fallbackTier
+      ? `Falling back to tier ${cascade.fallbackTier} (jevPilot.tiers.${cascade.fallbackTier}) at its highest supported effort.`
+      : "No configured tier can run; keeping the retained worker model.",
+  ].join("\n");
 }
 function parentIdentity(ctx: ExtensionContext): string {
   if (ctx.model?.api !== "pi-virtual" && ctx.model) return `${ctx.model.provider}/${ctx.model.id}`;
@@ -255,7 +285,6 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
       }
       const tiers = configuredTiers(settings);
       const configured = TIER_ORDER.filter((tier) => tiers[tier]);
-      for (const tier of configured) physical(ctx, tiers[tier]!);
       const crew = crewConfig(ctx.cwd);
       for (const slot of crew.offered) physical(ctx, slot.model);
       const controller = new AbortController();
@@ -264,22 +293,24 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
       active.add(controller);
       try {
         if (ctx.signal?.aborted) controller.abort();
-        const preview = await resolveSubagentLaunchContract({
-          agent: input.agent,
-          task: input.task,
-          cwd: typeof input.cwd === "string" ? input.cwd : ctx.cwd,
-          context,
-          agentScope,
-          model: typeof input.model === "string" ? input.model : undefined,
-          parentModel: ctx.model?.api !== "pi-virtual" ? ctx.model : undefined,
-          availableModels: ctx.modelRegistry.getAvailable(),
-          scopedModelIds: ctx.scopedModels.map(({ model }) => `${model.provider}/${model.id}`),
-          projectTrusted: ctx.isProjectTrusted(),
-          parentSessionId: ctx.sessionManager.getSessionId(),
-          parentSessionFile: ctx.sessionManager.getSessionFile(),
-          parentLeafId: ctx.sessionManager.getLeafId(),
-          runtimeSnapshotHost: pi,
-        });
+        const preflight = (model: string | undefined) =>
+          resolveSubagentLaunchContract({
+            agent: input.agent as string,
+            task: input.task as string,
+            cwd: typeof input.cwd === "string" ? input.cwd : ctx.cwd,
+            context,
+            agentScope,
+            model,
+            parentModel: ctx.model?.api !== "pi-virtual" ? ctx.model : undefined,
+            availableModels: ctx.modelRegistry.getAvailable(),
+            scopedModelIds: ctx.scopedModels.map(({ model }) => `${model.provider}/${model.id}`),
+            projectTrusted: ctx.isProjectTrusted(),
+            parentSessionId: ctx.sessionManager.getSessionId(),
+            parentSessionFile: ctx.sessionManager.getSessionFile(),
+            parentLeafId: ctx.sessionManager.getLeafId(),
+            runtimeSnapshotHost: pi,
+          });
+        const preview = await preflight(typeof input.model === "string" ? input.model : undefined);
         if (preview.ok)
           visibility.describe(
             owner,
@@ -367,7 +398,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
           allowedLaunches.add(event.toolCallId);
           return;
         }
-        const selected = result.decision.tier
+        const chosen = result.decision.tier
           ? selectWorkerModel(
               {
                 tier: result.decision.tier,
@@ -381,16 +412,43 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
               crew.offered,
             )
           : null;
+        // A selected tier that cannot be launched cascades to the next lower configured tier. Only
+        // signals known before launch count; child-run errors stay executor-surfaced.
+        const unusable = async (target: string): Promise<string | undefined> => {
+          try {
+            physical(ctx, target);
+            const candidate = preview.ok ? await preflight(target) : undefined;
+            if (candidate && !candidate.ok) return candidate.message || "launch preflight rejected";
+          } catch (error) {
+            return (error instanceof Error ? error.message : String(error)) || "launch rejected";
+          }
+        };
+        const cascade = chosen ? await cascadeTiers(tiers, chosen, unusable) : undefined;
+        if (controller.signal.aborted) return cancelled();
+        const selected = cascade?.model ?? null;
+        let degraded = "";
+        if (cascade?.failures.length) {
+          ctx.ui.notify(tierReport(cascade), "warning");
+          degraded = ` · ${cascade.failures.map(({ tier }) => tier).join(", ")} unusable${cascade.fallbackTier ? ` → ${cascade.fallbackTier}` : ", no lower tier runs"}`;
+        }
         // Policy comparison is not authority to replace an omitted executor default.
-        const requested = selectEffort(result.decision, "", input.task);
+        const requested =
+          selected && cascade?.fallbackTier
+            ? highestSupportedEffort(physical(ctx, selected))
+            : selectEffort(result.decision, "", input.task);
         if (!selected && !requested) {
-          finish(`Jev plan · kept ${retainedTarget} · no applicable change · launch unconfirmed`, {
-            retained: safeIdentity(
-              preview.ok ? identity(preview.contract.model ?? "") : input.model,
-            ),
-            model: safeIdentity(preview.ok ? identity(preview.contract.model ?? "") : input.model),
-            outcome: "kept",
-          });
+          finish(
+            `Jev plan · kept ${retainedTarget} · no applicable change${degraded} · launch unconfirmed`,
+            {
+              retained: safeIdentity(
+                preview.ok ? identity(preview.contract.model ?? "") : input.model,
+              ),
+              model: safeIdentity(
+                preview.ok ? identity(preview.contract.model ?? "") : input.model,
+              ),
+              outcome: "kept",
+            },
+          );
           allowedLaunches.add(event.toolCallId);
           return;
         }
@@ -411,7 +469,7 @@ export function registerWorkerAdapter(pi: ExtensionAPI): void {
         if (controller.signal.aborted) return cancelled();
         input.model = `${finalIdentity}${effective ? `:${effective}` : ""}`;
         finish(
-          `Jev plan · ${selected ? "selected" : "kept"} ${workerTarget(finalIdentity, effective)}${requested ? ` · ${requested} → ${effective}` : ""} · launch unconfirmed`,
+          `Jev plan · ${selected ? "selected" : "kept"} ${workerTarget(finalIdentity, effective)}${requested ? ` · ${requested} → ${effective}` : ""}${degraded} · launch unconfirmed`,
           {
             retained: safeIdentity(retained ? identity(retained) : undefined),
             model: safeIdentity(finalIdentity),
