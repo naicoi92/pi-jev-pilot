@@ -128,7 +128,7 @@ Service errors, malformed answers and deadline expiry retain the current valid m
 
 ### See Jev decisions without the footer
 
-During selection, Jev shows a transient `Jev · choosing effort` widget. Completed meaningful decisions remain in conversation as collapsed `Jev main` rows, independent of footer replacements such as powerbar. Use Pi's tool-output expansion shortcut (default **Ctrl+O**) for previous/requested/effective effort and the Pi-selected main identity. Jev never switches the main model. Empty input and slash commands create no decision rows.
+During and after selection, Jev shows a persistent right-aligned status line above the editor (activity, effective effort, skill, advised strategy when non-direct, running worker count). Successful main and worker decisions do not create conversation rows; only timeout, error and blocked rows remain visible and expandable. Use Pi's tool-output expansion shortcut (default **Ctrl+O**) for previous/requested/effective effort and the Pi-selected main identity. Jev never switches the main model. Empty input and slash commands create no decision rows.
 
 Run **`/jev status`**, including before the first task, for loaded capabilities, enabled/disabled flags, current main identity/effort, latest main decision and up to 12 recent worker snapshots. This read-only command uses a public notification: no classifier request, provider call or model-facing message.
 
