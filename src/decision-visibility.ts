@@ -133,9 +133,14 @@ export function decisionLines(row: DecisionRow, expanded: boolean): string[] {
         ]),
   ];
 }
+/** Only genuine errors and fallbacks earn a conversation row; the live status line
+ * carries ordinary selections. Stored rows of every outcome stay for /jev status. */
+const WARNING_OUTCOMES: readonly VisibleOutcome[] = ["timeout", "error", "blocked"];
 export const decisionRenderer: EntryRenderer = (entry, { expanded }) => {
   const row = readDecisionRow(entry.data);
-  return row ? new Text(decisionLines(row, expanded).join("\n"), 0, 0) : undefined;
+  return row && WARNING_OUTCOMES.includes(row.outcome)
+    ? new Text(decisionLines(row, expanded).join("\n"), 0, 0)
+    : undefined;
 };
 export function latestDecisionRows(branch: SessionEntry[]): DecisionRow[] {
   const workers = new Map<string, WorkerDecisionRow>();

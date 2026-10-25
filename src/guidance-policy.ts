@@ -130,6 +130,16 @@ export function strategyAdvice(
   ].join("\n");
 }
 
+/** The strategy that `strategyAdvice` actually advised, for compact presentation. */
+export function advisedStrategy(
+  decision: StrategyRead & { risky?: number | null },
+  customWorkflowModels = false,
+): Strategy | undefined {
+  return strategyAdvice(decision, customWorkflowModels)
+    ? (decision.strategy ?? undefined)
+    : undefined;
+}
+
 /** Per-request observation only; no instruction parsing, dispatch or effort writes. */
 export function observeLoop(
   tool: string,
