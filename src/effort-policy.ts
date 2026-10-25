@@ -9,6 +9,21 @@ export interface EffortDecision {
   risky: number | null;
 }
 
+/** The effort thresholds upstream tuning may change; the defaults are the upstream settings. */
+export interface EffortThresholds {
+  /** Confidence needed to lower the effort. */
+  minDowngradeConfidence: number;
+  /** Confidence needed to raise the effort to high or above. */
+  minHighConfidence: number;
+  /** How close two levels must be for the close call to lean to the higher one. */
+  effortCloseMargin: number;
+}
+export const DEFAULT_EFFORT_THRESHOLDS: EffortThresholds = {
+  minDowngradeConfidence: 0.6,
+  minHighConfidence: 0.5,
+  effortCloseMargin: 0.15,
+};
+
 export function isContinuation(prompt: string): boolean {
   return /^(?:please\s+)?(?:continue|go on|keep going|carry on|resume)(?:\s+please)?[.!]*$/i.test(
     prompt.trim(),
@@ -36,7 +51,10 @@ function isFollowUp(prompt: string): boolean {
 }
 
 /** The rubric level (0..4) a decision resolves to, after the close-call lean. */
-export function effortScore(decision: EffortDecision): number | null {
+export function effortScore(
+  decision: EffortDecision,
+  margin = DEFAULT_EFFORT_THRESHOLDS.effortCloseMargin,
+): number | null {
   const ranked = Object.entries(decision.effortProbabilities ?? {})
     .map(([level, probability]) => ({ level: Number(level), probability }))
     .filter(
@@ -51,7 +69,7 @@ export function effortScore(decision: EffortDecision): number | null {
       second &&
       second.level > level &&
       second.level <= 2 &&
-      best.probability - second.probability <= 0.15
+      best.probability - second.probability <= margin
     )
       level = second.level;
     const veryHard = ranked
@@ -64,7 +82,7 @@ export function effortScore(decision: EffortDecision): number | null {
   if (decision.effort === null || !Number.isFinite(decision.effort)) return null;
   const score = Math.min(4, Math.max(0, decision.effort));
   const whole = Math.floor(score);
-  return Math.min(4, score - whole >= 0.5 - (whole + 1 <= 2 ? 0.15 : 0) ? whole + 1 : whole);
+  return Math.min(4, score - whole >= 0.5 - (whole + 1 <= 2 ? margin : 0) ? whole + 1 : whole);
 }
 
 /** Upstream start-of-turn rules only; no mid-turn escalation or model selection. */
@@ -72,8 +90,9 @@ export function selectEffort(
   decision: EffortDecision,
   current: string,
   prompt: string,
+  thresholds: EffortThresholds = DEFAULT_EFFORT_THRESHOLDS,
 ): Effort | null {
-  let score = effortScore(decision);
+  let score = effortScore(decision, thresholds.effortCloseMargin);
   const forced = decision.risky !== null && decision.risky > 0.7;
   if (forced) score = Math.max(score ?? 0, 2);
   if (score === null) return null;
@@ -85,8 +104,11 @@ export function selectEffort(
   const lowering = from !== null && to < from;
   if ((isFollowUp(prompt) && lowering) || to === from) return null;
   const confidence = decision.effortConfidence;
-  const allowed = confidence === null ? !lowering : confidence >= (lowering ? 0.6 : 0.3);
-  const sureOfHigh = confidence === null || confidence >= 0.5;
+  const allowed =
+    confidence === null
+      ? !lowering
+      : confidence >= (lowering ? thresholds.minDowngradeConfidence : 0.3);
+  const sureOfHigh = confidence === null || confidence >= thresholds.minHighConfidence;
   return forced || (allowed && (lowering || to < 2 || sureOfHigh))
     ? (EFFORT_ORDER[to] ?? null)
     : null;

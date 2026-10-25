@@ -6,6 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { loadLedger, resetLedger, summarizeLedger } from "./ledger.ts";
+import { tuneCommand, type TuneAction } from "./tuning.ts";
 
 export const DECISION_TYPE = "jev-pilot:decision:v1";
 export const MAX_WORKER_SEQUENCE = 999_999_999;
@@ -177,14 +178,21 @@ export function statusLines(pi: ExtensionAPI, ctx: ExtensionContext): string[] {
 export function registerDecisionVisibility(pi: ExtensionAPI): void {
   pi.registerEntryRenderer(DECISION_TYPE, decisionRenderer);
   pi.registerCommand("jev", {
-    description: "Read-only Jev status and ledger report (no inference): /jev status | report",
+    description:
+      "Jev status, ledger report and explicit tuning (no inference): /jev status | report | tune",
     handler: async (args, ctx) => {
       const command = args.trim();
       if (command === "report") ctx.ui.notify(reportText(), "info");
       else if (command === "report reset") ctx.ui.notify(resetText(), "info");
+      else if (/^tune(?: (?:apply|reset))?$/.test(command))
+        ctx.ui.notify(tuneCommand((command.split(" ")[1] ?? "show") as TuneAction), "info");
       else if (command === "status" || command === "")
         ctx.ui.notify(statusLines(pi, ctx).join("\n"), "info");
-      else ctx.ui.notify("Usage: /jev status | report | report reset", "info");
+      else
+        ctx.ui.notify(
+          "Usage: /jev status | report | report reset | tune | tune apply | tune reset",
+          "info",
+        );
     },
   });
 }

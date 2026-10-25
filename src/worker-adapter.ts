@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { classify, systemOneConfig, WORKER_EFFORT_QUESTION, effortEnabled } from "./system-one.ts";
 import { guidanceEnabled } from "./guidance-policy.ts";
 import { selectEffort } from "./effort-policy.ts";
+import { effectiveTunables } from "./tuning.ts";
 import { TIER_ORDER } from "./tier-policy.ts";
 import { configuredTiers } from "./routing-settings.ts";
 import { crewConfig } from "./crew-config.ts";
@@ -372,7 +373,7 @@ export function registerWorkerAdapter(
             )
           : null;
         // Policy comparison is not authority to replace an omitted executor default.
-        const requested = selectEffort(result.decision, "", input.task);
+        const requested = selectEffort(result.decision, "", input.task, effectiveTunables());
         if (!selected && !requested) {
           finish(`Jev plan · kept ${retainedTarget} · no applicable change · launch unconfirmed`, {
             retained: safeIdentity(

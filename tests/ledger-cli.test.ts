@@ -360,7 +360,10 @@ test("AC-24 REPORT-24-cli-usage unknown report arguments show usage without infe
   await f.command("prompt", { message: "/jev report bogus" });
   await f.command("prompt", { message: "/jev bogus" });
   expect(
-    notifications(f).filter((text) => text === "Usage: /jev status | report | report reset"),
+    notifications(f).filter(
+      (text) =>
+        text === "Usage: /jev status | report | report reset | tune | tune apply | tune reset",
+    ),
   ).toHaveLength(2);
   expect(await ledger(f)).toHaveLength(1);
   expect(f.classifications).toHaveLength(0);
