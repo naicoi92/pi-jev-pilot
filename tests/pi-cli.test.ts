@@ -5,6 +5,14 @@ import { PiFixture, answer } from "./fixtures/pi-cli.ts";
 const task = "Please review the complete patch with particular care for failure modes";
 let fixture: PiFixture | undefined;
 
+/**
+ * Branch state the extension owns for effort, skills and advice. The ticket 12 visibility
+ * row (`jev-pilot:decision:v1`, outcome "skipped"/"classified") is display evidence, not state.
+ */
+function isEffortOrSkillState(customType: string | undefined): boolean {
+  return customType?.startsWith("jev-pilot:") === true && customType !== "jev-pilot:decision:v1";
+}
+
 async function lastDecision(fixture: PiFixture): Promise<unknown> {
   const entries = (await fixture.command("get_entries")).data as {
     entries: { customType?: string; data?: unknown }[];
@@ -289,9 +297,7 @@ test("CLI-09b non-reasoning model has no applicable effort questions or extensio
   const entries = (await fixture.command("get_entries")).data as {
     entries: { customType?: string }[];
   };
-  expect(
-    entries.entries.filter((entry) => entry.customType?.startsWith("jev-pilot:")),
-  ).toHaveLength(0);
+  expect(entries.entries.filter((entry) => isEffortOrSkillState(entry.customType))).toHaveLength(0);
 }, 20000);
 
 test("CLI-09b single-supported-level reasoning model has zero applicable effort calls or writes", async () => {
@@ -304,9 +310,7 @@ test("CLI-09b single-supported-level reasoning model has zero applicable effort 
   const entries = (await fixture.command("get_entries")).data as {
     entries: { customType?: string }[];
   };
-  expect(
-    entries.entries.filter((entry) => entry.customType?.startsWith("jev-pilot:")),
-  ).toHaveLength(0);
+  expect(entries.entries.filter((entry) => isEffortOrSkillState(entry.customType))).toHaveLength(0);
 }, 20000);
 
 test("CLI-09a disabled effort has zero classifier requests and writes across owned-history reload", async () => {
@@ -320,9 +324,7 @@ test("CLI-09a disabled effort has zero classifier requests and writes across own
   const entries = (await fixture.command("get_entries")).data as {
     entries: { customType?: string }[];
   };
-  expect(
-    entries.entries.filter((entry) => entry.customType?.startsWith("jev-pilot:")),
-  ).toHaveLength(0);
+  expect(entries.entries.filter((entry) => isEffortOrSkillState(entry.customType))).toHaveLength(0);
 }, 20000);
 
 test("CLI-09c empty and command-like inputs have zero effort questions or writes", async () => {
@@ -349,8 +351,7 @@ for (const gate of ["disabled", "non-reasoning"]) {
     };
     const writes = (entries: typeof before.entries) =>
       entries.filter(
-        (entry) =>
-          entry.customType?.startsWith("jev-pilot:") || entry.type === "thinking_level_change",
+        (entry) => isEffortOrSkillState(entry.customType) || entry.type === "thinking_level_change",
       ).length;
     await fixture.command("prompt", { message: "/fixture-reload" });
     await fixture.prompt("continue");
@@ -747,8 +748,7 @@ for (const gate of ["disabled", "inapplicable"]) {
     const before = (await fixture.command("get_entries")).data as typeof original;
     const writes = (entries: typeof before.entries) =>
       entries.filter(
-        (entry) =>
-          entry.customType?.startsWith("jev-pilot:") || entry.type === "thinking_level_change",
+        (entry) => isEffortOrSkillState(entry.customType) || entry.type === "thinking_level_change",
       ).length;
     await fixture.prompt(
       "Please inspect this independent gated task and describe its implementation in detail",

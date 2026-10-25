@@ -34,7 +34,7 @@ async function fixture(defaultContext = "fresh") {
   const hooks = new Map<string, Function[]>();
   const listeners = new Map<string, Function[]>();
   const controls: unknown[] = [];
-  const entries: unknown[] = [];
+  const entries: Record<string, unknown>[] = [];
   const signal = new AbortController();
   const session = crypto.randomUUID();
   let settings: unknown = {
@@ -54,7 +54,7 @@ async function fixture(defaultContext = "fresh") {
         for (const handler of listeners.get(name) ?? []) handler(value);
       },
     },
-    appendEntry(_name: string, value: unknown) {
+    appendEntry(_name: string, value: Record<string, unknown>) {
       entries.push(value);
     },
   };
@@ -265,7 +265,10 @@ for (const transition of [
     });
     await f.fire("session_shutdown");
     expect(f.controls).toEqual([]);
-    expect(f.entries).toEqual([]);
+    // Ticket 12 durable visibility may record the invalidated plan as cancelled; it never records a launch.
+    expect(
+      f.entries.filter((row) => !(row.stage === "plan" && row.outcome === "cancelled")),
+    ).toEqual([]);
   });
 
 test("WORKER-13 host-first collision preserves owner across duplicate and adapter shutdown", async () => {

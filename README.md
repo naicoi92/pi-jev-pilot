@@ -1,19 +1,29 @@
-# Jev Pilot for Pi — effort, skills, advice and worker routing preview
+# Jev Pilot for Pi — faithful port of Jev Pilot 0.12.1
 
-A regular [Pi package](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/packages.md) that asks Jev how much reasoning each user task needs and matches an eligible installed skill. **The user-selected physical main model and configured defaults stay unchanged:** session thinking may change and selected skill instructions enter the model context. Automatic main-model routing has been removed; auto-effort remains unchanged pending a separate cache investigation. This preview implements tickets 01–05 and a partial ticket-06 ordinary-worker routing adapter. Worker routing remains an unaccepted checkpoint with a required-child-extension coexistence limitation; the decision ledger, report and explicit tuning are described below.
+A regular [Pi package](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/packages.md) that ports the selected behavior of [Jev Pilot 0.12.1](NOTICE.md) to Pi: per-prompt reasoning-effort selection, installed-skill matching, strategy/quality/design advice, ordinary-worker model/effort routing with custom slots and a junior-lead mode, a decision ledger with report and explicit tuning. **The user-selected physical main model and configured defaults stay unchanged:** session thinking may change and selected skill instructions enter the model context. Automatic main-model routing is not part of this package. No Claude launcher, proxy or virtual model is involved. See [Compatibility and approved host differences](#compatibility-and-approved-host-differences) and [Acceptance coverage and verification limits](#acceptance-coverage-and-verification-limits) before relying on it; no hosted-service or live-provider end-to-end run is claimed.
 
 ## Install and configure
 
 Requires official Pi; tested with **`@earendil-works/pi-coding-agent` 1.4.0**, the stable release verified against npm and the official release tag. Pi-Bolt is not the target. Select a physical model with configured authentication before submitting work.
 
-From a local checkout:
+Install the package directory with Pi's normal package discovery (the manifest's `pi.extensions` entry is the only extension). The package has no `bin`, launcher or proxy. Pi supplies `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` itself, so they are `peerDependencies` (`*`) and are not installed with the package; its one runtime dependency is the pinned `pi-subagents` fork described under [Ordinary workers](#ordinary-workers).
 
 ```bash
+# From the packed artifact (what a distributed release contains):
+bun pm pack --destination /tmp/pi-jev
+mkdir /tmp/consumer && cd /tmp/consumer && echo '{"private":true}' > package.json
+bun add /tmp/pi-jev/pi-jev-pilot-0.1.0.tgz --omit=peer
+pi install /tmp/consumer/node_modules/pi-jev-pilot
+
+# Or from a checkout:
 bun install --frozen-lockfile
 pi install /absolute/path/to/pi-jev-pilot
+
 export JEV_SYSTEM_ONE_API_KEY='your-key'
 pi --model provider/model-id
 ```
+
+Resolving the pinned executor dependency needs the Bun package cache or network access to public GitHub; no credential is involved. Nothing has been published: no npm release or GitHub Release exists, and this repository has no remote.
 
 Do not commit credentials. Backend keys and feature switches remain in the Pi process environment. Worker physical tiers use JSON-only public effective Pi settings, described below:
 
@@ -156,7 +166,7 @@ Branch state is reconstructed only from the active Pi branch. A pre-application 
 
 New sessions do not inherit another session's decisions; resume/reload, forks/tree navigation and compaction retain only their owned history. In steering mode `all`, each persisted queued user's receipt is committed before the next queued message reads its predecessor; `continue` therefore reuses the immediate decision rather than an older one. Shutdown/reload cleanup aborts active classifier work and is idempotent.
 
-## Ordinary workers — incomplete checkpoint
+## Ordinary workers
 
 `JEV_WORKER_ROUTING_ENABLED` defaults to `true` and accepts only `true`/`false`. Ordinary direct/async `subagent` calls require configured authenticated `jevPilot.tiers` physical identities. Enable the exact tested fork executor separately with official Pi:
 
@@ -164,15 +174,15 @@ New sessions do not inherit another session's decisions; resume/reload, forks/tr
 pi install git:github.com/naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2
 ```
 
-The runtime dependency uses the same immutable Git commit; importing its public adapter exports does not enable its tools. Keep **one physical executor owner**: do not also enable an upstream npm executor or another checkout. The fork tree is `7201b00488f688479241a4e44be9b42e6a403a0e`; its manifest version `0.80.0` is only a source label, not upstream npm identity. This pairing uses official Pi 1.4.0, not a universal host guarantee. No npm publication or GitHub Release is required for this verified Git installation route.
+The runtime dependency uses the same immutable Git commit; importing its public adapter exports does not enable its tools. Keep **one physical executor owner**: do not also enable an upstream npm executor or another checkout. The fork tree is `7201b00488f688479241a4e44be9b42e6a403a0e`; its manifest version `0.81.0` is only a source label (installed from this commit and read from its `package.json`), not upstream npm identity. This pairing uses official Pi 1.4.0, not a universal host guarantee. No npm publication or GitHub Release is required for this verified Git installation route.
 
-One worker decision uses only bounded brief, agent type and available caller description, not parent history. A valid decision may overwrite a supplied model and configured agent thinking (max/low→medium). Requested effort is clamped against the final physical target. Disabled/error/timeout retain the original envelope; parent cancellation stops applicable work. Fork calls bypass routing, reviewer/junior paths retain specialized slots, and workflow inner launches remain advice-based.
+One worker decision uses only bounded brief, agent type and available caller description, not parent history. A valid decision may overwrite a supplied model and configured agent thinking (max/low→medium). Requested effort is clamped against the final physical target. Disabled/error/timeout retain the original envelope; parent cancellation stops applicable work. Fork calls bypass routing, junior and reserved reviewer-named paths retain specialized slots, and workflow inner launches remain advice-based.
 
-The adapter delivers a static child-only helper through the public required-child-extension API to prevent inherited main hooks from classifying the child again. That API supports only one registration owner per session. If another host already owns it, the adapter fails actionably before worker decision/mutation/launch without changing that registration. **Coexistence is unresolved; ticket06 is not accepted or complete.** No local-only restriction or undocumented transport is used. See [checkpoint evidence](docs/testing/ticket-06-production-checkpoint.md) and [matrix](docs/testing/ticket-06-matrix.md).
+The adapter delivers a static child-only helper through the public required-child-extension API to prevent inherited main hooks from classifying the child again. That API supports only one registration owner per session. **Known limitation:** if another host already owns it, the adapter fails actionably before worker decision/mutation/launch without changing that registration, so a second extension that needs the same registration cannot coexist in one session. No local-only restriction or undocumented transport is used. See [checkpoint evidence](docs/testing/ticket-06-production-checkpoint.md) and [matrix](docs/testing/ticket-06-matrix.md).
 
 ## Verify locally
 
-Development requires **Bun >=1.4.3** (verified with `1.4.3+c6da4a4d3`). Use `oxlint` for linting, `oxfmt` for formatting, and `bun check` for typechecking. Do not use Prettier. The TypeScript compiler package is not required: Bun includes its checker and standard library declarations.
+Development requires **Bun >=1.4.3** (verified with `1.4.3+c6da4a4d3` and, for the acceptance run, `1.4.4`). Use `oxlint` for linting, `oxfmt` for formatting, and `bun check` for typechecking. Do not use Prettier. The TypeScript compiler package is not required: Bun includes its checker and standard library declarations.
 
 ```bash
 bun run lint
@@ -181,14 +191,17 @@ bun run typecheck
 bun test tests/effort-policy.test.ts tests/tier-policy.test.ts
 bun test tests/main-routing.test.ts tests/skill-matching.test.ts
 bun run test:e2e
+bun test tests/package-acceptance.test.ts
 bun test
 ```
+
+`tests/package-acceptance.test.ts` packs the tarball, installs it into a throwaway consumer project without the host packages and drives the actual Pi CLI against it. `bun test tests/worker-routing-cli.test.ts` repeats the pack-and-install path with a real executor child for direct, async, cancellation and junior scenarios. The full suite takes several minutes.
 
 Use `bun run fmt` to apply formatting. Linting is read-only (`--deny-warnings`); no unsafe autofix or disabled rule categories are used. `bun check` honors `tsconfig.json` and never emits build files.
 
 The CLI suite installs the local package into a temporary agent directory and starts the **actual official Pi CLI** in RPC mode under Bun. Local deterministic System One and OpenAI-compatible HTTP fixtures capture payloads, dispatched model/effort, real tool continuations, deadlines, cancellation, faults, retries and lifecycle operations. It uses no paid APIs or real credentials and changes no user/global settings. Pure-policy tests are not described as E2E.
 
-See the [design-pack matrix](docs/testing/ticket-05-matrix.md), [design-pack evidence](docs/testing/ticket-05-validation.md), [strategy/quality matrix](docs/testing/ticket-04-matrix.md), [strategy/quality evidence](docs/testing/ticket-04-validation.md), [skill matching matrix](docs/testing/ticket-03-matrix.md), [skill matching evidence](docs/testing/ticket-03-validation.md), [effort AC-to-test matrix](docs/testing/ticket-01-matrix.md), [historical main-routing matrix](docs/testing/ticket-02-matrix.md), [historical main-routing evidence](docs/testing/ticket-02-validation.md), [compatibility evidence](docs/testing/ticket-01-validation.md), and [MIT attribution](NOTICE.md). Local fixtures verify host behavior, not hosted Jev availability, real-provider compatibility or routing quality.
+See the [design-pack matrix](docs/testing/ticket-05-matrix.md), [design-pack evidence](docs/testing/ticket-05-validation.md), [strategy/quality matrix](docs/testing/ticket-04-matrix.md), [strategy/quality evidence](docs/testing/ticket-04-validation.md), [skill matching matrix](docs/testing/ticket-03-matrix.md), [skill matching evidence](docs/testing/ticket-03-validation.md), [effort AC-to-test matrix](docs/testing/ticket-01-matrix.md), [historical main-routing matrix](docs/testing/ticket-02-matrix.md), [historical main-routing evidence](docs/testing/ticket-02-validation.md), [compatibility evidence](docs/testing/ticket-01-validation.md), [acceptance matrix](docs/testing/ticket-11-matrix.md), [acceptance validation](docs/testing/ticket-11-validation.md) and [MIT attribution](NOTICE.md). Local fixtures verify host behavior, not hosted Jev availability, real-provider compatibility or routing quality.
 
 ## Configure custom slots and junior-lead
 
@@ -218,3 +231,34 @@ Public names including `fast`, `balanced`, `deep` remain legal. Classifier keys 
 In `junior-lead`, `jev-pilot:junior` uses the explicitly configured junior slot, or the **first configured slot** when junior is omitted. No slots/noneligible mode retains the source's balanced specialized mapping, not a health-triggered fallback. The selected slot must resolve and authenticate; no arbitrary replacement worker is invented. Like pinned Jev's specialized branch, the named junior does not issue an ordinary worker classification and retains executor/default thinking; actual provider receipts determine its effective setting. The package registers its source-backed junior prompt/tools through the **installed fork executor's public owner event**; merely depending on that package does not activate its executor. Missing executor does not break main-only startup but blocks a requested configured junior actionably. Name collisions are errors, never overwrites of user agents. Repeated calls reuse the owned handle; session exit/reload disposes it. The junior definition declares the mandatory helper through public per-agent `requiredExtensions`; an effective ceiling denying it rejects the launch before junior provider activity instead of silently removing the bound. Ordinary siblings do not acquire this requirement. The upstream `maxTurns: 40` is enforced through a junior-only Pi extension (including direct, async and workflow-inner launches), not a timeout/tool budget or an unsupported runtime-definition field. One assistant agent turn is reserved at public `turn_start`, before generation; errors/cancellation consume that reservation, multiple tools do not consume extra turns, and a denied synthetic abort consumes none. A natural answer at turn 40 may complete; otherwise the child stops with an explicit limit error before further provider/tool activity. Session custom entries preserve the owned budget across retained resume, reload and compaction; a fresh independent child session starts a new budget. Partial output and tool history remain in the child session/transcript; abort telemetry can include a synthetic error turn beyond the 40 reserved turns. The executor may still advertise the failed run as resumable, but resuming that retained session grants no extra turns. This public Pi adaptation does not claim equivalence to unavailable upstream runtime counting/termination internals.
 
 Eligible strategy questions additionally offer `junior`; advice requires confidence .6, raw tier other than deep and risk at most .5. The lead receives the configured junior target, a self-contained brief recommendation and diff-review guidance. Workflow-script model selection remains **advice**, naming eligible custom models for permitted bulk work, balanced for specified implementation and the workflow default for judgment. No automatic dispatch, universal inner-launch interception, review authority, extra roles/tiers, external reviewers, health/failover or broad live controls are introduced.
+
+## Compatibility and approved host differences
+
+Tested stack, all local and deterministic:
+
+| Component                                       | Tested version                                                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Official Pi (`@earendil-works/pi-coding-agent`) | 1.4.0 (`@earendil-works/pi-ai` 1.4.0); wildcard peer ranges are not a compatibility promise                        |
+| Execution package (`pi-subagents` fork)         | commit `5f8adccb235f1a45858c84b5110c105108947de2`, tree `7201b00488f688479241a4e44be9b42e6a403a0e`, label `0.81.0` |
+| Bun                                             | >=1.4.3; verified 1.4.4 for the acceptance run                                                                     |
+| Upstream behavior                               | Jev Pilot 0.12.1 at `5d27135b34edf81b40c0bf1df01ae401f6b72ea7`                                                     |
+
+Upgrading Pi or the executor requires revalidating the version-tested seams named in this document: originating-input identity on user messages, required-child-extension ownership and the executor's public model/effort contract. Pi-Bolt is not supported or tested.
+
+**Qualified mappings.** Worker tiers (`jevPilot.tiers.fast|balanced|deep`) and custom slots take exact `provider/model` identities that must resolve to an authenticated physical Pi registry model; nothing is guessed from similar names and no health probe is made. **System One** is configured only by `JEV_SYSTEM_ONE_URL`, `JEV_SYSTEM_ONE_API_KEY` (or `TYPESAFE_API_KEY`), `JEV_SYSTEM_ONE_MODEL` and `JEV_TIMEOUT_MS`; see [Install and configure](#install-and-configure) and [Know what leaves the device](#know-what-leaves-the-device) for the privacy boundary.
+
+**Commands.** The package registers one command, `/jev`: `status`, `report`, `report reset`, `tune`, `tune apply`, `tune reset`. Anything else prints usage. None makes a classifier or model request.
+
+**Workflow advice limits.** Strategy, quality, design and workflow-script model-selection text is advice. Delegation restrictions from the user or project keep authority, workflow-script inner launches are not intercepted, and no review gate is enforced. The classifier's output is a signal, not a quality guarantee.
+
+**Approved differences from upstream.** Automatic main-model routing is removed (the Pi-selected physical model is never replaced); effort levels are clamped to the model's supported levels and shown as requested → effective; a classifier deadline aborts the HTTP request and explicit cancellation starts no fallback generation; initial worker balanced default; risk above .7 forces deep even over a custom slot; skills use Pi's resource catalog and directory convention rather than the Claude Skill tool or path substitutions, and Pi's catalog is not suppressed; the Claude-specific high-effort/Fable tail of loop advice is omitted; the junior `maxTurns: 40` bound is enforced by a Pi extension; and `jev-pilot:codex-review` / `jev-pilot:opencode-review` are reserved agent names that only receive the configured fast tier **when a user-supplied agent with that name is launched**. The package registers no such agent and never starts an external review CLI.
+
+**Excluded and inactive.** Mid-turn effort escalation, external CLI reviewers and the `second-opinion`/`quality` crew modes, proactive worker health checks and provider failover, the pet, broad live controls and session statistics, automatic benchmark or cost ranking, execution profiles and extra reviewer/coder roles are not implemented, and their upstream commands print usage. Unlicensed benchmark research datasets are not bundled: the tarball excludes `docs/research`, and `docs/research/data/` is ignored by version control.
+
+**Provenance.** The code adapts the MIT-licensed upstream; [LICENSE](LICENSE) preserves its notice and [NOTICE.md](NOTICE.md) names the pinned commit and the adapted portions.
+
+## Acceptance coverage and verification limits
+
+[The acceptance matrix](docs/testing/ticket-11-matrix.md) maps each parent acceptance criterion (AC-01 … AC-28) to its tests and says which kind of evidence it is: **deterministic host E2E** (actual official Pi CLI with local System One and provider fixtures, packed-artifact installs and real executor children), pure-policy parity tests (not called E2E), static review, or **not verified**. [The validation record](docs/testing/ticket-11-validation.md) lists commands and results.
+
+Not verified, and not claimed: any live-provider or hosted System One run (no credentials or paid requests were used; optional live smokes remain a user-run check with their own cost boundary), Pi versions other than 1.4.0, Pi-Bolt, screen-reader/RTL/light-theme rendering, classification quality or latency of the hosted Jev service, and any release or remote repository.
