@@ -1,7 +1,7 @@
 // Effort and risk questions adapted from pinned Jev Pilot; see NOTICE.md.
 import { DESIGN_QUESTION, readDesign } from "./design-policy.ts";
 import { EFFORT_ORDER, type EffortDecision } from "./effort-policy.ts";
-import { TIER_ORDER, type Tier } from "./tier-policy.ts";
+import { ORDINARY_TIERS, TIER_ORDER, type Tier } from "./tier-policy.ts";
 import { effectiveTunables } from "./tuning.ts";
 import type { Slot } from "./crew-config.ts";
 import { slotKey } from "./crew-policy.ts";
@@ -17,6 +17,8 @@ export interface Decision extends EffortDecision, QualityReads, StrategyRead {
   tier?: Tier;
   slot?: string;
   confidence?: number | null;
+  /** Valid expert_needed answer, or null when asked and missing or invalid. */
+  expertNeeded?: number | null;
 }
 export interface DecisionQuestions {
   tier: boolean;
@@ -24,6 +26,8 @@ export interface DecisionQuestions {
   quality?: boolean;
   strategy?: boolean;
   design?: boolean;
+  /** Availability snapshot: configured tiers offered and accepted. Omitted means every non-expert tier. */
+  tiers?: Tier[];
   slots?: Slot[];
   junior?: boolean;
 }
@@ -160,16 +164,44 @@ function readDecision(value: unknown): EffortDecision | null {
   };
 }
 
+const tierCriteria = {
+  fast: "Haiku. Choose for read-only lookups where a mistake is cheap to spot: search or list files, find where something is defined, read files, logs or test output and report what is there, run a command and report the result. Nothing is written or changed.",
+  balanced:
+    "Sonnet. Choose for read-only work that needs some understanding (summarize or explain code, research across many files, review a diff and report the findings), and for code changes with a clear spec and a way to check the result: the brief says what to change and a test, build or type check shows it works, such as a bug fix whose cause is known, a feature to a written spec, tests for existing code, or a scoped refactor.",
+  deep: "Opus. Choose for work that needs careful judgment or runs long: design, a change whose spec is open or that nothing can check, a bug whose cause is unknown, long multi-step work across many components, security, data migrations, production or money.",
+};
+
+/** Sent only when expert is configured: deep narrows to ordinary difficult judgment. */
+const deepCriterionWithExpert =
+  "Opus. Choose for ordinary difficult engineering judgment or work that runs long: design with established patterns, a change whose spec is open or that nothing can check, a bug whose cause is unknown, long multi-step work across many components, security, data migrations, production or money. A long task or a sensitive topic does not make work expert work.";
+const expertCriterion =
+  "Rare. Choose only for exceptionally difficult architectural or advisory reasoning that resolves a specific unresolved technical decision with tightly interacting constraints or conflicting evidence, where the expected result is a reusable diagnosis, decision or plan. Ordinary design, review, implementation, long tasks and security or production labels are not expert work; an agent's title grants no eligibility.";
+
 const tierQuestion = {
   type: "choice",
   instructions: "Which is the cheapest tier that can complete this coding task well?",
+};
+
+/** Fixed rubric, sent only when expert is configured; carries no per-invocation advice. */
+const expertNeededQuestion = {
+  type: "noul",
+  instructions:
+    "Does this task require exceptional architectural or advisory reasoning beyond the normal deep tier to resolve a specific unresolved technical decision involving tightly interacting constraints or conflicting evidence? Judge the work actually requested and the supplied evidence, not the agent's title, task length, or topic importance.",
   criteria: {
-    fast: "Haiku. Choose for read-only lookups where a mistake is cheap to spot: search or list files, find where something is defined, read files, logs or test output and report what is there, run a command and report the result. Nothing is written or changed.",
-    balanced:
-      "Sonnet. Choose for read-only work that needs some understanding (summarize or explain code, research across many files, review a diff and report the findings), and for code changes with a clear spec and a way to check the result: the brief says what to change and a test, build or type check shows it works, such as a bug fix whose cause is known, a feature to a written spec, tests for existing code, or a scoped refactor.",
-    deep: "Opus. Choose for work that needs careful judgment or runs long: design, a change whose spec is open or that nothing can check, a bug whose cause is unknown, long multi-step work across many components, security, data migrations, production or money.",
+    true: "A concrete, consequential technical decision remains genuinely unresolved despite adequate constraints and evidence, and an ordinary deep-tier approach would materially fail to settle it: strongly coupled trade-offs, conflicting cross-subsystem evidence, or a blocker that resisted distinct, evidence-based investigations. A reusable decision, diagnosis or plan is the requested outcome.",
+    false:
+      "Routine architecture explanation or design using known patterns; ordinary review; implementing a settled plan; collecting evidence; formatting or saving Markdown; a long task; a security or production label; missing requirements; or lack of evidence. Being difficult, high effort or high risk is not enough.",
   },
 };
+
+/** One list drives both the request criteria and the accepted response choices. */
+function tierChoices(enabled: DecisionQuestions): string[] {
+  const tiers = enabled.tiers ?? ORDINARY_TIERS;
+  return [
+    ...TIER_ORDER.filter((tier) => tiers.includes(tier)),
+    ...(enabled.slots ?? []).map((slot) => slotKey(slot.name)),
+  ];
+}
 
 function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | null {
   const answers = object(object(value)?.answers);
@@ -181,12 +213,10 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
     ? readDecision(value)
     : { effort: null, effortConfidence: null, risky: risky as number | null };
   if (!decision) return null;
-  if (enabled.tier || enabled.strategy) {
+  const choices = tierChoices(enabled);
+  if ((enabled.tier || enabled.strategy) && choices.length) {
     const tier = object(answers?.tier);
     const slot = enabled.slots?.find((candidate) => slotKey(candidate.name) === tier?.choice);
-    const choices = enabled.slots?.length
-      ? ["balanced", "deep", ...enabled.slots.map((candidate) => slotKey(candidate.name))]
-      : [...TIER_ORDER];
     if (!tier || !choices.includes(tier.choice as string)) return null;
     if (tier.confidence !== undefined && !probability(tier.confidence)) return null;
     const distribution = tier.probabilities === undefined ? null : object(tier.probabilities);
@@ -205,6 +235,11 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
     )
       return null;
     decision.tier = slot ? "fast" : (tier.choice as Tier);
+    if (enabled.tier && enabled.tiers?.includes("expert")) {
+      const expert = object(answers?.expert_needed);
+      const needed = expert?.noul ?? expert?.probability;
+      decision.expertNeeded = probability(needed) ? needed : null;
+    }
     if (slot) decision.slot = slot.name;
     decision.confidence =
       (tier.confidence as number | undefined) ??
@@ -271,26 +306,34 @@ export async function classify(
     !Object.keys(additionalQuestions).length
   )
     throw new Error("No applicable Jev questions.");
+  const expertAsked = !!enabled.tier && !!enabled.tiers?.includes("expert");
   const asked = {
-    ...(enabled.tier || enabled.strategy
+    ...((enabled.tier || enabled.strategy) && tierChoices(enabled).length
       ? {
           tier: {
             ...tierQuestion,
-            criteria: enabled.slots?.length
-              ? {
-                  balanced: tierQuestion.criteria.balanced,
-                  deep: tierQuestion.criteria.deep,
-                  ...Object.fromEntries(
-                    enabled.slots.map((slot) => [
-                      slotKey(slot.name),
-                      `${slot.model} (a custom model). ${slot.when}`,
-                    ]),
-                  ),
-                }
-              : tierQuestion.criteria,
+            criteria: {
+              ...Object.fromEntries(
+                TIER_ORDER.filter((tier) => tierChoices(enabled).includes(tier)).map((tier) => [
+                  tier,
+                  tier === "expert"
+                    ? expertCriterion
+                    : tier === "deep" && expertAsked
+                      ? deepCriterionWithExpert
+                      : tierCriteria[tier],
+                ]),
+              ),
+              ...Object.fromEntries(
+                (enabled.slots ?? []).map((slot) => [
+                  slotKey(slot.name),
+                  `${slot.model} (a custom model). ${slot.when}`,
+                ]),
+              ),
+            },
           },
         }
       : {}),
+    ...(expertAsked ? { expert_needed: expertNeededQuestion } : {}),
     ...(enabled.strategy
       ? {
           strategy: {
@@ -358,6 +401,7 @@ export async function classify(
         ? (readAnswers(value, {
             tier: false,
             effort: false,
+            tiers: enabled.tiers,
             strategy: enabled.strategy,
             quality: enabled.quality,
             junior: enabled.junior,
