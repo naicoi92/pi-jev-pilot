@@ -20,7 +20,7 @@ afterEach(async () => {
   for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
   Object.assign(process.env, saved);
 });
-async function fixture(defaultContext = "fresh") {
+async function fixture(defaultContext = "fresh", withLive = true) {
   const directory = await mkdtemp(join(tmpdir(), "pi-jev-worker-unit-"));
   const agent = join(directory, "agent");
   await mkdir(join(agent, "agents"), { recursive: true });
@@ -108,7 +108,11 @@ async function fixture(defaultContext = "fresh") {
   const running: number[] = [];
   const live = new LiveStatusLine();
   live.attach(ctx.ui);
-  registerWorkerAdapter(pi as unknown as ExtensionAPI, (count) => running.push(count), live);
+  registerWorkerAdapter(
+    pi as unknown as ExtensionAPI,
+    (count) => running.push(count),
+    withLive ? live : undefined,
+  );
   const fire = async (name: string, event: unknown = {}) => {
     let result;
     for (const handler of hooks.get(name) ?? []) result = await handler(event, ctx);
@@ -446,4 +450,90 @@ test("worker-status adapter joins applied assessment immediately and waits actua
   expect(f.visible().trim()).toBe("Jev · 1 worker completed · medium");
   expect(f.running.at(-1)).toBe(0);
   expect(f.visible().split("\n")).toHaveLength(1);
+});
+
+test("worker presentation acknowledges original event only after trusted summary, then disposes by generation", async () => {
+  const { issueWorkerPresentationBinding, isWorkerPresentationDelegated } =
+    await import("../node_modules/pi-subagents/src/shared/worker-presentation.ts");
+  const f = await fixture();
+  const sessionId = f.ctx.sessionManager.getSessionFile()!;
+  await f.call({ agent: "worker", task: brief }, "bound");
+  const prepared = await prepareFixtureWorker(f.ctx, { agent: "worker", task: brief });
+  if (prepared.kind !== "committed") throw new Error("No committed fixture receipt");
+  const event = Object.freeze({
+    version: 1 as const,
+    sessionId,
+    toolCallId: "bound",
+    runId: "leaf",
+    logicalLaunchId: prepared.receipt.logicalLaunchId,
+    receipt: prepared.receipt,
+  });
+  issueWorkerPresentationBinding(event);
+  f.pi.events.emit("subagent:worker-decision-accepted", event);
+  expect(f.visible()).toContain("1 worker accepted");
+  expect(isWorkerPresentationDelegated(sessionId, "leaf")).toBe(true);
+  await f.fire("session_before_tree");
+  expect(isWorkerPresentationDelegated(sessionId, "leaf")).toBe(false);
+  await f.fire("session_start");
+  f.pi.events.emit("subagent:worker-decision-accepted", event);
+  expect(isWorkerPresentationDelegated(sessionId, "leaf")).toBe(false);
+  await f.fire("session_shutdown");
+  const { registerWorkerPresentation } = await import("pi-subagents/worker-presentation");
+  const replacement = registerWorkerPresentation({ sessionId });
+  await f.fire("session_shutdown");
+  expect(() => registerWorkerPresentation({ sessionId })).toThrow("already registered");
+  replacement.dispose();
+});
+
+test("worker presentation false acknowledgement and duplicate owner retain native fallback", async () => {
+  const { registerWorkerPresentation } = await import("pi-subagents/worker-presentation");
+  const { isWorkerPresentationDelegated } =
+    await import("../node_modules/pi-subagents/src/shared/worker-presentation.ts");
+  const f = await fixture();
+  const sessionId = f.ctx.sessionManager.getSessionFile()!;
+  await f.call({ agent: "worker", task: brief }, "bound");
+  const prepared = await prepareFixtureWorker(f.ctx, { agent: "worker", task: brief });
+  if (prepared.kind !== "committed") throw new Error("No committed fixture receipt");
+  // A reconstructed/unissued event can update trusted local details, never hide native surfaces.
+  f.pi.events.emit("subagent:worker-decision-accepted", {
+    version: 1,
+    sessionId,
+    toolCallId: "bound",
+    runId: "unissued",
+    logicalLaunchId: prepared.receipt.logicalLaunchId,
+    receipt: prepared.receipt,
+  });
+  expect(f.visible()).toContain("1 worker accepted");
+  expect(isWorkerPresentationDelegated(sessionId, "unissued")).toBe(false);
+  await f.fire("session_shutdown");
+  const other = registerWorkerPresentation({ sessionId });
+  try {
+    await f.fire("session_start");
+    await f.call({ agent: "worker", task: brief }, "new");
+    expect(isWorkerPresentationDelegated(sessionId, "unissued")).toBe(false);
+  } finally {
+    await f.fire("session_shutdown");
+    other.dispose();
+  }
+});
+
+test("worker presentation without live summary never acknowledges native leaf", async () => {
+  const { issueWorkerPresentationBinding, isWorkerPresentationDelegated } =
+    await import("../node_modules/pi-subagents/src/shared/worker-presentation.ts");
+  const f = await fixture("fresh", false);
+  await f.call({ agent: "worker", task: brief }, "bound");
+  const prepared = await prepareFixtureWorker(f.ctx, { agent: "worker", task: brief });
+  if (prepared.kind !== "committed") throw new Error("No committed fixture receipt");
+  const sessionId = f.ctx.sessionManager.getSessionFile()!;
+  const event = Object.freeze({
+    version: 1 as const,
+    sessionId,
+    toolCallId: "bound",
+    runId: "leaf",
+    logicalLaunchId: prepared.receipt.logicalLaunchId,
+    receipt: prepared.receipt,
+  });
+  issueWorkerPresentationBinding(event);
+  f.pi.events.emit("subagent:worker-decision-accepted", event);
+  expect(isWorkerPresentationDelegated(sessionId, "leaf")).toBe(false);
 });

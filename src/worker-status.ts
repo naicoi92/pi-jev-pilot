@@ -3,6 +3,7 @@ import type {
   WorkerDecisionRequest,
   SubagentWorkerDecisionAcceptedEvent,
 } from "pi-subagents/worker-decision-authority";
+import type { SubagentAttachedForegroundCompleteEvent } from "pi-subagents/shared-types";
 import { safeAgent, safeIdentity } from "./decision-visibility.ts";
 import type { Tier } from "./tier-policy.ts";
 
@@ -96,7 +97,7 @@ export class WorkerStatus {
     worker.receipt = Object.freeze({ ...receipt });
   }
 
-  accepted(value: unknown): void {
+  accepted(value: unknown): value is SubagentWorkerDecisionAcceptedEvent {
     const event = record(value);
     const receipt = record(event?.receipt);
     if (
@@ -110,7 +111,7 @@ export class WorkerStatus {
       !event.runId ||
       !receipt
     )
-      return;
+      return false;
     const worker = this.workers.get(event.logicalLaunchId);
     const own = worker?.receipt;
     if (
@@ -120,8 +121,8 @@ export class WorkerStatus {
       own.ownerGeneration !== this.generation ||
       Object.entries(own).some(([key, entry]) => receipt[key] !== entry)
     )
-      return;
-    if (receipt.logicalLaunchId !== event.logicalLaunchId) return;
+      return false;
+    if (receipt.logicalLaunchId !== event.logicalLaunchId) return false;
     worker.binding = Object.freeze({
       version: 1,
       sessionId: this.sessionId!,
@@ -142,6 +143,7 @@ export class WorkerStatus {
     this.earlyTerminals.delete(worker.binding.runId);
     if (started) this.child(started);
     if (ended) this.complete(ended);
+    return true;
   }
 
   child(value: unknown): void {
@@ -240,6 +242,35 @@ export class WorkerStatus {
   complete(value: unknown): void {
     const event = record(value);
     if (!event || (event.sessionId !== undefined && event.sessionId !== this.sessionId)) return;
+    if (event.attached === true) {
+      const attached = event as unknown as SubagentAttachedForegroundCompleteEvent;
+      const worker = [...this.workers.values()].find((entry) => {
+        const binding = entry.binding;
+        return (
+          binding?.runId === attached.runId &&
+          binding.sessionId === attached.sessionId &&
+          binding.toolCallId === attached.toolCallId &&
+          binding.parentWorkflowRunId === attached.parentWorkflowRunId &&
+          binding.workflowKey === attached.workflowKey
+        );
+      });
+      if (
+        attached.version !== 1 ||
+        attached.source !== "foreground" ||
+        attached.mode !== "single" ||
+        !attached.parentWorkflowRunId ||
+        !attached.workflowKey ||
+        !worker?.status ||
+        TERMINAL.has(worker.status)
+      )
+        return;
+      const terminal = this.terminalStatus(attached.state, attached.success);
+      if (terminal) {
+        this.terminal(worker, terminal);
+        this.notify();
+      }
+      return;
+    }
     this.workflow(event.workflowChildren);
     const status = this.terminalStatus(event.state, event.success);
     this.notify();
@@ -288,6 +319,7 @@ export class WorkerStatus {
         [
           worker.role ?? "Worker",
           worker.tier,
+          worker.receipt?.reason,
           safeIdentity(worker.receipt?.model),
           worker.receipt?.thinking,
           worker.status,

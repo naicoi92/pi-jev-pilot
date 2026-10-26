@@ -3,6 +3,10 @@ import {
   registerRequiredChildExtensions,
   type RequiredChildExtensionRegistration,
 } from "pi-subagents/required-child-extensions";
+import {
+  registerWorkerPresentation,
+  type WorkerPresentationRegistration,
+} from "pi-subagents/worker-presentation";
 import { fileURLToPath } from "node:url";
 import { effortEnabled } from "./system-one.ts";
 import { guidanceEnabled } from "./guidance-policy.ts";
@@ -37,6 +41,12 @@ export function registerWorkerAdapter(
   });
   registerWorkerStatusRenderer(pi, status);
   const visibility = new WorkerVisibility((row) => appendDecisionRow(pi, row));
+  let presentation: WorkerPresentationRegistration | undefined;
+  const disposePresentation = () => {
+    const captured = presentation;
+    presentation = undefined;
+    captured?.dispose();
+  };
   let childExtension: RequiredChildExtensionRegistration | undefined;
   const deliverChildExtension = (_event: unknown, ctx: ExtensionContext) => {
     childExtension?.dispose();
@@ -55,6 +65,16 @@ export function registerWorkerAdapter(
     visibility.restore(ctx.sessionManager.getBranch());
     childExtension?.dispose();
     childExtension = undefined;
+    disposePresentation();
+    if (enabled()) {
+      try {
+        presentation = registerWorkerPresentation({
+          sessionId: ctx.sessionManager.getSessionFile() ?? ctx.sessionManager.getSessionId(),
+        });
+      } catch {
+        // Presentation conflict must retain native fallback, never block execution.
+      }
+    }
   });
   const authority = registerWorkerAuthorityLifecycle(
     pi,
@@ -72,6 +92,7 @@ export function registerWorkerAdapter(
       params: { id },
     });
   const clear = () => {
+    disposePresentation();
     visibility.clear();
     status.reset();
     allowedLaunches.clear();
@@ -101,7 +122,10 @@ export function registerWorkerAdapter(
   pi.on("session_before_compact", clear);
   pi.on("session_before_tree", clear);
   // Acceptance is logical commitment, never evidence that a child has started.
-  pi.events.on(SUBAGENT_WORKER_DECISION_ACCEPTED_EVENT, (event: unknown) => status.accepted(event));
+  pi.events.on(SUBAGENT_WORKER_DECISION_ACCEPTED_EVENT, (event: unknown) => {
+    // The original executor-issued object is the capability; never reconstruct it.
+    if (status.accepted(event) && live) presentation?.acknowledge(event);
+  });
   pi.events.on("subagent:child-status", (event: unknown) => status.child(event));
   pi.events.on("subagent:foreground-complete", (event: unknown) => status.complete(event));
   pi.events.on("subagent:async-complete", (event: unknown) => {

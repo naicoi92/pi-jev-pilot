@@ -63,7 +63,9 @@ test("worker-status exact assessment receipt supplies details; accepted is not r
   expect(state.summary()).toBeUndefined();
   state.accepted(accepted());
   expect(state.summary()).toEqual({ activity: "1 worker accepted", effort: "low", running: 0 });
-  expect(state.details("call-a")).toEqual(["worker · fast · local/fast · low · accepted"]);
+  expect(state.details("call-a")).toEqual([
+    "worker · fast · assessed · local/fast · low · accepted",
+  ]);
   state.child(child());
   expect(state.summary()).toEqual({ activity: "1 worker running", effort: "low", running: 1 });
   state.complete({ sessionId: "session-a", runId: "run-a", state: "complete" });
@@ -135,7 +137,7 @@ test("worker-status absent tier omitted; bounded terminal history preserves acti
   state.assessing(request());
   state.applied(receipt());
   state.accepted(accepted());
-  expect(state.details("call-a")).toEqual(["worker · local/fast · low · accepted"]);
+  expect(state.details("call-a")).toEqual(["worker · assessed · local/fast · low · accepted"]);
   for (let i = 0; i < 30; i++) {
     const id = `logical-${i}`;
     assess(id);
@@ -164,8 +166,8 @@ test("worker-status workflow siblings join explicit leaf childRunId not root fan
   state.child({ ...child("workflow"), childRunId: "run-b", workflowKey: "b" });
   expect(state.summary()?.running).toBe(1);
   expect(state.details("call-a")).toEqual([
-    "worker · fast · local/fast · low · accepted",
-    "worker · fast · local/fast · high · running",
+    "worker · fast · assessed · local/fast · low · accepted",
+    "worker · fast · assessed · local/fast · high · running",
   ]);
   state.complete({ sessionId: "session-a", runId: "workflow", state: "complete" });
   expect(state.summary()?.running).toBe(1);
@@ -379,4 +381,55 @@ test("P1 empty root error cannot terminalize workflow leaves", () => {
     false,
   );
   expect(state.details("call-a")[0]).toEndWith("running");
+});
+
+test("worker-status acceptance reports readiness only after details and summary stored", () => {
+  const { state, assess } = fixture();
+  assess();
+  expect(state.accepted({ ...accepted(), sessionId: "stale" })).toBe(false);
+  expect(state.accepted(accepted())).toBe(true);
+  expect(state.details("call-a")[0]).toContain("accepted");
+  expect(state.summary()?.activity).toBe("1 worker accepted");
+  expect(state.accepted(accepted())).toBe(false);
+});
+
+test("worker-status typed attached foreground terminal requires exact session/call/root/key/leaf", () => {
+  const { state, assess } = fixture();
+  assess();
+  assess("logical-b");
+  state.accepted({ ...accepted(), parentWorkflowRunId: "workflow", workflowKey: "a" });
+  state.accepted({
+    ...accepted(receipt("logical-b"), "call-a", "run-b"),
+    parentWorkflowRunId: "workflow",
+    workflowKey: "b",
+  });
+  const event = {
+    version: 1,
+    attached: true,
+    source: "foreground",
+    mode: "single",
+    sessionId: "session-a",
+    toolCallId: "call-a",
+    runId: "run-a",
+    parentWorkflowRunId: "workflow",
+    workflowKey: "a",
+    agent: "worker",
+    state: "failed",
+    success: false,
+    timestamp: 1,
+  };
+  for (const mismatch of [
+    { sessionId: "stale" },
+    { toolCallId: "wrong" },
+    { parentWorkflowRunId: "wrong" },
+    { workflowKey: "b" },
+    { version: 2 },
+    { source: "async" },
+  ]) {
+    state.complete({ ...event, ...mismatch });
+    expect(state.details("call-a").every((line) => line.endsWith("accepted"))).toBe(true);
+  }
+  state.complete(event);
+  expect(state.details("call-a")[0]).toEndWith("failed");
+  expect(state.details("call-a")[1]).toEndWith("accepted");
 });

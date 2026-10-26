@@ -1,5 +1,5 @@
 """Bounded Pi-Bolt native lifecycle + standard Ctrl+O proof; loopback transport only."""
-import fcntl, http.server, json, os, pathlib, pty, select, struct, subprocess, sys, termios, threading, time
+import fcntl, http.server, re, json, os, pathlib, pty, select, struct, subprocess, sys, termios, threading, time
 
 repo, binary, evidence = map(pathlib.Path, sys.argv[1:4])
 evidence.mkdir(parents=True, exist_ok=True)
@@ -67,7 +67,7 @@ def pump():
         try: raw.extend(os.read(master, 262144))
         except OSError: pass
     if process.poll() is not None: raise AssertionError('Native process exited before proof')
-def wait(predicate, label, seconds=35):
+def wait(predicate, label, seconds=20):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         pump()
@@ -87,20 +87,70 @@ try:
     wait(lambda: any(r['type'] == 'subagent:worker-decision-accepted' for r in records()), 'trusted acceptance')
     wait(lambda: any(r['type'] == 'subagent:child-status' and r['data']['status'] == 'started' for r in records()), 'actual child start')
     capture('actual-running', '1 worker running · low')
+    def native_visible():
+        active = {}; rendered = {}
+        for r in records():
+            if r['type'] == 'widget': active[r['data']['key']] = r['data']['active']
+            if r['type'] == 'render': rendered[r['data']['key']] = r['data']['lines']
+        return {k: rendered.get(k, []) for k in ['subagent-async','subagent-fleet-status'] if active.get(k)}
+    if not workflow:
+        wait(lambda: not any(any(line.strip() for line in lines) for lines in native_visible().values()), 'acknowledged native leaf rows absent')
+        checks.append({'phase':'native-leaf-rows-absent', 'widgets':native_visible()})
     seen = [r for r in records() if r['type'] == 'render']
     if not foreground:
         assert any('worker accepted' in '\n'.join(r['data']['lines']) for r in seen), 'accepted state not rendered'
     assert not any(r['data']['lines'] for r in records() if r['type'] == 'worker-render' and not r['data']['expanded']), 'debug rows collapsed'
     os.write(master, b'\x0f')
-    wait(lambda: any(r['type'] == 'worker-render' and r['data']['expanded'] and any('summary-worker ·' in line and 'fixture/summary-model · low · running' in line for line in r['data']['lines']) for r in records()), 'Ctrl+O expanded metadata')
+    wait(lambda: any(r['type'] == 'worker-render' and r['data']['expanded'] and any('summary-worker ·' in line and 'assessed · fixture/summary-model · low · running' in line for line in r['data']['lines']) for r in records()), 'Ctrl+O expanded metadata')
     checks.append({'phase': 'expanded', 'details': [r['data'] for r in records() if r['type'] == 'worker-render' and r['data']['expanded']][-1]})
     os.write(master, b'\x0f')
     wait(lambda: [r for r in records() if r['type'] == 'worker-render'][-1]['data']['lines'] == [], 'Ctrl+O collapse')
+    for _ in range(4): pump()
+    default_start = len(raw)
+    if scenario == 'complete-fallback':
+        os.write(master, b'/reload\r')
+        wait(lambda: sum(r['type'] == 'ready' for r in records()) >= 2, 'consumer reload disposal')
+        wait(lambda: any(any('summary-worker' in line for line in lines) for lines in native_visible().values()), 'unacknowledged native running fallback')
+        checks.append({'phase':'reload-native-fallback','widgets':native_visible()})
+        child_end.set()
+        wait(lambda: any(r['type']=='subagent:async-complete' for r in records()), 'fallback native completion')
+        print(json.dumps({'verdict':'PASS','scenario':scenario,'checks':checks}, indent=2))
+        sys.exit(0)
     if outcome == 'cancel': os.write(master, b'/summary-stop\r')
     else: child_end.set()
     terminal = 'cancelled' if outcome == 'cancel' else 'failed' if outcome == 'error' else 'completed'
     capture('terminal-' + terminal, '1 worker ' + terminal + ' · low')
+    if not foreground:
+        wait(lambda: any(r['type']=='native-notification' for r in records()), 'genuine native completion notice')
+        wait(lambda: any(r['type']=='notification-component' for r in records()), 'genuine native notification component')
+    if not workflow:
+        wait(lambda: not any(any(line.strip() for line in lines) for lines in native_visible().values()), 'terminal native leaf rows absent')
+        for _ in range(4): pump()
+        default_bytes = bytes(raw[default_start:])
+        (evidence / 'terminal-default-slice.ansi').write_bytes(default_bytes)
+        plain = re.sub(rb'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)', b'', default_bytes)
+        plain = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b'', plain)
+        assert b'LOCAL_CHILD_ERROR' not in plain and b'async-subagent-runs/' not in plain and b'Async: summary-worker [' not in plain, plain
+        checks.append({'phase':'terminal-default-no-leaf-debug','native':native_visible()})
+        assert not any(r['data']['lines'] for r in records() if r['type']=='notification-component' and not r['data']['expanded']), 'collapsed native notification leaked'
     if foreground:
+        wait(lambda: any(r['type']=='worker-result' and r['data'].get('toolCallId')=='summary-public-call' for r in records()), 'settled public foreground result')
+        wait(lambda: any(r['type']=='settled' for r in records()), 'foreground parent settled')
+    os.write(master, b'\x0f')
+    useful = 'LOCAL_CHILD_ERROR' if outcome == 'error' else 'stopped' if outcome == 'cancel' else 'LOCAL_CHILD_VISIBLE'
+    if not foreground and outcome == 'complete':
+        wait(lambda: any(r['type']=='native-notification' and not r['data']['display'] for r in records()), 'native silent success notice preserved')
+    else:
+        if not foreground:
+            wait(lambda: any(r['data']['expanded'] and useful.lower() in '\n'.join(r['data']['lines']).lower() for r in records() if r['type']=='notification-component'), 'expanded useful native terminal component')
+        wait(lambda: useful.lower().encode() in bytes(raw).lower(), 'Ctrl+O useful native terminal bytes')
+    checks.append({'phase':'expanded-terminal-output', 'useful':useful})
+    (evidence / 'terminal-expanded.ansi').write_bytes(raw)
+    os.write(master, b'\x0f')
+    if foreground:
+        if workflow and outcome == 'error':
+            attached = [r['data'] for r in records() if r['type']=='subagent:foreground-complete' and r['data'].get('attached')]
+            assert len(attached)==1 and attached[0]['workflowKey']=='one' and attached[0]['state']=='failed', attached
         wait(lambda: any(r['type'] == 'worker-result' and r['data'].get('toolCallId') == 'summary-public-call' for r in records()), 'public foreground result')
         completion = [r for r in records() if r['type'] == 'worker-result' and r['data'].get('toolCallId') == 'summary-public-call'][-1]
         assert completion['data']['isError'] == (outcome == 'error'), completion

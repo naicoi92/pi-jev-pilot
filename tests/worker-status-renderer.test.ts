@@ -66,6 +66,7 @@ test("worker-status-renderer live details use role/tier/model/effort/status and 
     logicalLaunchId: "logical",
     ownerGeneration: "generation",
     digest: "a".repeat(64),
+    reason: "assessed",
     model: "local/deep",
     thinking: "high",
   };
@@ -95,7 +96,9 @@ test("worker-status-renderer live details use role/tier/model/effort/status and 
     { fg: (_color: string, text: string) => text } as Theme,
     context,
   );
-  expect(component.render(120)).toEqual(["worker · deep · local/deep · high · accepted"]);
+  expect(component.render(120)).toEqual([
+    "worker · deep · assessed · local/deep · high · accepted",
+  ]);
   status.child({
     type: "subagent.child-status",
     version: 1,

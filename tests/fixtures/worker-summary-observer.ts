@@ -6,6 +6,20 @@ export default function (pi: ExtensionAPI) {
   const emit = (type: string, data: unknown) =>
     appendFileSync(process.env.JEV_STATUS_EVENTS!, JSON.stringify({ type, data }) + "\n");
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
+  pi.on("message_end", async (event, ctx) => {
+    if (event.message.role !== "custom" || event.message.customType !== "subagent-notify") return;
+    emit("native-notification", event.message);
+    // Exercise genuine native component with genuine envelope/details identity. No registration override.
+    const { renderSubagentMessage } =
+      await import("../../node_modules/pi-subagents/src/tui/subagent-messages.ts");
+    for (const expanded of [false, true]) {
+      const component = renderSubagentMessage(event.message, { expanded }, ctx.ui.theme);
+      emit("notification-component", {
+        expanded,
+        lines: component?.render(160).map((line) => line.replace(ansi, "")) ?? [],
+      });
+    }
+  });
   let runId: string | undefined;
   pi.events.on("subagent:worker-decision-accepted", (value: unknown) => {
     if (value && typeof value === "object" && "runId" in value && typeof value.runId === "string")
@@ -53,6 +67,20 @@ export default function (pi: ExtensionAPI) {
             return lines;
           },
           invalidate: () => component.invalidate(),
+        };
+      },
+      renderResult(result, options, theme, context) {
+        const nativeResult = native.renderResult!(result, options, theme, context);
+        return {
+          render(width) {
+            const lines = nativeResult.render(width);
+            emit("worker-result-render", {
+              expanded: options.expanded,
+              lines: lines.map((line) => line.replace(ansi, "")),
+            });
+            return lines;
+          },
+          invalidate: () => nativeResult.invalidate(),
         };
       },
     };
