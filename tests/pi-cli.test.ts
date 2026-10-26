@@ -504,8 +504,8 @@ test("CLI-26g excluded prompt effort does not survive fork or tree restoration",
   await fixture.prompt(
     "Please inspect this independent lengthy task and explain all relevant implementation details carefully",
   );
-  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
-  expect(await lastDecision(fixture)).toMatchObject({ effective: "medium" });
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
+  expect(await lastDecision(fixture)).toMatchObject({ effective: "low" });
   await fixture.command("switch_session", {
     sessionPath: original.sessionFile,
   });
@@ -518,8 +518,8 @@ test("CLI-26g excluded prompt effort does not survive fork or tree restoration",
   await fixture.prompt(
     "Please inspect another independent lengthy task and explain all relevant implementation details carefully",
   );
-  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
-  expect(await lastDecision(fixture)).toMatchObject({ effective: "medium" });
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
+  expect(await lastDecision(fixture)).toMatchObject({ effective: "low" });
 }, 20000);
 
 test("CLI-26h restoring an excluded application preserves manual user thinking", async () => {
@@ -684,7 +684,7 @@ test("CLI-26j included branch decision overrides a re-applied unequal startup va
   await fixture.prompt(
     "Please inspect this independent lengthy task and explain all relevant implementation details carefully",
   );
-  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("high");
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
 }, 20000);
 
 test("CLI-26l excluded owner restores branch baseline despite equal startup thinking", async () => {
@@ -716,8 +716,8 @@ test("CLI-26l excluded owner restores branch baseline despite equal startup thin
     retained: await lastDecision(fixture),
   }).toMatchObject({
     restored: { thinkingLevel: "medium" },
-    providerEffort: "medium",
-    retained: { effective: "medium", decision: { effort: 0, effortConfidence: 0 } },
+    providerEffort: "low",
+    retained: { effective: "low", decision: { effort: 0, effortConfidence: 0 } },
   });
 }, 20000);
 
@@ -773,11 +773,11 @@ for (const gate of ["disabled", "inapplicable"]) {
     const final = (await fixture.command("get_entries")).data as typeof original;
     const currentOwner = final.entries.findLast((entry) => entry.message?.role === "user")!;
     expect(fixture.classifications).toHaveLength(2);
-    expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
+    expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
     expect(await lastDecision(fixture)).toMatchObject({
       ownerEntryId: currentOwner.id,
       outcome: "classified",
-      effective: "medium",
+      effective: "low",
       decision: { effort: 0, effortConfidence: 0 },
     });
     expect(currentOwner.id).not.toBe(owner.id);
@@ -810,7 +810,7 @@ test("CLI-26r later replacement dropping originating identity fails closed acros
   fixture.response = answer("low", 0);
   await fixture.prompt("continue");
   expect(fixture.classifications).toHaveLength(2);
-  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
   expect(await lastDecision(fixture)).toBeUndefined();
   expect(JSON.stringify(fixture.classifications)).not.toContain("jevPilotInputId");
   expect(JSON.stringify(fixture.generations)).not.toContain("jevPilotInputId");
@@ -860,7 +860,7 @@ test("CLI-26k excluded applications are not reassigned to an ineligible later us
   fixture.response = answer("low", 0);
   await fixture.prompt("continue");
   expect(fixture.classifications).toHaveLength(2);
-  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("medium");
+  expect(fixture.generations.at(-1)?.reasoning_effort).toBe("low");
 }, 20000);
 
 test("CLI-26e provider retries preserve effort without new classification", async () => {

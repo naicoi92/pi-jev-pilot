@@ -57,12 +57,20 @@ changes are part of validation.
   no graceful-shutdown acceptance claim.
 - `bun check`: no type errors in 183 files. Focused lint, formatting and
   `git diff --check` passed.
-- Broad `PiFixture` CLI tests were not run: their startup installs a package,
-  outside authorized validation. Straightforward confidence/choice/approval
-  expectations were aligned, but other legacy branch CLI cases still assume that
-  a confidence-zero fresh low assessment retains medium/high. Those assertions
-  need separate review/alignment before broad CLI acceptance; no continuation
-  implementation or ownership contract was restored here.
+- Review follow-up aligned all reviewer-listed fresh confidence-zero CLI assertions
+  in CLI-26g/j/l/p/q/r/k to low. Pre-prompt branch restoration assertions remain
+  unchanged; CLI-26i still expects reused high without a fresh classification.
+  Tuning CLI now expects valid high at confidence .55 before and after stored .6
+  confidence tuning, reload and session changes. Persistence, reset, fresh-window
+  and ledger-isolation assertions remain intact. These map to AE-2; no production
+  continuation or ownership implementation changed.
+- Legacy `PiFixture` CLI tests were **not executed**. Inspection of
+  `tests/fixtures/pi-cli.ts:294–307` confirms unconditional `pi install` during
+  startup; `packageSource` only changes its input, and no supported cached/offline
+  no-install path exists. Changing this seam would alter package-path coverage,
+  so validation uses exact static assertion audit plus the focused 159-test suite
+  and existing native 4/4 worktree replay evidence. This is an execution limitation,
+  not deferred assertion alignment or a claim of legacy CLI acceptance.
 
 No full suite, hosted inference, installation, push or personal settings changes.
 Independent review remains required before integration. Spinner remains unresolved.

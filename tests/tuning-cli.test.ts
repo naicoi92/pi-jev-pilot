@@ -72,7 +72,7 @@ const exists = (path: string) =>
     () => true,
     () => false,
   );
-/** Base bar .5 admits a high request at confidence .55; a learned .6 does not. */
+/** AE-2: valid high at confidence .55 applies regardless of stored confidence bars. */
 const BORDERLINE = () => answer("high", 0.55);
 
 test("AC-25 TUNE-CLI-25-propose-only: 20 fresh turns produce a proposal, never a change", async () => {
@@ -99,13 +99,13 @@ test("AC-25 TUNE-CLI-25-too-few: 19 fresh turns suggest nothing and apply change
   expect(f.generations).toHaveLength(0);
 });
 
-test("AC-25 TUNE-CLI-25-apply-reset: apply changes the next decision, reset restores it, ledger untouched", async () => {
+test("AC-25 TUNE-CLI-25-apply-reset: stored confidence tuning cannot veto effort, ledger untouched", async () => {
   const f = await (fixture = new PiFixture()).start();
   await seedLedger(f, 20);
   const task = "Please review the complete patch with particular care for failure modes";
   f.response = BORDERLINE();
   await f.prompt(task);
-  expect(await thinking(f)).toBe("high"); // base bar .5
+  expect(await thinking(f)).toBe("high"); // valid assessment; confidence diagnostic
   await f.command("set_thinking_level", { level: "medium" });
 
   const applyText = await say(f, "/jev tune apply");
@@ -121,7 +121,7 @@ test("AC-25 TUNE-CLI-25-apply-reset: apply changes the next decision, reset rest
   expect(await readFile(tuningFile(f), "utf8")).toBe(afterApply);
 
   await f.prompt(task);
-  expect(await thinking(f)).toBe("medium"); // learned bar .6 rejects confidence .55
+  expect(await thinking(f)).toBe("high"); // stored bar .6 cannot veto valid high
   const ledgerBeforeReset = await readFile(ledgerFile(f), "utf8");
 
   const resetText = await say(f, "/jev tune reset");
@@ -130,11 +130,11 @@ test("AC-25 TUNE-CLI-25-apply-reset: apply changes the next decision, reset rest
   expect(JSON.parse(await readFile(tuningFile(f), "utf8"))).toMatchObject({ values: {} });
   expect(await readFile(ledgerFile(f), "utf8")).toBe(ledgerBeforeReset);
   await f.prompt(task);
-  expect(await thinking(f)).toBe("high"); // base bar again
+  expect(await thinking(f)).toBe("high"); // reset preserves authoritative selection
   expect((await ledgerRows(f)).length).toBe(23);
 }, 40000);
 
-test("AC-24 TUNE-CLI-24-ledger-reset: ledger reset leaves learned tuning and its effect in place", async () => {
+test("AC-24 TUNE-CLI-24-ledger-reset: ledger reset preserves stored tuning without an effort veto", async () => {
   const f = await (fixture = new PiFixture()).start();
   await seedLedger(f, 20);
   await say(f, "/jev tune apply");
@@ -145,7 +145,7 @@ test("AC-24 TUNE-CLI-24-ledger-reset: ledger reset leaves learned tuning and its
   expect(await say(f, "/jev tune")).toContain("minHighConfidence        0.6   (base: 0.5)");
   f.response = BORDERLINE();
   await f.prompt("Please review the complete patch with particular care for failure modes");
-  expect(await thinking(f)).toBe("medium");
+  expect(await thinking(f)).toBe("high");
 }, 20000);
 
 test("AC-26 TUNE-CLI-26-reload-and-session: learned tuning survives reload and a new session", async () => {
@@ -157,10 +157,10 @@ test("AC-26 TUNE-CLI-26-reload-and-session: learned tuning survives reload and a
   f.response = BORDERLINE();
   const task = "Please review the complete patch with particular care for failure modes";
   await f.prompt(task);
-  expect(await thinking(f)).toBe("medium");
+  expect(await thinking(f)).toBe("high");
   await f.command("new_session");
   await f.prompt(task);
-  expect(await thinking(f)).toBe("medium");
+  expect(await thinking(f)).toBe("high");
   expect(JSON.parse(await readFile(tuningFile(f), "utf8"))).toMatchObject({
     values: { minHighConfidence: 0.6 },
   });
