@@ -159,74 +159,19 @@ async function fixture(defaultContext = "fresh") {
 
 const brief = "PRIVATE_TASK: Implement specified change with tests";
 
-test("UNIT-WV-retained WV-02 omitted target uses executor preflight, not parent policy baseline", async () => {
+// AC-4 selection/classifier coverage moved to public receipts in worker-adapter.test.ts.
+// Adapter owns pending/result presentation only, never predicts executor authority decisions.
+test("UNIT-WV-pending WV-02 leaves caller envelope intact until executor receipt", async () => {
   const f = await fixture();
-  await writeFile(
-    join(f.ctx.cwd, "agent/agents/worker.md"),
-    "---\nname: worker\ndescription: Worker\nmodel: local/deep\nthinking: high\n---\nDo work.\n",
-  );
-  f.response({
-    answers: {
-      tier: { choice: "fast", confidence: 0.95 },
-      effort: { choice: "medium", confidence: 0.95 },
-      risky: { noul: 0 },
-    },
-  });
-  const input: Record<string, unknown> = { agent: "worker", task: brief };
-  await f.call(input);
-  expect(input.model).toBe("local/deep:medium");
-  expect(f.visible()).toContain("Jev plan · kept local/deep · effort medium · medium → medium");
-  expect(f.visible()).not.toContain("local/fast");
-  expect(f.requests()).toBe(1);
-});
-
-test("UNIT-WV-kept WV-02 rejected decision reports caller target with executor effort", async () => {
-  const f = await fixture();
-  f.response({
-    answers: {
-      tier: { choice: "fast", confidence: 0.1 },
-      effort: { choice: "medium", confidence: 0.1 },
-      risky: { noul: 0 },
-    },
-  });
-  const input = { agent: "worker", task: brief, model: "local/deep:high" };
+  const input = { agent: "worker", model: "local/deep:high", task: brief };
   await f.call(input);
   expect(input.model).toBe("local/deep:high");
-  expect(f.visible()).toContain("Jev plan · kept local/deep · effort high · no applicable change");
-  await f.fire("agent_settled", { aborted: false });
-  expect(f.visible()).toContain("kept local/deep");
+  expect(f.visible()).toContain("executor authority · decision pending · launch unconfirmed");
+  expect(f.requests()).toBe(0);
 });
 
-test("UNIT-WV-unknown WV-02 unresolved runtime default never becomes parent target", async () => {
+test("UNIT-WV-skips WV-04 workflow disabled and management stay executor-owned", async () => {
   const f = await fixture();
-  f.response({
-    answers: {
-      tier: { choice: "fast", confidence: 0.95 },
-      effort: { choice: "medium", confidence: 0.1 },
-      risky: { noul: 0 },
-    },
-  });
-  await f.call({ agent: "runtime-only", task: brief });
-  expect(f.visible()).toContain("kept executor default/unknown · effort executor-owned/unknown");
-  expect(f.visible()).not.toContain("local/fast");
-});
-
-test("UNIT-WV-fail-open WV-03 failed classification leaves envelope intact", async () => {
-  const f = await fixture();
-  f.response({} as never);
-  const input = { agent: "worker", model: "local/deep:max", task: brief };
-  await f.call(input);
-  expect(input.model).toBe("local/deep:max");
-  expect(f.visible()).toContain("unchanged · schema-error · retained local/deep · effort max");
-  expect(f.visible()).not.toContain("selected");
-});
-
-test("UNIT-WV-skips WV-04 fork workflow disabled and management never classify", async () => {
-  const f = await fixture("fork");
-  await f.call({ agent: "worker", task: brief, context: "fork" }, "fork");
-  expect(f.visible()).toContain("executor-owned · fork model + effort");
-  await f.call({ agent: "worker", task: brief }, "implicit");
-  expect(f.visible()).toContain("executor-owned · fork model + effort");
   await f.call({ workflow: "private-workflow.js" }, "workflow");
   expect(f.visible()).toContain("executor-owned · workflow inner launches");
   process.env.JEV_WORKER_ROUTING_ENABLED = "false";
@@ -240,65 +185,14 @@ test("UNIT-WV-skips WV-04 fork workflow disabled and management never classify",
   expect(f.requests()).toBe(0);
 });
 
-test("RC-1 UNIT-WV-specialized WV-04 specialized slots keep effort executor-owned", async () => {
+test("UNIT-WV-concurrent WV-05 pending sibling survives unrelated result", async () => {
   const f = await fixture();
-  for (const [agent, model] of [
-    ["jev-pilot:junior", "local/balanced"],
-    ["jev-pilot:codex-review", "local/fast"],
-  ]) {
-    const input = { agent, model: "local/deep:high", task: brief };
-    await f.call(input, agent);
-    expect(input.model).toBe(model!);
-    expect(f.visible()).toContain(
-      `selected ${model} · effort executor-owned/unknown · specialized slot`,
-    );
-    expect(f.entries.at(-1)).toMatchObject({
-      kind: "worker",
-      stage: "plan",
-      model,
-      requested: "unknown",
-      effective: "unknown",
-      outcome: "specialized",
-    });
-  }
-  expect(f.requests()).toBe(0);
-});
-
-test("UNIT-WV-custom WV-04 custom slot model remains selected through existing policy", async () => {
-  const f = await fixture();
-  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
-  await writeFile(
-    process.env.JEV_CREW_CONFIG,
-    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/fast" }] }),
-  );
-  f.response({
-    answers: {
-      tier: { choice: "slot::alpha", confidence: 0.95 },
-      effort: { choice: "medium", confidence: 0.95 },
-      risky: { noul: 0 },
-    },
-  });
-  const input = { agent: "worker", model: "local/deep:high", task: brief };
-  await f.call(input);
-  expect(input.model).toBe("local/fast:medium");
-  expect(f.visible()).toContain("selected local/fast · effort medium");
-  expect(f.requests()).toBe(1);
-});
-
-test("UNIT-WV-concurrent WV-05 one completed decision never clears pending sibling", async () => {
-  const f = await fixture();
-  f.delay(250);
-  const pending = f.call({ agent: "worker", model: "local/fast", task: brief }, "slow");
-  while (!f.requests()) await Bun.sleep(5);
-  f.delay(0);
+  await f.call({ agent: "worker", model: "local/fast", task: brief }, "slow");
   await f.call({ agent: "worker", model: "local/deep", task: brief }, "fast");
+  await f.fire("tool_result", { toolName: "subagent", toolCallId: "fast", details: {} });
   expect(f.visible().split("\n")).toHaveLength(2);
-  expect(f.visible()).toContain("choosing model + effort");
-  expect(f.visible()).toContain("selected local/balanced");
-  await pending;
-  expect(f.visible().match(/selected local\/balanced/g)).toHaveLength(2);
-  expect(f.visible()).not.toContain("choosing");
-  expect(f.requests()).toBe(2);
+  expect(f.visible()).toContain("decision pending");
+  expect(f.visible()).toContain("executor result · launch unconfirmed");
 });
 
 for (const transition of [
@@ -312,15 +206,11 @@ for (const transition of [
 ])
   test(`UNIT-WV-lifecycle WV-05 ${transition} prevents stale UI resurrection`, async () => {
     const f = await fixture();
-    f.delay(150);
-    const input = { agent: "worker", model: "local/fast", task: brief };
-    const pending = f.call(input);
-    while (!f.requests()) await Bun.sleep(5);
+    await f.call({ agent: "worker", model: "local/fast", task: brief });
     if (transition === "abort") {
       f.signal.abort();
       await f.fire("agent_settled", { aborted: true });
     } else await f.fire(transition);
-    await pending;
     await f.fire("tool_result", {
       toolName: "subagent",
       toolCallId: "call",
@@ -330,24 +220,6 @@ for (const transition of [
     expect(f.widgets.get("jev-pilot-workers")).toBeUndefined();
     expect(f.statuses.get("jev-pilot-workers")).toBeUndefined();
   });
-
-test("UNIT-WV-cancel WV-05 adapter-blocked cancellation alone says not launched", async () => {
-  const f = await fixture();
-  f.delay(150);
-  const input = { agent: "worker", model: "local/fast", task: brief };
-  const pending = f.call(input);
-  while (!f.requests()) await Bun.sleep(5);
-  f.signal.abort();
-  expect(await pending).toMatchObject({ block: true });
-  expect(input.model).toBe("local/fast");
-  expect(f.visible()).toContain("not launched · cancelled");
-  await f.fire("tool_result", {
-    toolName: "subagent",
-    toolCallId: "call",
-    details: { asyncId: "not-launched" },
-  });
-  expect(f.visible()).not.toContain("accepted");
-});
 
 test("UNIT-WV-receipts WV-06 generic tool success never verifies child launch", async () => {
   const f = await fixture();
@@ -390,22 +262,6 @@ test("UNIT-WV-privacy WV-07 UI excludes task description errors and arbitrary ca
   });
   expect(f.visible()).not.toContain("PRIVATE_");
 });
-
-for (const transition of ["model_select", "thinking_level_select"])
-  test(`UNIT-WV-selection WV-05 ${transition} blocks pending worker without sibling overwrite`, async () => {
-    const f = await fixture();
-    await f.call({ agent: "worker", model: "local/fast", task: brief }, "settled");
-    f.delay(150);
-    const input = { agent: "worker", model: "local/fast", task: brief };
-    const pending = f.call(input, "pending");
-    while (f.requests() < 2) await Bun.sleep(5);
-    await f.fire(transition);
-    expect(await pending).toMatchObject({ block: true });
-    expect(input.model).toBe("local/fast");
-    expect(f.visible()).toContain("selected local/balanced");
-    expect(f.visible()).toContain("not launched · cancelled");
-    expect(f.visible()).not.toContain("choosing");
-  });
 
 for (const path of ["runtime-miss", "fork"])
   for (const [proof, agent, expected] of [
@@ -470,13 +326,8 @@ for (const path of ["runtime-miss", "fork"])
       expect(JSON.stringify(branch)).not.toContain("PRIVATE_");
     });
 
-test("P12 WORKERS-4 adapter reports only launch-allowed workers until result or async completion", async () => {
+test("P12 WORKERS-4 adapter tracks pending native launches until result or async completion", async () => {
   const f = await fixture();
-  expect(
-    await f.call({ agent: "worker", task: brief, context: "profile" }, "blocked"),
-  ).toMatchObject({
-    block: true,
-  });
   expect(f.running).toEqual([]);
   await f.call({ agent: "worker", task: brief }, "sync");
   expect(f.running.at(-1)).toBe(1);

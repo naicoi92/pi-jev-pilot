@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerRequiredChildExtensions } from "pi-subagents/required-child-extensions";
 import { fileURLToPath } from "node:url";
+import { prepareFixtureWorker } from "./fixtures/worker-authority.ts";
 
 const saved = { ...process.env };
 let server: ReturnType<typeof Bun.serve> | undefined;
@@ -64,6 +65,7 @@ async function fixture(defaultContext = "fresh") {
     id,
     api: "openai-completions",
     reasoning: true,
+    thinkingLevelMap: { low: "low", medium: "medium", high: "high" },
     contextWindow: 32000,
     maxTokens: 100,
     input: ["text"],
@@ -95,8 +97,23 @@ async function fixture(defaultContext = "fresh") {
     for (const handler of hooks.get(name) ?? []) result = await handler(event, ctx);
     return result;
   };
-  const call = (input: Record<string, unknown>, id = "call") =>
-    fire("tool_call", { toolName: "subagent", toolCallId: id, input });
+  const selections = new WeakMap<object, string>();
+  const call = async (input: Record<string, unknown>, id = "call") => {
+    const blocked = await fire("tool_call", { toolName: "subagent", toolCallId: id, input });
+    if (
+      blocked?.block ||
+      input.action ||
+      input.workflow ||
+      process.env.JEV_WORKER_ROUTING_ENABLED === "false"
+    )
+      return blocked;
+    const result = await prepareFixtureWorker(ctx, input, defaultContext);
+    if (result.kind === "committed") {
+      selections.set(input, result.receipt.model + ":" + result.receipt.thinking);
+      return;
+    }
+    return { block: true, reason: result.kind === "blocked" ? result.reason : "unowned" };
+  };
   shutdowns.push(() => fire("session_shutdown"));
   await fire("session_start");
   let requests = 0;
@@ -122,6 +139,7 @@ async function fixture(defaultContext = "fresh") {
   process.env.JEV_SYSTEM_ONE_URL = server.url.toString();
   return {
     call,
+    selected: (input: object) => selections.get(input),
     settings: (value: unknown) => {
       settings = value;
     },
@@ -153,7 +171,7 @@ test("WORKER-03 effort authority preserves tier confidence gates", async () => {
     options: { context: "fresh" },
   };
   await f.call(input);
-  expect(input.model).toBe("local/balanced:medium");
+  expect(f.selected(input)).toBe("local/balanced:medium");
   f.response({
     answers: {
       tier: { choice: "fast", confidence: 0.1 },
@@ -162,7 +180,7 @@ test("WORKER-03 effort authority preserves tier confidence gates", async () => {
     },
   });
   await f.call(input);
-  expect(input.model).toBe("local/deep:high");
+  expect(f.selected(input)).toBe("local/deep:high");
   f.response({
     answers: {
       tier: { choice: "fast", confidence: 0.2 },
@@ -171,14 +189,14 @@ test("WORKER-03 effort authority preserves tier confidence gates", async () => {
     },
   });
   await f.call(input);
-  expect(input.model).toBe("local/deep:low");
+  expect(f.selected(input)).toBe("local/deep:low");
 });
 
 test("WORKER-20 explicit and implicit fork bypass worker classification", async () => {
   const f = await fixture("fork");
   const implicit = { agent: "worker", task: "Do work", model: "local/fast" };
   await f.call(implicit);
-  expect(implicit.model).toBe("local/fast");
+  expect(f.selected(implicit)).toBe("local/fast:high");
   await f.call({ ...implicit, options: { context: "fork" } });
   expect(f.requests()).toBe(0);
 });
@@ -189,8 +207,8 @@ test("WORKER-20 specialized reviewer and junior retain deterministic slots", asy
   const reviewer = { agent: "jev-pilot:codex-review", task: "Review work", model: "local/deep" };
   await f.call(junior);
   await f.call(reviewer);
-  expect(junior.model).toBe("local/balanced");
-  expect(reviewer.model).toBe("local/fast");
+  expect(f.selected(junior)).toBe("local/balanced:high");
+  expect(f.selected(reviewer)).toBe("local/fast:high");
   expect(f.requests()).toBe(0);
 });
 
@@ -231,6 +249,7 @@ test("WORKER-26 completion releases exact ownership before repeated cleanup", as
 });
 
 for (const transition of [
+  "abort",
   "model_select",
   "thinking_level_select",
   "session_before_switch",
@@ -238,28 +257,17 @@ for (const transition of [
   "session_before_tree",
   "session_before_compact",
 ])
-  test(`WORKER-26 ${transition} invalidates pending worker decision`, async () => {
+  test(`WORKER-26 ${transition} blocks pending authority preparation`, async () => {
     const f = await fixture();
     f.delay(150);
     const input = { agent: "worker", model: "local/fast", task: "Implement work" };
-    const pending = f.call(input, "pending");
+    const pending = f.call(input);
     while (!f.requests()) await Bun.sleep(5);
-    await f.fire(transition);
-    expect(await pending).toMatchObject({ block: true });
+    if (transition === "abort") f.signal.abort();
+    else await f.fire(transition);
+    expect(await pending).toMatchObject({ block: true, reason: "cancelled" });
     expect(input.model).toBe("local/fast");
-    await f.fire("tool_result", {
-      toolName: "subagent",
-      toolCallId: "pending",
-      details: { asyncId: "must-not-own" },
-    });
-    await f.fire("session_shutdown");
-    expect(f.controls).toEqual([]);
-    // Ticket 12 durable visibility may record the invalidated plan as cancelled; it never records a launch.
-    expect(
-      f.entries.filter((row) => !(row.stage === "plan" && row.outcome === "cancelled")),
-    ).toEqual([]);
-    expect(f.entries).not.toContainEqual(expect.objectContaining({ toolCallId: "pending" }));
-    expect(f.entries).not.toContainEqual(expect.objectContaining({ outcome: "classified" }));
+    expect(f.selected(input)).toBeUndefined();
   });
 
 test("WORKER-13 host-first collision preserves owner across duplicate and adapter shutdown", async () => {
@@ -332,7 +340,7 @@ test("CREW-18 offered custom keys stay distinct from real tiers", async () => {
     });
     const input = { agent: "worker", task: "Read all logs", model: "local/deep" };
     await f.call(input);
-    expect(input.model).toBe(
+    expect(f.selected(input)).toBe(
       choice.startsWith("slot::") ? "local/fast:medium" : `local/${choice}:medium`,
     );
   }
@@ -362,7 +370,7 @@ test("CREW-03 risk forced deep overrides a custom slot named deep", async () => 
   });
   const input = { agent: "worker", task: "Read the logs", model: "local/balanced" };
   await f.call(input);
-  expect(input.model).toBe("local/deep:high");
+  expect(f.selected(input)).toBe("local/deep:high");
 });
 test("CREW-13 invalid eligible target fails before classifier", async () => {
   const f = await fixture();
@@ -398,7 +406,7 @@ test("routing-settings ordinary worker consumes public effective JSON tiers afte
     task: "Implement specified change with tests",
   };
   await f.call(input);
-  expect(input.model).toBe("local/balanced:medium");
+  expect(f.selected(input)).toBe("local/balanced:medium");
   expect(f.requests()).toBe(1);
   f.settings({ jevPilot: { tiers: null } });
   await f.fire("session_start");
@@ -447,7 +455,7 @@ test("SPARSE-01 a response choosing a hidden tier is a schema error that changes
   const input = { agent: "worker", model: "local/deep", task: "Implement work" };
   await f.call(input);
   expect(f.requests()).toBe(1);
-  expect(input.model).toBe("local/deep");
+  expect(f.selected(input)).toBe("local/deep:high");
 });
 
 for (const value of [null, true, 1, {}, [], "unqualified", "local/white space"])
@@ -470,7 +478,7 @@ for (const tiers of [undefined, {}, { fast: "", balanced: " ", deep: "\t" }]) {
     await f.call(input);
     expect(f.requests()).toBe(1);
     expect(Object.keys(sentQuestions(f))).toEqual(["effort", "risky"]);
-    expect(input.model).toBe("local/deep:medium");
+    expect(f.selected(input)).toBe("local/deep:medium");
   });
 }
 
@@ -480,7 +488,7 @@ test("SPARSE-01 no tier and no slot with a high-risk answer changes only effort"
   f.response(answer("balanced", 0.95));
   const input = { agent: "worker", model: "local/deep", task: "Deploy to production" };
   await f.call(input);
-  expect(input.model).toBe("local/deep:high");
+  expect(f.selected(input)).toBe("local/deep:high");
 });
 
 test("SPARSE-01 configured tiers and offered custom slots are offered together", async () => {
@@ -507,7 +515,7 @@ test("SPARSE-01 only offered slots are asked when no tier is configured", async 
   const input = { agent: "worker", model: "local/deep", task: "Read the logs" };
   await f.call(input);
   expect(Object.keys(sentQuestions(f).tier!.criteria)).toEqual(["slot::alpha"]);
-  expect(input.model).toBe("local/fast:medium");
+  expect(f.selected(input)).toBe("local/fast:medium");
 });
 
 test("SPARSE-01 the request snapshot also validates response probability distributions", async () => {
@@ -516,11 +524,11 @@ test("SPARSE-01 the request snapshot also validates response probability distrib
   f.response(answer("balanced", 0, { probabilities: { balanced: 0.5, deep: 0.5 } }));
   const rejected = { agent: "worker", model: "local/fast", task: "Implement work" };
   await f.call(rejected);
-  expect(rejected.model).toBe("local/fast");
+  expect(f.selected(rejected)).toBe("local/fast:high");
   f.response(answer("balanced", 0, { probabilities: { fast: 0.4, balanced: 0.6 } }));
   const accepted = { agent: "worker", model: "local/fast", task: "Implement work" };
   await f.call(accepted);
-  expect(accepted.model).toBe("local/balanced:medium");
+  expect(f.selected(accepted)).toBe("local/balanced:medium");
 });
 
 test("SPARSE-01 high risk selects deep, else the highest configured tier, else nothing", async () => {
@@ -536,7 +544,7 @@ test("SPARSE-01 high risk selects deep, else the highest configured tier, else n
     await configure(f, tiers);
     const input = { agent: "worker", model: baseline, task: "Deploy to production" };
     await f.call(input);
-    expect(input.model).toBe(expected);
+    expect(f.selected(input)).toBe(expected);
   }
 });
 
@@ -547,8 +555,8 @@ test("SPARSE-01 specialized agents without their tier keep the executor model an
   const reviewer = { agent: "jev-pilot:codex-review", task: "Review work", model: "local/deep" };
   await f.call(junior);
   await f.call(reviewer);
-  expect(junior.model).toBe("local/deep");
-  expect(reviewer.model).toBe("local/deep");
+  expect(f.selected(junior)).toBe("local/deep:high");
+  expect(f.selected(reviewer)).toBe("local/deep:high");
   expect(f.requests()).toBe(0);
 });
 
@@ -567,7 +575,7 @@ const askExpert = async (
   f.response(response);
   const input = { agent: "worker", model: baseline, task: "Resolve the open design decision" };
   await f.call(input);
-  return input.model;
+  return f.selected(input);
 };
 
 test("EXPERT-02 tier order is fast, balanced, deep, expert and expert is offered when configured", async () => {
@@ -599,7 +607,7 @@ for (const absent of ["missing", "", "  "])
     expect(Object.keys(sentQuestions(f).tier!.criteria)).toEqual(["fast", "balanced", "deep"]);
     expect(JSON.stringify(f.payloads[0])).not.toContain("expert");
     expect(f.payloads[0]!.questions).toEqual(reference.payloads[0]!.questions);
-    expect(input.model).toBe("local/deep:medium");
+    expect(f.selected(input)).toBe("local/deep:medium");
   });
 
 test("EXPERT-02 a response without an expert answer is accepted when expert is absent", async () => {
@@ -727,7 +735,7 @@ test("EXPERT-02 risk override cannot suppress an admitted expert choice or bypas
 test("EXPERT-02 a malformed response stays a schema error with expert configured", async () => {
   const f = await fixture();
   await configure(f, expertModels);
-  expect(await askExpert(f, { answers: { tier: { choice: "expert" } } })).toBe("local/deep");
+  expect(await askExpert(f, { answers: { tier: { choice: "expert" } } })).toBe("local/deep:high");
   expect(await askExpert(f, withExpertNeeded("expert", { noul: 0.99 }, 0.0), "local/deep")).toBe(
     "local/expert:medium",
   );
@@ -739,7 +747,7 @@ test("EXPERT-02 a malformed response stays a schema error with expert configured
   });
   const input = { agent: "worker", model: "local/deep", task: "Resolve" };
   await f.call(input);
-  expect(input.model).toBe("local/deep");
+  expect(f.selected(input)).toBe("local/deep:high");
 });
 
 test("EXPERT-02 existing confidence gates still apply to the admitted expert model", async () => {
@@ -753,7 +761,7 @@ test("EXPERT-02 existing confidence gates still apply to the admitted expert mod
   });
   const input = { agent: "worker", model: "local/deep", task: "Resolve" };
   await f.call(input);
-  expect(input.model).toBe("local/deep:medium");
+  expect(f.selected(input)).toBe("local/deep:medium");
 });
 
 test("EXPERT-02 malformed expert identity names the setting and sends nothing", async () => {
@@ -770,7 +778,7 @@ test("FALLBACK-04 an unresolvable selected tier is reported with its setting and
   f.response(answer("deep"));
   const input = { agent: "worker", model: "local/fast", task: "Implement work" };
   await f.call(input);
-  expect(input.model).toBe("local/balanced:high");
+  expect(f.selected(input)).toBe("local/balanced:high");
   expect(f.requests()).toBe(1);
   expect(f.notices).toHaveLength(1);
   expect(f.notices[0]).toContain("deep");
@@ -792,7 +800,7 @@ const fallbackCall = async (
   );
   const input = { agent: "worker", model: baseline, task: "Implement work" };
   await f.call(input);
-  return input.model;
+  return f.selected(input);
 };
 const registryModel = (f: Awaited<ReturnType<typeof fixture>>, id: string) =>
   f.ctx.modelRegistry.find("local", id)! as unknown as Record<string, unknown>;
@@ -806,7 +814,12 @@ for (const [levels, highest] of [
   test(`FALLBACK-04 a fallback tier whose model supports up to ${highest} runs at ${highest}`, async () => {
     const f = await fixture();
     await configure(f, { ...configuredModels, deep: "missing/unknown" });
-    registryModel(f, "balanced").thinkingLevelMap = levels;
+    registryModel(f, "balanced").thinkingLevelMap = {
+      low: "low",
+      medium: "medium",
+      high: "high",
+      ...levels,
+    };
     expect(await fallbackCall(f, "deep")).toBe(`local/balanced:${highest}`);
   });
 
@@ -874,7 +887,7 @@ test("FALLBACK-04 a tier model without configured authentication is reported and
   f.ctx.modelRegistry.hasConfiguredAuth = (model) => model.id !== "deep";
   expect(await fallbackCall(f, "deep")).toBe("local/balanced:high");
   expect(f.notices[0]).toContain("jevPilot.tiers.deep");
-  expect(f.notices[0]).toContain("Configure Pi authentication");
+  expect(f.notices[0]).toContain("target-unavailable");
 });
 
 test("FALLBACK-04 a tier model that launch preflight rejects, as a rate-limited provider drops out of the available models, is reported and cascades", async () => {
@@ -946,9 +959,10 @@ test("FALLBACK-04 the fallback is cancelled with the call and leaves the input u
   const input = { agent: "worker", model: "local/fast", task: "Implement work" };
   const pending = f.call(input);
   while (!f.requests()) await Bun.sleep(5);
-  await f.fire("model_select");
+  f.signal.abort();
   expect(await pending).toMatchObject({ block: true });
   expect(input.model).toBe("local/fast");
+  expect(f.selected(input)).toBeUndefined();
   expect(f.notices).toEqual([]);
 });
 
@@ -979,6 +993,7 @@ test("FALLBACK-04 a custom slot pick sharing a tier model stays outside tier han
   await configure(f, configuredModels);
   const available = f.ctx.modelRegistry.getAvailable();
   f.ctx.modelRegistry.getAvailable = () => available.filter((model) => model.id !== "deep");
-  expect(await fallbackCall(f, "slot::alpha", "local/fast")).toBe("local/deep:medium");
+  expect(await fallbackCall(f, "slot::alpha", "local/fast")).toBeUndefined();
+  expect(f.requests()).toBe(0);
   expect(f.notices).toEqual([]);
 });
