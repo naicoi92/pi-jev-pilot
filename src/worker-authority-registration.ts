@@ -53,9 +53,13 @@ export function registerWorkerAuthorityLifecycle(pi: ExtensionAPI, enabled: () =
               tiers: configuredTiers(pi.getSettings()),
               crew: crewConfig(ctx.cwd),
               warn: (message) => ctx.ui.notify(message, "warning"),
+              configurationError: (message) => ctx.ui.notify(message, "error"),
             }).decide(request, { ...context, signal: controller.signal });
             if (controller.signal.aborted) throw new WorkerDecisionAuthorityError("cancelled");
             return result;
+          } catch (error) {
+            if (controller.signal.aborted) throw new WorkerDecisionAuthorityError("cancelled");
+            throw error;
           } finally {
             assessments.delete(controller);
             context.signal.removeEventListener("abort", abort);

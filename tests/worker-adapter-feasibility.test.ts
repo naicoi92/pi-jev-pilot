@@ -56,7 +56,7 @@ for (const mode of [
             "@earendil-works/pi-coding-agent": "1.4.0",
             "@earendil-works/pi-ai": "1.4.0",
             "pi-subagents":
-              "git+https://github.com/naicoi92/pi-subagents.git#5f8adccb235f1a45858c84b5110c105108947de2",
+              "git+https://github.com/naicoi92/pi-subagents.git#36b0643e118eaded95c0f11d443331a50692103e",
           },
         }),
       );
@@ -406,8 +406,8 @@ export default function(pi) {
               mode,
               versions: {
                 pi: "1.4.0",
-                executionPackage: "naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2",
-                preflight: "naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2",
+                executionPackage: "naicoi92/pi-subagents@36b0643e118eaded95c0f11d443331a50692103e",
+                preflight: "naicoi92/pi-subagents@36b0643e118eaded95c0f11d443331a50692103e",
                 node: Bun.spawnSync([Bun.which("node")!, "--version"])
                   .stdout.toString()
                   .trim(),

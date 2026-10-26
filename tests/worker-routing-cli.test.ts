@@ -120,7 +120,7 @@ for (const scenario of cases)
           "@earendil-works/pi-coding-agent": "1.4.0",
           "@earendil-works/pi-ai": "1.4.0",
           "pi-subagents":
-            "git+https://github.com/naicoi92/pi-subagents.git#5f8adccb235f1a45858c84b5110c105108947de2",
+            "git+https://github.com/naicoi92/pi-subagents.git#36b0643e118eaded95c0f11d443331a50692103e",
         },
       }),
     );
@@ -836,7 +836,7 @@ export default function(pi) {
         const terminal = records.find((record) => record.type === "tool_execution_end");
         expect(terminal?.isError).toBe(true);
         expect(JSON.stringify(terminal?.result)).toMatch(
-          /Operation aborted|Jev worker classification cancelled; no child launched\./,
+          /Operation aborted|Jev worker classification cancelled; no child launched\.|Worker decision authority blocked: cancelled\./,
         );
       } else {
         await wait(() => records.some((record) => record.type === "tool_execution_end"));
@@ -929,7 +929,8 @@ export default function(pi) {
         const envelope = JSON.parse(
           (await Bun.file(join(directory, "envelope.jsonl")).text()).trim(),
         );
-        if (preserve || routingOff || juniorWorkflow) expect(envelope).toEqual(original);
+        // Authority commits at executor seam; tool_call input remains authored even on success.
+        expect(envelope).toEqual(original);
         if (!childCancel) {
           const childRequest = requests.find((request) =>
             riskOmitted
@@ -942,10 +943,8 @@ export default function(pi) {
             model: expectedIdentity,
             ...(!clamped ? { reasoning_effort: expectedThinking } : {}),
           });
-          if (!preserve && !routingOff && !juniorWorkflow)
-            expect(envelope.model).toBe(
-              `local/${expectedIdentity}${junior ? "" : `:${expectedThinking}`}`,
-            );
+          // Exact selected pair is asserted against native result/provider request above,
+          // not obsolete envelope mutation.
         }
       }
       expect(classifications).toHaveLength(
@@ -961,8 +960,9 @@ export default function(pi) {
       }
       if (classifications.length) {
         expect(classifications[0]!.state).toEqual({
-          prompt: direct.task,
+          prompt: direct.task.slice(0, 2000),
           agentType: "receipt-worker",
+          description: runtime ? "Runtime worker" : "Deterministic receipt test subject",
         });
         expect(JSON.stringify(classifications)).not.toContain("PRIVATE_PARENT_HISTORY");
         if (slot) {
@@ -1068,7 +1068,7 @@ export default function(pi) {
             name,
             versions: {
               pi: "1.4.0",
-              subagents: "naicoi92/pi-subagents@5f8adccb235f1a45858c84b5110c105108947de2",
+              subagents: "naicoi92/pi-subagents@36b0643e118eaded95c0f11d443331a50692103e",
               bun: Bun.version,
             },
             original,

@@ -36,6 +36,7 @@ export function createWorkerAuthority(options: {
   tiers: Tiers;
   crew: Crew;
   warn(message: string): void;
+  configurationError(message: string): void;
 }): WorkerDecisionAuthority {
   return {
     async decide(request, context) {
@@ -63,23 +64,31 @@ export function createWorkerAuthority(options: {
       if (specializedRole && !specialized) return retain(original);
       let result;
       if (!specialized) {
+        let config;
         try {
-          const config = systemOneConfig();
-          result = await classify(
-            { ...config, timeoutMs: Math.min(config.timeoutMs, remaining) },
-            request.facts,
-            context.signal,
-            {
-              tier: Object.values(options.tiers).some(Boolean) || options.crew.offered.length > 0,
-              effort: true,
-              tiers: TIER_ORDER.filter((tier) => options.tiers[tier]),
-              slots: options.crew.offered,
-            },
-            { effort: WORKER_EFFORT_QUESTION },
-          );
-        } catch {
-          return retain(original);
+          config = systemOneConfig();
+        } catch (error) {
+          options.configurationError(error instanceof Error ? error.message : String(error));
+          return { kind: "reject", reason: "assessment-unavailable" };
         }
+        result = await classify(
+          { ...config, timeoutMs: Math.min(config.timeoutMs, remaining) },
+          {
+            prompt: request.facts.task.slice(0, 2000),
+            agentType: agent.slice(0, 128),
+            ...(request.facts.role
+              ? { description: request.facts.role.description.slice(0, 512) }
+              : {}),
+          },
+          context.signal,
+          {
+            tier: Object.values(options.tiers).some(Boolean) || options.crew.offered.length > 0,
+            effort: true,
+            tiers: TIER_ORDER.filter((tier) => options.tiers[tier]),
+            slots: options.crew.offered,
+          },
+          { effort: WORKER_EFFORT_QUESTION },
+        );
         if (result.outcome !== "classified") return retain(original);
       }
       const decision = result?.decision;

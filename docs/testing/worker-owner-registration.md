@@ -21,3 +21,10 @@ Expected literals come from existing reviewed policy tests and ownership API con
 No changes to executor policy, inference mode, application project, credentials, global settings or installs. Native fixture uses disposable HOME and local fake provider/classifier. Run native proof using direct preinstalled binary, **not npm launcher** (launcher may download on first use).
 
 Full durable command/output report: `/tmp/jev-owner-regression/report.md`. Independent reviewer must audit coverage migration before acceptance.
+
+## Independent review follow-up
+
+- F3 configuration refusal: `worker-authority-migration-cli.test.ts` drives the actual native executor with main consumers disabled. Missing key, malformed URL and blank model refuse with actionable notification and no child/classifier request; a real service503 retains the verified original pair and produces a native child receipt. Configuration refusal is not service-failure fallback.
+- F4 external minimization: `worker-authority-bounds.test.ts` consumes public preparation, checks exact `prompt`2000/`agentType`128/`description`512 projection, and changes a truncated task tail to prove the complete authority identity still conflicts.
+- F5 mandatory pairing: README and active dependency fixtures use36b0643e. `worker-executor-pairing.test.ts` checks consistency. Native visibility direct/async/clamp/error/timeout/schema/disabled gate retains result/provider/terminal checks; it no longer requires obsolete envelope-plan text. Explicit short fixture session directory fits public identity limits without registry fallback or cap relaxation.
+- F1 actual junior unresolved effort and F2 distinct parent/caller policy comparison remain blocked on the separately reviewed executor API addition. No guessed effort or tool-call correlation workaround is authorized. Do not release this intermediate follow-up as resolving those findings.

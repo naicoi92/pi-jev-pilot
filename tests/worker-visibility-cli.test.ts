@@ -105,6 +105,7 @@ for (const name of ["direct", "async", "clamp", "error", "timeout", "schema", "d
               input: ["text"],
               contextWindow: 32000,
               maxTokens: 512,
+              thinkingLevelMap: { off: "none", low: "low", medium: "medium", high: "high" },
             })),
           },
         },
@@ -131,6 +132,8 @@ for (const name of ["direct", "async", "clamp", "error", "timeout", "schema", "d
       root,
       "-e",
       join(root, "node_modules/pi-subagents/index.ts"),
+      "--session-dir",
+      join(directory, "sessions"),
       "--mode",
       "rpc",
       "--offline",
@@ -281,14 +284,11 @@ for (const name of ["direct", "async", "clamp", "error", "timeout", "schema", "d
         expect(ui).toContain("executor complete · model/effort unconfirmed");
       } else expect(ui).toContain("executor receipt · target");
       expect(ui).not.toContain("running");
-      if (preserved)
-        expect(ui).toContain(
-          `unchanged · ${name === "error" ? "service-error" : name === "schema" ? "schema-error" : name === "disabled" ? "routing disabled" : "timeout"}`,
-        );
-      else {
-        expect(ui).toContain("Jev plan · selected local/selected");
-        expect(ui).toContain(`medium → ${thinking}`);
-      }
+      if (name === "disabled") expect(ui).toContain("unchanged · routing disabled");
+      else expect(ui).toContain("executor authority · decision pending · launch unconfirmed");
+      // Selection and fallback are proven by committed native receipts/provider requests above,
+      // never by obsolete tool-envelope plan text.
+      expect(ui).not.toContain("Jev plan · selected");
       expect(ui).not.toContain("PRIVATE_");
       expect(ui).not.toContain("fixture-not-a-credential");
     } finally {
