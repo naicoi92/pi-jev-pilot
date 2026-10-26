@@ -31,7 +31,12 @@ export function admitsExpert(decision: TierDecision, tiers: Tiers): boolean {
 }
 
 /** Physical identities are exact; Claude family/substring inference is not a registry contract. */
-export function selectTier(decision: TierDecision, current: string, tiers: Tiers): string | null {
+export function selectTier(
+  decision: TierDecision,
+  current: string,
+  tiers: Tiers,
+  selected?: (tier: Tier) => void,
+): string | null {
   const risky = (decision.risky ?? 0) > 0.7;
   const move = (tier: Tier | null, forced: boolean): string | null => {
     const wanted = tier && tiers[tier];
@@ -42,7 +47,9 @@ export function selectTier(decision: TierDecision, current: string, tiers: Tiers
     const lowering = from !== -1 && to < from;
     const allowed =
       decision.confidence === null ? !lowering : decision.confidence >= (lowering ? 0.6 : 0.3);
-    return forced || allowed ? wanted : null;
+    if (!forced && !allowed) return null;
+    selected?.(tier);
+    return wanted;
   };
   // An admitted expert choice is judged on its own confidence; risk only takes over when it fails.
   if (admitsExpert(decision, tiers)) {

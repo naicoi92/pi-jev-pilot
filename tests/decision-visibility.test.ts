@@ -103,7 +103,7 @@ for (const outcome of [
   });
 for (const outcome of ["timeout", "error", "blocked"])
   test(`P12 HIDE-3 worker ${outcome} warning stays expandable`, () => {
-    expect(rendered(worker(outcome), false)).toContain(`${outcome}`);
+    expect(rendered(worker(outcome), false)).toBeUndefined();
     expect(rendered(worker(outcome), true)).toContain("Retained → selected target");
   });
 test("AC-4 SAFE-1 persisted extra private fields are rejected", () => {

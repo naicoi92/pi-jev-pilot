@@ -9,7 +9,7 @@ import { selectEffort } from "./effort-policy.ts";
 import { effectiveTunables } from "./tuning.ts";
 import { selectsSlot, selectWorkerModel } from "./crew-policy.ts";
 import { cascadeTiers } from "./tier-fallback.ts";
-import { TIER_ORDER, type Tiers } from "./tier-policy.ts";
+import { TIER_ORDER, type Tiers, type Tier } from "./tier-policy.ts";
 import type { Crew } from "./crew-config.ts";
 
 const LEVELS: readonly ThinkingLevel[] = [
@@ -37,6 +37,7 @@ export function createWorkerAuthority(options: {
   crew: Crew;
   warn(message: string): void;
   configurationError(message: string): void;
+  selectedTier?(tier: Tier): void;
 }): WorkerDecisionAuthority {
   return {
     async decide(request, context) {
@@ -113,6 +114,7 @@ export function createWorkerAuthority(options: {
             expertNeeded: decision.expertNeeded ?? null,
           }
         : undefined;
+      let selectedTier: Tier | undefined;
       const chosen =
         specialized ??
         (tierDecision
@@ -121,6 +123,9 @@ export function createWorkerAuthority(options: {
               comparison.kind === "resolved" ? comparison.model : "",
               options.tiers,
               options.crew.offered,
+              (tier) => {
+                selectedTier = tier;
+              },
             )
           : null);
       const cascade =
@@ -165,6 +170,10 @@ export function createWorkerAuthority(options: {
         : (supported.filter((level) => LEVELS.indexOf(level) <= LEVELS.indexOf(requested)).at(-1) ??
           supported[0]);
       if (!thinking) return { kind: "reject", reason: "target-unavailable" };
+      // Metadata only when tier policy selected this exact target; retained/slot/fixed pairs have no tier.
+      const actualTier = cascade?.fallbackTier ?? selectedTier;
+      if (modelContract.kind !== "fixed" && actualTier && options.tiers[actualTier] === selected)
+        options.selectedTier?.(actualTier);
       return {
         kind: "apply",
         model: selected,

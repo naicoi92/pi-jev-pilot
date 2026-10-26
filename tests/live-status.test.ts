@@ -291,16 +291,18 @@ test("STATUS-5 main completion cannot clear concurrent worker assessments", () =
   expect(text()).toBe("Jev · medium");
 });
 
-// AC-6: worker details stay inside the shared widget at narrow widths.
-test("STATUS-6 worker rows fit shared status width without another widget", () => {
-  const { h, line } = mounted();
-  line.setWorkerRows([
-    "worker worker w1-122250 · launch unconfirmed · executor complete · model/effort unconfirmed",
-  ]);
+test("worker-status summary stays single concise row at every width, not main effort", () => {
+  const { h, line, text } = mounted();
+  line.settle(line.choose(), { kind: "decided", effort: "high", requested: "high", skill: "tdd" });
+  line.agentRunning(true);
+  line.setWorkerSummary({ activity: "1 worker running", effort: "low", running: 1 });
+  expect(text()).toBe("Jev · 1 worker running · low");
   expect(h.widgets).toHaveLength(1);
-  expect(h.plain(160)).toHaveLength(2);
+  expect(h.plain(160)).toHaveLength(1);
   for (let width = 1; width <= 160; width++)
     for (const row of h.plain(width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+  line.setWorkerSummary({ activity: "2 workers accepted", effort: "mixed", running: 0 });
+  expect(text()).toBe("Jev · 2 workers accepted · mixed");
 });
 
 const user = (inputId: string | undefined, id: string) =>

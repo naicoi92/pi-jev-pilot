@@ -48,6 +48,7 @@ async function fixture(defaultContext = "fresh") {
     jevPilot: { tiers: { fast: "local/fast", balanced: "local/balanced", deep: "local/deep" } },
   };
   const pi = {
+    registerToolRenderer() {},
     getSettings: () => settings,
     on(name: string, handler: Function) {
       hooks.set(name, [...(hooks.get(name) ?? []), handler]);
@@ -184,7 +185,7 @@ test("UNIT-WV-pending WV-02 leaves caller envelope intact until executor receipt
   const input = { agent: "worker", model: "local/deep:high", task: brief };
   await f.call(input);
   expect(input.model).toBe("local/deep:high");
-  expect(f.visible()).toContain("executor authority · decision pending · launch unconfirmed");
+  expect(f.visible().trim()).toBe("Jev · ready");
   expect(f.requests()).toBe(0);
   expect([...f.widgets.keys()]).toEqual(["jev-pilot"]);
   expect([...f.statuses.keys()]).not.toContain("jev-pilot-workers");
@@ -239,11 +240,11 @@ for (const transition of [
 test("UNIT-WV-skips WV-04 workflow disabled and management stay executor-owned", async () => {
   const f = await fixture();
   await f.call({ workflow: "private-workflow.js" }, "workflow");
-  expect(f.visible()).toContain("executor-owned · workflow inner launches");
+  expect(f.visible().trim()).toBe("Jev · ready");
   process.env.JEV_WORKER_ROUTING_ENABLED = "false";
   const input = { agent: "worker", model: "local/deep:high", task: brief };
   await f.call(input, "disabled");
-  expect(f.visible()).toContain("unchanged · routing disabled");
+  expect(f.visible().trim()).toBe("Jev · ready");
   const snapshot = f.visible();
   await f.call({ action: "resume", id: "private-run" }, "management");
   expect(f.visible()).toBe(snapshot);
@@ -256,9 +257,8 @@ test("UNIT-WV-concurrent WV-05 pending sibling survives unrelated result", async
   await f.call({ agent: "worker", model: "local/fast", task: brief }, "slow");
   await f.call({ agent: "worker", model: "local/deep", task: brief }, "fast");
   await f.fire("tool_result", { toolName: "subagent", toolCallId: "fast", details: {} });
-  expect(f.visible().split("\n")).toHaveLength(3);
-  expect(f.visible()).toContain("decision pending");
-  expect(f.visible()).toContain("executor result · launch unconfirmed");
+  expect(f.visible().split("\n")).toHaveLength(1);
+  expect(f.visible().trim()).toBe("Jev · ready");
 });
 
 for (const transition of [
@@ -296,18 +296,18 @@ test("UNIT-WV-receipts WV-06 generic tool success never verifies child launch", 
     toolCallId: "call",
     details: { results: [{ model: "local/deep", thinking: "high" }] },
   });
-  expect(f.visible()).toContain("executor result · launch unconfirmed");
+  expect(f.visible().trim()).toBe("Jev · ready");
   expect(f.visible()).not.toContain("executor receipt");
   await f.fire("tool_result", {
     toolName: "subagent",
     toolCallId: "call",
     details: { asyncId: "exact-run" },
   });
-  expect(f.visible()).toContain("executor accepted async · launch unconfirmed");
+  expect(f.visible().trim()).toBe("Jev · ready");
   f.pi.events.emit("subagent:async-complete", { runId: "unrelated", state: "complete" });
   expect(f.visible()).not.toContain("executor complete");
   f.pi.events.emit("subagent:async-complete", { runId: "exact-run", state: "complete" });
-  expect(f.visible()).toContain("executor complete · model/effort unconfirmed");
+  expect(f.visible().trim()).toBe("Jev · ready");
   expect(f.visible()).not.toContain("running");
   expect(f.controls).toEqual([]);
 });
@@ -347,7 +347,7 @@ for (const path of ["runtime-miss", "fork"])
         (row) => (row as WorkerDecisionRow).kind === "worker",
       ) as WorkerDecisionRow;
       expect(plan.agent).toBe("unknown");
-      expect(f.visible()).toContain(`worker unknown ${plan.invocation}`);
+      expect(f.visible().trim()).toBe("Jev · ready");
       await f.fire("tool_result", {
         toolName: "subagent",
         toolCallId: "call",
@@ -380,7 +380,7 @@ for (const path of ["runtime-miss", "fork"])
         outcome: proof ? "receipt" : "unconfirmed",
       });
       expect(plan.agent).toBe("unknown");
-      expect(f.visible()).toContain(`worker ${expected} ${plan.invocation}`);
+      expect(f.visible().trim()).toBe("Jev · ready");
       const branch = f.entries
         .filter((row) => (row as WorkerDecisionRow).kind === "worker")
         .map((data) => ({ type: "custom", customType: "jev-pilot:decision:v1", data }));
@@ -393,26 +393,57 @@ for (const path of ["runtime-miss", "fork"])
       expect(JSON.stringify(branch)).not.toContain("PRIVATE_");
     });
 
-test("P12 WORKERS-4 adapter tracks pending native launches until result or async completion", async () => {
+test("worker-status adapter never treats tool acceptance or pending call as running", async () => {
   const f = await fixture();
-  expect(f.running).toEqual([]);
-  await f.call({ agent: "worker", task: brief }, "sync");
-  expect(f.running.at(-1)).toBe(1);
-  await f.fire("tool_result", {
-    toolName: "subagent",
-    toolCallId: "sync",
-    details: { mode: "single", results: [] },
-  });
-  expect(f.running.at(-1)).toBe(0);
   await f.call({ agent: "worker", task: brief }, "async");
   await f.fire("tool_result", {
     toolName: "subagent",
     toolCallId: "async",
     details: { asyncId: "run-9" },
   });
-  expect(f.running.at(-1)).toBe(1);
+  expect(f.running.every((count) => count === 0)).toBe(true);
+  expect(f.visible().trim()).toBe("Jev · ready");
   await f.fire("agent_settled", { aborted: false });
-  expect(f.running.at(-1)).toBe(1);
   f.pi.events.emit("subagent:async-complete", { runId: "run-9", state: "complete" });
+  expect(f.running.every((count) => count === 0)).toBe(true);
+});
+
+// Real public authority callbacks supply role/tier/pair; only executor correlation binds tool UI.
+test("worker-status adapter joins applied assessment immediately and waits actual child start", async () => {
+  const f = await fixture();
+  await f.call({ agent: "worker", task: brief }, "bound");
+  const result = await prepareFixtureWorker(f.ctx, { agent: "worker", task: brief });
+  expect(result.kind).toBe("committed");
+  if (result.kind !== "committed") throw new Error("Fixture assessment did not commit");
+  expect(f.visible()).not.toContain("running");
+  f.pi.events.emit("subagent:worker-decision-accepted", {
+    version: 1,
+    sessionId: f.ctx.sessionManager.getSessionFile(),
+    toolCallId: "bound",
+    runId: "actual-run",
+    logicalLaunchId: result.receipt.logicalLaunchId,
+    receipt: result.receipt,
+  });
+  expect(f.visible().trim()).toBe("Jev · 1 worker accepted · medium");
   expect(f.running.at(-1)).toBe(0);
+  f.pi.events.emit("subagent:async-started", { id: "actual-run", pid: 999, agent: "worker" });
+  expect(f.visible().trim()).toBe("Jev · 1 worker accepted · medium");
+  f.pi.events.emit("subagent:child-status", {
+    type: "subagent.child-status",
+    version: 1,
+    runId: "actual-run",
+    childId: "actual-child",
+    status: "started",
+    ts: 1,
+  });
+  expect(f.visible().trim()).toBe("Jev · 1 worker running · medium");
+  expect(f.running.at(-1)).toBe(1);
+  f.pi.events.emit("subagent:async-complete", {
+    sessionId: f.ctx.sessionManager.getSessionFile(),
+    runId: "actual-run",
+    state: "complete",
+  });
+  expect(f.visible().trim()).toBe("Jev · 1 worker completed · medium");
+  expect(f.running.at(-1)).toBe(0);
+  expect(f.visible().split("\n")).toHaveLength(1);
 });

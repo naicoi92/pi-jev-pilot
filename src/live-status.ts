@@ -8,6 +8,7 @@ import { truncateToWidth, visibleWidth, type Component, type TUI } from "@earend
 import type { Strategy } from "./guidance-policy.ts";
 import { DECISION_TYPE, readDecisionRow, type VisibleEffort } from "./decision-visibility.ts";
 import { SKILL_ENTRY_TYPE } from "./skill-policy.ts";
+import type { WorkerSummary } from "./worker-status.ts";
 
 const KEY = "jev-pilot";
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -62,7 +63,7 @@ export class LiveStatusLine {
   private observedThinking = false;
   private tools = new Map<string, string>();
   private workers = 0;
-  private workerRows: readonly string[] = [];
+  private workerSummary: WorkerSummary | undefined;
   private effort: VisibleEffort | undefined;
   private requested: VisibleEffort | undefined;
   private skill: string | undefined;
@@ -180,8 +181,8 @@ export class LiveStatusLine {
     this.changed();
   }
 
-  setWorkerRows(rows: readonly string[]): void {
-    this.workerRows = rows;
+  setWorkerSummary(summary: WorkerSummary | undefined): void {
+    this.workerSummary = summary;
     this.changed();
   }
 
@@ -203,7 +204,7 @@ export class LiveStatusLine {
     this.observedThinking = false;
     this.tools.clear();
     this.workers = 0;
-    this.workerRows = [];
+    this.workerSummary = undefined;
     this.effort = undefined;
     this.requested = undefined;
     this.skill = undefined;
@@ -235,6 +236,7 @@ export class LiveStatusLine {
   private activity(): string | undefined {
     if (this.choosing) return "choosing effort";
     if (this.workerAssessments.size) return "assessing worker";
+    if (this.workerSummary) return this.workerSummary.activity;
     if (this.running)
       return [...this.tools.values()].at(-1) ?? (this.observedThinking ? "thinking" : "working");
     if (this.workers) return `${this.workers} ${this.workers === 1 ? "worker" : "workers"} running`;
@@ -249,6 +251,9 @@ export class LiveStatusLine {
       parts.push({ text: this.warning.label, color });
       if (this.warning.effort) parts.push({ text: this.warning.effort, color: "accent" });
       parts.push({ text: this.warning.reason, color });
+    } else if (this.workerSummary && !this.busy()) {
+      if (this.workerSummary.effort)
+        parts.push({ text: this.workerSummary.effort, color: "accent" });
     } else if (this.effort)
       parts.push({
         text:
@@ -257,10 +262,10 @@ export class LiveStatusLine {
             : this.effort,
         color: "accent",
       });
-    if (options.skill) parts.push({ text: options.skill, color: "muted" });
-    if (options.strategy && this.strategy)
+    if (options.skill && !this.workerSummary) parts.push({ text: options.skill, color: "muted" });
+    if (options.strategy && this.strategy && !this.workerSummary)
       parts.push({ text: `strategy ${this.strategy}`, color: "dim" });
-    if (options.workers && (this.busy() || this.running) && this.workers)
+    if (options.workers && !this.workerSummary && (this.busy() || this.running) && this.workers)
       parts.push({
         text: `${this.workers} ${this.workers === 1 ? "worker" : "workers"}`,
         color: "dim",
@@ -304,10 +309,7 @@ export class LiveStatusLine {
     const styled = parts.map((part) => theme.fg(part.color, part.text)).join(separator);
     const line = truncateToWidth(`${theme.fg("accent", frame)} ${styled}`, budget, "…");
     const align = (text: string) => " ".repeat(Math.max(0, budget - visibleWidth(text))) + text;
-    return [
-      align(line),
-      ...this.workerRows.map((row) => align(truncateToWidth(`  ${row}`, budget, "…"))),
-    ];
+    return [align(line)];
   }
 }
 

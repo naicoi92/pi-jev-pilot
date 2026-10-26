@@ -120,7 +120,7 @@ for (const scenario of cases)
           "@earendil-works/pi-coding-agent": "1.4.0",
           "@earendil-works/pi-ai": "1.4.0",
           "pi-subagents":
-            "git+https://github.com/naicoi92/pi-subagents.git#161501e1a609096bfeb6b49049e671280c31979b",
+            "git+https://github.com/naicoi92/pi-subagents.git#0b9d9a82e8adb657a0d6f9f9a2740a844ceacb6b",
         },
       }),
     );
@@ -1068,7 +1068,7 @@ export default function(pi) {
             name,
             versions: {
               pi: "1.4.0",
-              subagents: "naicoi92/pi-subagents@161501e1a609096bfeb6b49049e671280c31979b",
+              subagents: "naicoi92/pi-subagents@0b9d9a82e8adb657a0d6f9f9a2740a844ceacb6b",
               bun: Bun.version,
             },
             original,

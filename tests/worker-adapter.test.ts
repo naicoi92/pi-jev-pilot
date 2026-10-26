@@ -43,6 +43,7 @@ async function fixture(defaultContext = "fresh") {
     jevPilot: { tiers: { fast: "local/fast", balanced: "local/balanced", deep: "local/deep" } },
   };
   const pi = {
+    registerToolRenderer() {},
     getSettings: () => settings,
     on(name: string, handler: Function) {
       hooks.set(name, [...(hooks.get(name) ?? []), handler]);

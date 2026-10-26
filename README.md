@@ -132,11 +132,11 @@ Service errors, malformed answers and deadline expiry retain the current valid m
 
 ### See Jev decisions without the footer
 
-During and after selection, Jev shows a persistent right-aligned status line above the editor (activity, effective effort, skill, advised strategy when non-direct, running worker count). Successful main and worker decisions do not create conversation rows; only timeout, error and blocked rows remain visible and expandable. Use Pi's tool-output expansion shortcut (default **Ctrl+O**) for previous/requested/effective effort and the Pi-selected main identity. Jev never switches the main model. Empty input and slash commands create no decision rows.
+During and after selection, Jev shows one persistent right-aligned status line above the editor. Workers use a concise live summary such as `Jev · 1 worker running · low`; accepted launches are not described as running. Only pending assessments animate. Pi's standard tool-output expansion action (default **Ctrl+O**, respecting remapped keys) reveals worker role, actual tier when known, committed model, effort and lifecycle status. Expanded native result/error content remains available. Jev never replaces this shortcut or switches the main model. Main warnings remain expandable; worker debug rows and raw receipts are hidden by default. Empty input and slash commands create no decision rows.
 
 Run **`/jev status`**, including before the first task, for loaded capabilities, enabled/disabled flags, current main identity/effort, latest main decision and up to 12 recent worker snapshots. This read-only command uses a public notification: no classifier request, provider call or model-facing message.
 
-Each supported worker invocation has its own validated agent name and short local label. Durable **plan** and **executor** rows share that label; plans do not prove launch. Native executor receipts report target model/effort, not server-resolved identity. Async acknowledgement/completion remains explicitly unconfirmed. Public workflow result receipts can expose up to 12 individual executor-reported children; their inner routing remains executor-owned, never falsely described as Jev-selected. Existing worker widget retains 4 visible / 12 recent rows. UI records contain only allowlisted identifiers, effort enums, stage, outcome and elapsed time—not task/description text, raw errors, skill bodies or raw invocation/run IDs.
+Worker details join trusted resolved-agent assessment facts and the exact applied receipt to executor-provided launch correlation; logical commitment is not execution proof. Actual child-start and terminal events drive lifecycle labels, never tool text or blind polling. Mixed active efforts display `mixed`; retained/custom-slot/fixed targets do not acquire a guessed tier. Up to 12 recent terminal details are retained without evicting active workers, and session/owner generation fences reject stale callbacks. Existing durable **plan** and **executor** audit rows remain available through `/jev status`, not as default worker rows. Native receipts report target model/effort, not server-resolved identity. See [worker summary validation](docs/testing/worker-live-summary.md) for public seams and verification limits.
 
 Requires public `appendEntry` and `registerEntryRenderer` APIs, verified visually in official Pi **1.4.0** with installed powerbar. Pi-Bolt runtime compatibility is **not verified**. See [visibility matrix](docs/testing/pi-auto-visibility-matrix.md) and [validation](docs/testing/pi-auto-visibility-validation.md). Terminal rendering uses Pi's built-in width-aware `Text`; keyboard-only operation, no color-only signals or custom animations. PTY exercised 180×70; narrow wrapping checked at 20 columns. Screen-reader, RTL and Pi-Bolt visual behavior not independently exercised.
 
@@ -177,7 +177,7 @@ New sessions do not inherit another session's decisions; resume/reload, forks/tr
 `JEV_WORKER_ROUTING_ENABLED` defaults to `true` and accepts only `true`/`false`. Ordinary direct/async `subagent` calls require configured authenticated `jevPilot.tiers` tiers. Enable the exact tested fork executor separately with official Pi:
 
 ```bash
-pi install git:github.com/naicoi92/pi-subagents@161501e1a609096bfeb6b49049e671280c31979b
+pi install git:github.com/naicoi92/pi-subagents@0b9d9a82e8adb657a0d6f9f9a2740a844ceacb6b
 ```
 
 The runtime dependency uses the same immutable Git commit; importing its public adapter exports does not enable its tools. Keep **one physical executor owner**: do not also enable an upstream npm executor or another checkout. The fork tree is `c93e113aff111e08e64e606259f42f75a519985f`; its manifest version `0.81.0` is only a source label (installed from this commit and read from its `package.json`), not upstream npm identity. This pairing uses official Pi 1.4.0, not a universal host guarantee. No npm publication or GitHub Release is required for this verified Git installation route.
@@ -245,7 +245,7 @@ Tested stack, all local and deterministic:
 | Component                                       | Tested version                                                                                                     |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Official Pi (`@earendil-works/pi-coding-agent`) | 1.4.0 (`@earendil-works/pi-ai` 1.4.0); wildcard peer ranges are not a compatibility promise                        |
-| Execution package (`pi-subagents` fork)         | commit `161501e1a609096bfeb6b49049e671280c31979b`, tree `c93e113aff111e08e64e606259f42f75a519985f`, label `0.81.0` |
+| Execution package (`pi-subagents` fork)         | commit `0b9d9a82e8adb657a0d6f9f9a2740a844ceacb6b`, tree `c93e113aff111e08e64e606259f42f75a519985f`, label `0.81.0` |
 | Bun                                             | >=1.4.3; verified 1.4.4 for the acceptance run                                                                     |
 | Upstream behavior                               | Jev Pilot 0.12.1 at `5d27135b34edf81b40c0bf1df01ae401f6b72ea7`                                                     |
 

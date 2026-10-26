@@ -12,6 +12,9 @@ import { configuredTiers } from "./routing-settings.ts";
 import { crewConfig } from "./crew-config.ts";
 import { appendDecisionRow } from "./decision-visibility.ts";
 import type { LiveStatusLine } from "./live-status.ts";
+import { WorkerStatus } from "./worker-status.ts";
+import { registerWorkerStatusRenderer } from "./worker-status-renderer.ts";
+import { SUBAGENT_WORKER_DECISION_ACCEPTED_EVENT } from "pi-subagents/worker-decision-authority";
 
 function enabled(): boolean {
   const value = process.env.JEV_WORKER_ROUTING_ENABLED ?? "true";
@@ -28,11 +31,12 @@ export function registerWorkerAdapter(
   onWorkersRunning?: (count: number) => void,
   live?: LiveStatusLine,
 ): void {
-  const visibility = new WorkerVisibility(
-    (row) => appendDecisionRow(pi, row),
-    onWorkersRunning,
-    (rows) => live?.setWorkerRows(rows),
-  );
+  const status = new WorkerStatus((summary) => {
+    live?.setWorkerSummary(summary);
+    onWorkersRunning?.(summary?.running ?? 0);
+  });
+  registerWorkerStatusRenderer(pi, status);
+  const visibility = new WorkerVisibility((row) => appendDecisionRow(pi, row));
   let childExtension: RequiredChildExtensionRegistration | undefined;
   const deliverChildExtension = (_event: unknown, ctx: ExtensionContext) => {
     childExtension?.dispose();
@@ -56,6 +60,7 @@ export function registerWorkerAdapter(
     pi,
     enabled,
     () => live?.assessWorker() ?? (() => {}),
+    status,
   );
   const allowedLaunches = new Set<string>();
   const owned = new Map<string, { signal?: AbortSignal; cancel: () => void }>();
@@ -68,6 +73,7 @@ export function registerWorkerAdapter(
     });
   const clear = () => {
     visibility.clear();
+    status.reset();
     allowedLaunches.clear();
     for (const [id, run] of owned) {
       run.signal?.removeEventListener("abort", run.cancel);
@@ -94,7 +100,12 @@ export function registerWorkerAdapter(
   pi.on("session_before_fork", leaveSession);
   pi.on("session_before_compact", clear);
   pi.on("session_before_tree", clear);
+  // Acceptance is logical commitment, never evidence that a child has started.
+  pi.events.on(SUBAGENT_WORKER_DECISION_ACCEPTED_EVENT, (event: unknown) => status.accepted(event));
+  pi.events.on("subagent:child-status", (event: unknown) => status.child(event));
+  pi.events.on("subagent:foreground-complete", (event: unknown) => status.complete(event));
   pi.events.on("subagent:async-complete", (event: unknown) => {
+    status.complete(event);
     if (
       !event ||
       typeof event !== "object" ||
@@ -108,7 +119,10 @@ export function registerWorkerAdapter(
     owned.delete(event.runId);
   });
   pi.on("tool_result", (event, ctx) => {
-    if (event.toolName === "subagent") visibility.result(event.toolCallId, event.details);
+    if (event.toolName === "subagent") {
+      visibility.result(event.toolCallId, event.details);
+      status.result(event.toolCallId, event.details, event.isError);
+    }
     if (
       event.toolName !== "subagent" ||
       !allowedLaunches.delete(event.toolCallId) ||
@@ -130,6 +144,7 @@ export function registerWorkerAdapter(
     if (event.toolName !== "subagent") return;
     const input = event.input as Record<string, unknown>;
     if (input.action) return;
+    status.observeTool(event.toolCallId);
     const owner = visibility.start(
       event.toolCallId,
       ctx.ui,

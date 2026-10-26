@@ -7,7 +7,7 @@ import { root } from "./fixtures/pi-cli.ts";
 test("F5 documented enabled executor and active fixture pins match mandatory authority dependency", async () => {
   const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
   const sha = manifest.dependencies["pi-subagents"].split("#")[1];
-  expect(sha).toBe("161501e1a609096bfeb6b49049e671280c31979b");
+  expect(sha).toBe("0b9d9a82e8adb657a0d6f9f9a2740a844ceacb6b");
   const readme = await readFile(join(root, "README.md"), "utf8");
   expect(readme).toContain(`pi install git:github.com/naicoi92/pi-subagents@${sha}`);
   for (const file of [

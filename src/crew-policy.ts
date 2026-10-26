@@ -5,6 +5,7 @@ import {
   riskTier,
   selectTier,
   type Tiers,
+  type Tier,
   type TierDecision,
 } from "./tier-policy.ts";
 /** Encode every slot, not just collisions, so arbitrary valid public names stay distinct from tiers. */
@@ -20,14 +21,16 @@ export function selectWorkerModel(
   current: string,
   tiers: Tiers,
   offered: Slot[],
+  selected?: (tier: Tier) => void,
 ): string | null {
   if (riskForcesTier(decision, tiers)) {
     const tier = riskTier(tiers);
+    if (tier && tiers[tier]) selected?.(tier);
     return tier ? (tiers[tier] ?? null) : null;
   }
   if (decision.slot)
     return (decision.confidence ?? 0) >= 0.6
       ? (offered.find((slot) => slot.name === decision.slot)?.model ?? null)
       : null;
-  return selectTier(decision, current, tiers);
+  return selectTier(decision, current, tiers, selected);
 }

@@ -140,7 +140,7 @@ export function decisionLines(row: DecisionRow, expanded: boolean): string[] {
 const WARNING_OUTCOMES: readonly VisibleOutcome[] = ["timeout", "error", "blocked"];
 export const decisionRenderer: EntryRenderer = (entry, { expanded }) => {
   const row = readDecisionRow(entry.data);
-  return row && WARNING_OUTCOMES.includes(row.outcome)
+  return row && WARNING_OUTCOMES.includes(row.outcome) && (row.kind === "main" || expanded)
     ? new Text(decisionLines(row, expanded).join("\n"), 0, 0)
     : undefined;
 };

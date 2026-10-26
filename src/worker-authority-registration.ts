@@ -8,6 +8,7 @@ import { createWorkerAuthority } from "./worker-authority.ts";
 import { configuredTiers } from "./routing-settings.ts";
 import { crewConfig } from "./crew-config.ts";
 import { effectiveTunables } from "./tuning.ts";
+import type { WorkerStatus } from "./worker-status.ts";
 
 const sessionKey = (ctx: ExtensionContext) =>
   ctx.sessionManager.getSessionFile() ?? ctx.sessionManager.getSessionId();
@@ -17,6 +18,7 @@ export function registerWorkerAuthorityLifecycle(
   pi: ExtensionAPI,
   enabled: () => boolean,
   assess?: () => () => void,
+  status?: WorkerStatus,
 ) {
   let registration: WorkerDecisionAuthorityRegistration | undefined;
   let sessionId: string | undefined;
@@ -31,6 +33,7 @@ export function registerWorkerAuthorityLifecycle(
     registration = undefined;
     sessionId = undefined;
     captured?.dispose();
+    status?.attach();
   };
   pi.on("session_start", (_event, ctx) => {
     dispose();
@@ -52,6 +55,7 @@ export function registerWorkerAuthorityLifecycle(
           context.signal.addEventListener("abort", abort, { once: true });
           if (context.signal.aborted) abort();
           assessments.add(controller);
+          const presentation = controller.signal.aborted ? undefined : status?.assessing(request);
           const finishAssessment = controller.signal.aborted ? undefined : assess?.();
           controller.signal.addEventListener("abort", () => finishAssessment?.(), { once: true });
           try {
@@ -60,6 +64,7 @@ export function registerWorkerAuthorityLifecycle(
               crew: crewConfig(ctx.cwd),
               warn: (message) => ctx.ui.notify(message, "warning"),
               configurationError: (message) => ctx.ui.notify(message, "error"),
+              selectedTier: (tier) => status?.tier(presentation, tier),
             }).decide(request, { ...context, signal: controller.signal });
             if (controller.signal.aborted) throw new WorkerDecisionAuthorityError("cancelled");
             return result;
@@ -72,8 +77,12 @@ export function registerWorkerAuthorityLifecycle(
             context.signal.removeEventListener("abort", abort);
           }
         },
+        onApplied(receipt) {
+          status?.applied(receipt);
+        },
       },
     });
+    status?.attach(sessionId, registration.generation);
     failed = false;
   });
   // Before-navigation events can be cancelled. Actual session_start disposes prior session;

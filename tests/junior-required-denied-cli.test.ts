@@ -68,7 +68,7 @@ for (const scenario of [
           "@earendil-works/pi-coding-agent": "1.4.0",
           "@earendil-works/pi-ai": "1.4.0",
           "pi-subagents":
-            "git+https://github.com/naicoi92/pi-subagents.git#161501e1a609096bfeb6b49049e671280c31979b",
+            "git+https://github.com/naicoi92/pi-subagents.git#0b9d9a82e8adb657a0d6f9f9a2740a844ceacb6b",
         },
       }),
     );

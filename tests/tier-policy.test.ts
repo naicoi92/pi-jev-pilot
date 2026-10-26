@@ -139,3 +139,32 @@ test("EXPERT-02 risk never selects expert but cannot suppress an admitted expert
   expect(selectTier({ ...expert, expertNeeded: 0.9 }, tiers.fast, all)).toBe(all.deep);
   expect(selectTier({ ...expert, confidence: 0.1 }, tiers.fast, all)).toBe(all.deep);
 });
+
+test("tier presentation observer reports actual policy selection without inventing retained tier", () => {
+  const tiers = {
+    fast: "local/shared",
+    balanced: "local/shared",
+    deep: "local/deep",
+    expert: "local/expert",
+  };
+  const observed: string[] = [];
+  expect(
+    selectTier({ tier: "balanced", confidence: 1, risky: 0 }, "local/deep", tiers, (tier) =>
+      observed.push(tier),
+    ),
+  ).toBe("local/shared");
+  expect(observed).toEqual(["balanced"]);
+  observed.length = 0;
+  expect(
+    selectTier({ tier: "balanced", confidence: 1, risky: 0 }, "local/shared", tiers, (tier) =>
+      observed.push(tier),
+    ),
+  ).toBeNull();
+  expect(observed).toEqual([]);
+  expect(
+    selectTier({ tier: "fast", confidence: 0, risky: 1 }, "local/shared", tiers, (tier) =>
+      observed.push(tier),
+    ),
+  ).toBe("local/deep");
+  expect(observed).toEqual(["deep"]);
+});
