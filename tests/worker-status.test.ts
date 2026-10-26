@@ -275,3 +275,108 @@ test("worker-status explicit user stopped child cancels but arbitrary reason can
   state.child({ ...child("run-a", "stopped"), reason: "user" });
   expect(state.details("call-a")[0]).toEndWith("cancelled");
 });
+
+for (const terminal of ["completed", "failed"] as const)
+  test(`P1 foreground workflow result without outer toolCallId closes exact ${terminal} leaf`, () => {
+    const { state, assess } = fixture();
+    assess();
+    assess("logical-b");
+    state.accepted({ ...accepted(), parentWorkflowRunId: "workflow", workflowKey: "a" });
+    state.accepted({
+      ...accepted(receipt("logical-b"), "call-a", "run-b"),
+      parentWorkflowRunId: "workflow",
+      workflowKey: "b",
+    });
+    state.child({ ...child("workflow"), childRunId: "run-a" });
+    const details = {
+      mode: "workflow",
+      runId: "workflow",
+      results: [],
+      workflowChildren: {
+        version: 1,
+        parentToolCallId: "call-a",
+        workflowRunId: "workflow",
+        inventoryComplete: true,
+        children: [
+          { childId: "a", runId: "run-a", state: terminal },
+          { childId: "b", runId: "wrong", state: "completed" },
+        ],
+      },
+    };
+    state.result("wrong-call", details, false);
+    expect(state.details("call-a")[0]).toEndWith("running");
+    state.result("call-a", details, false);
+    expect(state.details("call-a")[0]).toEndWith(terminal);
+    expect(state.details("call-a")[1]).toEndWith("accepted");
+  });
+
+test("P1 canonical foreground throw result fails only exact observed non-workflow leaf", async () => {
+  const { finalizeToolResult } =
+    await import("../node_modules/pi-subagents/src/extension/tool-result.ts");
+  const { state, assess } = fixture();
+  assess();
+  assess("logical-b");
+  state.observeTool("call-a");
+  state.accepted(accepted());
+  state.accepted({
+    ...accepted(receipt("logical-b"), "call-a", "run-b"),
+    parentWorkflowRunId: "workflow",
+    workflowKey: "b",
+  });
+  state.child(child());
+  let canonical: { details: object; isError: boolean } | undefined;
+  try {
+    finalizeToolResult({
+      content: [{ type: "text", text: "PRIVATE_FAILURE" }],
+      details: { mode: "single", runId: "run-a", toolCallId: "call-a", results: [] },
+      isError: true,
+    });
+  } catch {
+    // Pi's public catch boundary discards executor details when a tool throws.
+    canonical = { details: {}, isError: true };
+  }
+  expect(canonical).toBeDefined();
+  state.result("wrong-call", canonical!.details, canonical!.isError);
+  expect(state.details("call-a")[0]).toEndWith("running");
+  state.result("call-a", canonical!.details, canonical!.isError);
+  expect(state.details("call-a")[0]).toEndWith("failed");
+  expect(state.details("call-a")[1]).toEndWith("accepted");
+  state.child(child("run-a", "started", 10));
+  expect(state.details("call-a")[0]).toEndWith("failed");
+});
+
+test("P1 canonical empty error never closes unobserved or ambiguous ordinary leaves", () => {
+  const { state, assess } = fixture();
+  assess();
+  state.accepted(accepted());
+  state.result("call-a", {}, true);
+  expect(state.details("call-a")[0]).toEndWith("accepted");
+  state.observeTool("call-a");
+  assess("logical-b");
+  state.accepted(accepted(receipt("logical-b"), "call-a", "run-b"));
+  state.result("call-a", {}, true);
+  expect(state.details("call-a").every((line) => line.endsWith("accepted"))).toBe(true);
+});
+
+test("P1 empty root error cannot terminalize workflow leaves", () => {
+  const { state, assess } = fixture();
+  assess();
+  state.observeTool("call-a");
+  state.accepted({ ...accepted(), parentWorkflowRunId: "workflow", workflowKey: "a" });
+  state.child({ ...child("workflow"), childRunId: "run-a" });
+  state.result("call-a", {}, true);
+  expect(state.details("call-a")[0]).toEndWith("running");
+  state.result(
+    "call-a",
+    {
+      workflowChildren: {
+        version: 1,
+        parentToolCallId: "call-a",
+        workflowRunId: "wrong-root",
+        children: [{ childId: "a", runId: "run-a", state: "completed" }],
+      },
+    },
+    false,
+  );
+  expect(state.details("call-a")[0]).toEndWith("running");
+});

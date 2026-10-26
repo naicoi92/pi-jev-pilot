@@ -192,8 +192,27 @@ export class WorkerStatus {
 
   result(toolCallId: string, value: unknown, isError: boolean): void {
     const details = record(value);
-    if (!details || details.toolCallId !== toolCallId) return;
-    this.workflow(details.workflowChildren);
+    if (!details) return;
+    const inventory = record(details.workflowChildren);
+    if (inventory?.parentToolCallId === toolCallId) {
+      this.workflow(inventory);
+      this.notify();
+    }
+    // Pi converts a thrown foreground failure to isError + empty details. Only an
+    // observed, uniquely bound ordinary leaf can recover correlation from that call.
+    if (isError && Object.keys(details).length === 0 && this.observedTool(toolCallId)) {
+      const leaves = [...this.workers.values()].filter(
+        (worker) =>
+          worker.binding?.toolCallId === toolCallId && !worker.binding.parentWorkflowRunId,
+      );
+      const worker = leaves.length === 1 ? leaves[0] : undefined;
+      if (worker?.status && !TERMINAL.has(worker.status)) {
+        this.terminal(worker, "failed");
+        this.notify();
+      }
+      return;
+    }
+    if (details.toolCallId !== toolCallId) return;
     if (!Array.isArray(details.results)) return;
     const result =
       details.mode === "single" && details.results.length === 1
