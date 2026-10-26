@@ -6,7 +6,7 @@ This addendum takes precedence over earlier effort behavior where they conflict.
 
 ## Contract
 
-1. **Superseding operator decision:** installing/enabling Jev auto-effort authorizes selecting effort over the host's default/current thinking according to upstream policy. A named/current thinking value is not a persistent lock. Automatic detection of every native explicit choice is not required. Preserve upstream confidence/risk/ceiling/follow-up exceptions; this is not unconditional overwrite authority. Invalidate an outstanding classification if the user changes model/thinking while it runs; a later eligible prompt may route again.
+1. **Superseding operator decision:** installing/enabling Jev auto-effort authorizes selecting effort over the host's default/current thinking according to upstream policy. A named/current thinking value is not a persistent lock. Automatic detection of every native explicit choice is not required. Preserve risk and ceiling exceptions. The 2026-10-25 authoritative-effort decision below supersedes effort confidence and short-follow-up vetoes; this is not unconditional overwrite authority. Invalidate an outstanding classification if the user changes model/thinking while it runs; a later eligible prompt may route again.
 2. Only enabled and applicable capabilities contribute classifier questions. Preserve the upstream combined call for questions that are jointly applicable, rather than issuing independent calls per capability.
 3. When no classifier question remains, perform zero classifier requests. Do not run a classifier merely to produce unused diagnostics or ledger activity.
 4. Strategy, quality and design guidance remain advice/context, not dispatch, enforcement or demonstrated quality improvement.
@@ -15,7 +15,7 @@ This addendum takes precedence over earlier effort behavior where they conflict.
 
 ## Superseding ordinary-worker authority
 
-The operator explicitly requires Jev to overwrite models supplied in ordinary worker calls: call model A, valid policy selection B means child B. This supersedes earlier caller-pin preservation in the spec, ticket 06 and research. It does not authorize automatic replacement of the main physical model or removal of manual-change cancellation guards. Enabled/applicable gates, confidence/risk policy, supported effort adaptation and failure/cancellation contracts remain. Distinguishing caller pins from agent defaults is no longer an acceptance blocker; discovery is required only where a concrete routing/baseline/applicability contract needs it. Historical checkpoint findings remain evidence, not proof that a new API is required.
+The operator explicitly requires Jev to overwrite models supplied in ordinary worker calls: call model A, valid policy selection B means child B. This supersedes earlier caller-pin preservation in the spec, ticket 06 and research. It does not authorize automatic replacement of the main physical model or removal of manual-change cancellation guards. Enabled/applicable gates, model/tier confidence and risk policy, supported effort adaptation and failure/cancellation contracts remain. Distinguishing caller pins from agent defaults is no longer an acceptance blocker; discovery is required only where a concrete routing/baseline/applicability contract needs it. Historical checkpoint findings remain evidence, not proof that a new API is required.
 
 ### Ordinary-worker model baseline
 
@@ -27,7 +27,26 @@ Policy baseline is not failure fallback: disabled routing, classifier error or t
 
 The operator requires Jev to decide worker effort and use that decision. Configured agent/executor thinking, including max, is a default, not a veto or protected ceiling against a valid applicable Jev choice. If Jev selects medium, a child configured max or low must run supported medium. This supersedes the proposed max-to-max requirement and first-child-request baseline/transport blocker; those probes remain historical observations, not fixed bugs. Caller model and configured worker effort must not bypass a valid Jev selection.
 
-Use the documented parent tool-call model/effort suffix where supported; no child numeric decision transport, internal binding ENV or extra classification is required merely to preserve executor defaults. Retain confidence/risk rules where not conflicting with this worker authority; do not introduce a hidden default-effort veto. Disabled routing or classifier error/timeout preserves the original envelope; cancellation stops work. This worker clarification does not change accepted main-session effort policy.
+Use the documented parent tool-call model/effort suffix where supported; no child numeric decision transport, internal binding ENV or extra classification is required merely to preserve executor defaults. Retain model/tier confidence and effort risk rules where not conflicting with this worker authority; do not introduce a hidden default-effort veto. Disabled routing or classifier error/timeout preserves the original envelope; cancellation stops work. This worker clarification does not change accepted main-session effort policy.
+
+## Authoritative valid effort — approved 2026-10-25
+
+Operator decision `b023faf1` at 00:13:36 UTC approved the proposal at 00:11:45 UTC
+and main/worker clarification at 00:13:31 UTC: use valid Jev effort assessments,
+not baseline retention based on confidence or short input. Confidence is diagnostic
+only for effort. Same-level assessment is a successful selection. A validated
+explicit choice wins legacy normalization; malformed or inconsistent supplied
+fields remain schema errors. Without a choice, keep compatible legacy
+normalization. Main effort question rates requested work neutrally, using recent
+context for approved or continued work.
+
+This supersedes older effort confidence/follow-up requirements, not model/tier
+confidence or expert admission. Keep main max lock, xhigh output ceiling, risk
+floor/no-lowering and final model support checks. No extra classifier call or new
+API is authorized. Stored confidence tuning remains compatible but cannot veto
+valid effort. See [regression matrix](../../docs/testing/authoritative-effort-regression.md).
+Worker-authority machinery, continuation ownership and UI restoration are outside
+this narrow regression fix; historical evidence is not rewritten.
 
 ## Evidence gate before implementation
 

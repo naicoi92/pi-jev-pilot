@@ -1,7 +1,39 @@
 import { expect, test } from "bun:test";
 import { selectEffort, type EffortDecision, type Effort } from "../src/effort-policy.ts";
 
-// AC-03 / POLICY-03: pinned route(): upgrade .3 and high confidence .5.
+// AE-1: recorded normalized incident decisions; raw choices were not captured.
+// Expected outcomes follow the approved authoritative-effort contract, not confidence gates.
+test("POLICY-AE-1 recorded .44 confidence assessment selects high", () => {
+  expect(
+    selectEffort(
+      {
+        effort: 2.4800000000000004,
+        effortConfidence: 0.44,
+        effortProbabilities: { "0": 0.02, "1": 0.05, "2": 0.37, "3": 0.55, "4": 0.01 },
+        risky: 0.37,
+      },
+      "medium",
+      "Review the complete change and verify the requested behavior before reporting results",
+    ),
+  ).toBe("high");
+});
+
+test("POLICY-AE-1 recorded short option assessment selects low", () => {
+  expect(
+    selectEffort(
+      {
+        effort: 0.06,
+        effortConfidence: 0.94,
+        effortProbabilities: { "0": 0.95, "1": 0.04, "2": 0.01, "3": 0, "4": 0 },
+        risky: 0.12,
+      },
+      "medium",
+      "option 1",
+    ),
+  ).toBe("low");
+});
+
+// AC-03 / POLICY-03: historical upstream example, also valid under AE-2.
 test("POLICY-03 raises medium to high at the upstream high-confidence bar", () => {
   expect(
     selectEffort(
@@ -12,7 +44,8 @@ test("POLICY-03 raises medium to high at the upstream high-confidence bar", () =
   ).toBe("high");
 });
 
-// All cases belong to AC-03; independent literals from pinned route()/effortScoreOf().
+// AE-2 confidence/short-input cases supersede old AC-03 vetoes; AE-5 retains risk/ceiling.
+// Normalization literals remain pinned route()/effortScoreOf() examples.
 const cases: {
   name: string;
   decision: EffortDecision;
@@ -21,10 +54,10 @@ const cases: {
   expected: Effort | null;
 }[] = [
   {
-    name: "rejects a high upgrade below .5",
+    name: "accepts a high upgrade below the old confidence bar",
     decision: { effort: 2, effortConfidence: 0.49, risky: 0 },
     current: "medium",
-    expected: null,
+    expected: "high",
   },
   {
     name: "upgrades low to medium at .3",
@@ -33,16 +66,16 @@ const cases: {
     expected: "medium",
   },
   {
-    name: "rejects a medium upgrade below .3",
+    name: "accepts a medium upgrade below the old confidence bar",
     decision: { effort: 1, effortConfidence: 0.29, risky: 0 },
     current: "low",
-    expected: null,
+    expected: "medium",
   },
   {
-    name: "rejects a downgrade below .6",
+    name: "accepts a downgrade below the old confidence bar",
     decision: { effort: 0, effortConfidence: 0.59, risky: 0 },
     current: "high",
-    expected: null,
+    expected: "low",
   },
   {
     name: "allows a downgrade at .6",
@@ -51,11 +84,11 @@ const cases: {
     expected: "low",
   },
   {
-    name: "does not lower a short approval",
+    name: "applies a fresh low assessment to a short approval",
     decision: { effort: 0, effortConfidence: 0.99, risky: 0 },
     current: "high",
     prompt: "yes",
-    expected: null,
+    expected: "low",
   },
   {
     name: "allows lowering a short question",
@@ -78,16 +111,16 @@ const cases: {
     expected: "high",
   },
   {
-    name: "risk at .7 is not forced",
+    name: "risk at .7 does not force high",
     decision: { effort: 0, effortConfidence: 0.01, risky: 0.7 },
     current: "low",
-    expected: null,
+    expected: "low",
   },
   {
-    name: "risk never lowers an existing xhigh",
+    name: "risk preserves an existing xhigh as successful selection",
     decision: { effort: 0, effortConfidence: 0.99, risky: 0.99 },
     current: "xhigh",
-    expected: null,
+    expected: "xhigh",
   },
   {
     name: "does not cut a manually selected max above ceiling",
@@ -108,10 +141,10 @@ const cases: {
     expected: "high",
   },
   {
-    name: "missing confidence forbids downgrades",
+    name: "missing confidence permits downgrades",
     decision: { effort: 0, effortConfidence: null, risky: 0 },
     current: "high",
-    expected: null,
+    expected: "low",
   },
   {
     name: "near tie leans from medium to high",
@@ -145,6 +178,12 @@ const cases: {
     },
     current: "high",
     expected: "xhigh",
+  },
+  {
+    name: "same-level zero-confidence assessment succeeds",
+    decision: { effort: 1, effortConfidence: 0, risky: 0 },
+    current: "medium",
+    expected: "medium",
   },
   {
     name: "absent effort keeps current",

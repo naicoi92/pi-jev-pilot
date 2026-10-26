@@ -87,7 +87,7 @@ const questions = {
   effort: {
     type: "choice",
     instructions:
-      'How much step-by-step reasoning does the work this request asks for need? Rate the work, not how important the topic sounds: a question or advice answered in words, even about architecture or security, is low or medium, and reviewing a small diff is medium. A short reply that approves, continues or picks an option ("go ahead", "fix all and continue", "1") takes the size of the work it approves, from the recent conversation.',
+      "How much step-by-step reasoning does carrying out this request need? Rate the work requested, using recent conversation to identify work approved or continued.",
     criteria: Object.fromEntries(EFFORT_ORDER.map((level, index) => [level, rubric[index]])),
   },
   risky: {
@@ -141,6 +141,18 @@ function readDecision(value: unknown): EffortDecision | null {
   }
   const choice = EFFORT_ORDER.indexOf(effort.choice as (typeof EFFORT_ORDER)[number]);
   const score = effort.score;
+  if (effort.choice !== undefined && choice === -1) return null;
+  if (
+    score !== undefined &&
+    !(typeof score === "number" && Number.isFinite(score) && score >= 0 && score <= 4)
+  )
+    return null;
+  if (
+    choice !== -1 &&
+    probabilities &&
+    Math.max(...Object.values(probabilities)) - probabilities[String(choice)]! > 1e-8
+  )
+    return null;
   if (
     !probabilities &&
     choice === -1 &&
@@ -149,6 +161,7 @@ function readDecision(value: unknown): EffortDecision | null {
     return null;
   const confidence = effort.confidence as number | undefined;
   return {
+    ...(choice !== -1 ? { effortChoice: EFFORT_ORDER[choice]! } : {}),
     effort: probabilities
       ? Object.entries(probabilities).reduce(
           (sum, [level, value]) => sum + Number(level) * value,

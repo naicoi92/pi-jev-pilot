@@ -203,9 +203,10 @@ for (const example of [
     effective: "high",
   },
   {
-    name: "high upgrade below .5 keeps medium",
+    // AE-2 supersedes the historical confidence veto.
+    name: "high upgrade below the old confidence bar applies high",
     response: answer("high", 0.49),
-    effective: "medium",
+    effective: "high",
   },
   {
     name: "max start is capped and adapted to high",
@@ -213,7 +214,8 @@ for (const example of [
     effective: "high",
   },
   {
-    name: "close medium/high tie takes high",
+    // AE-3 explicit choice precedes legacy normalization.
+    name: "explicit medium choice beats legacy close-call lean",
     response: {
       answers: {
         effort: {
@@ -224,7 +226,7 @@ for (const example of [
         risky: { noul: 0 },
       },
     },
-    effective: "high",
+    effective: "medium",
   },
   {
     name: "very-hard share below .6 takes high",
@@ -1005,5 +1007,6 @@ test("CLI-08b approval is classified with the proposed work in recent context", 
   expect(fixture.classifications).toHaveLength(2);
   const state = fixture.classifications[1]?.state as { recent_context: string };
   expect(state.recent_context).toContain("Shall I implement the proposed multi-file change?");
-  expect(fixture.generations[1]?.reasoning_effort).toBe("high");
+  // AE-2: freshly assessed low applies even to a short approval.
+  expect(fixture.generations[1]?.reasoning_effort).toBe("low");
 }, 20000);

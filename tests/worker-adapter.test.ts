@@ -143,7 +143,8 @@ async function fixture(defaultContext = "fresh") {
   };
 }
 
-test("WORKER-03 thresholds and risk use shared policy without configured effort veto", async () => {
+// AE-2: effort confidence is diagnostic; tier confidence gates and risk remain unchanged.
+test("WORKER-03 effort authority preserves tier confidence gates", async () => {
   const f = await fixture();
   const input = {
     agent: "worker",
@@ -170,7 +171,7 @@ test("WORKER-03 thresholds and risk use shared policy without configured effort 
     },
   });
   await f.call(input);
-  expect(input.model).toBe("local/deep:high");
+  expect(input.model).toBe("local/deep:low");
 });
 
 test("WORKER-20 explicit and implicit fork bypass worker classification", async () => {

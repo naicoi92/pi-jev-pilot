@@ -4,16 +4,18 @@ export type Effort = (typeof EFFORT_ORDER)[number];
 
 export interface EffortDecision {
   effort: number | null;
+  /** Validated explicit choice; absent on historical normalized decisions. */
+  effortChoice?: Effort;
   effortConfidence: number | null;
   effortProbabilities?: Record<string, number> | null;
   risky: number | null;
 }
 
-/** The effort thresholds upstream tuning may change; the defaults are the upstream settings. */
+/** Compatible tuning fields; confidence bars no longer veto valid effort assessments. */
 export interface EffortThresholds {
-  /** Confidence needed to lower the effort. */
+  /** Legacy stored field; diagnostic only. */
   minDowngradeConfidence: number;
-  /** Confidence needed to raise the effort to high or above. */
+  /** Legacy stored field; diagnostic only. */
   minHighConfidence: number;
   /** How close two levels must be for the close call to lean to the higher one. */
   effortCloseMargin: number;
@@ -30,31 +32,12 @@ export function isContinuation(prompt: string): boolean {
   );
 }
 
-function isFollowUp(prompt: string): boolean {
-  const text = prompt.trim();
-  if (!text || /[?？]$/.test(text)) return false;
-  if (/^(what|why|how|is|are|do|does|did|can|could|should|where|when|which|who)\b/i.test(text))
-    return false;
-  if (
-    /为什么|为啥|怎么|怎样|如何|什么|是不是|能不能|可不可以|有没有|是否|[吗呢][\s。.!！~～]*$/.test(
-      text,
-    )
-  )
-    return false;
-  const unspaced = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/gu;
-  const count = text.match(unspaced)?.length ?? 0;
-  const spaced = text
-    .replace(unspaced, " ")
-    .split(/\s+/)
-    .filter((token) => /[\p{L}\p{N}]/u.test(token)).length;
-  return spaced + Math.ceil(count / 1.5) <= 8;
-}
-
-/** The rubric level (0..4) a decision resolves to, after the close-call lean. */
+/** Explicit choice, or legacy rubric level (0..4) after the close-call lean. */
 export function effortScore(
   decision: EffortDecision,
   margin = DEFAULT_EFFORT_THRESHOLDS.effortCloseMargin,
 ): number | null {
+  if (decision.effortChoice !== undefined) return EFFORT_ORDER.indexOf(decision.effortChoice);
   const ranked = Object.entries(decision.effortProbabilities ?? {})
     .map(([level, probability]) => ({ level: Number(level), probability }))
     .filter(
@@ -85,11 +68,11 @@ export function effortScore(
   return Math.min(4, score - whole >= 0.5 - (whole + 1 <= 2 ? margin : 0) ? whole + 1 : whole);
 }
 
-/** Upstream start-of-turn rules only; no mid-turn escalation or model selection. */
+/** Valid effort is authoritative within main max lock, risk and xhigh ceiling constraints. */
 export function selectEffort(
   decision: EffortDecision,
   current: string,
-  prompt: string,
+  _prompt: string,
   thresholds: EffortThresholds = DEFAULT_EFFORT_THRESHOLDS,
 ): Effort | null {
   let score = effortScore(decision, thresholds.effortCloseMargin);
@@ -101,15 +84,5 @@ export function selectEffort(
   let to = Math.min(Math.round(score), 3);
   if (forced) to = Math.max(to, from ?? 0, 2);
   if (from !== null && from > 3) return null;
-  const lowering = from !== null && to < from;
-  if ((isFollowUp(prompt) && lowering) || to === from) return null;
-  const confidence = decision.effortConfidence;
-  const allowed =
-    confidence === null
-      ? !lowering
-      : confidence >= (lowering ? thresholds.minDowngradeConfidence : 0.3);
-  const sureOfHigh = confidence === null || confidence >= thresholds.minHighConfidence;
-  return forced || (allowed && (lowering || to < 2 || sureOfHigh))
-    ? (EFFORT_ORDER[to] ?? null)
-    : null;
+  return EFFORT_ORDER[to] ?? null;
 }

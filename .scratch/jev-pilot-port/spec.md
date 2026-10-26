@@ -27,7 +27,7 @@ Included feature IDs are 01, 03, 04, 05, 06, 07, 08, 09, 10, 13 and 14 from the 
 5. As a Pi user, I want Jev to classify work using the original tier rubric, so that lookup, specified implementation and judgment-heavy work retain their upstream treatment.
 6. As a Pi user, I want automatic main-model routing to be configurable and off by default as upstream, so that installing the package does not silently replace my chosen conversation model.
 7. As a Pi user, I want per-prompt effort selection, so that reasoning demand can vary without requiring a model switch.
-8. As a Pi user, I want original confidence thresholds, risk treatment, follow-up rules and effort ceilings, so that the port does not introduce a different routing policy.
+8. As a Pi user, I want valid effort assessments applied without confidence or short-follow-up vetoes under the 2026-10-25 operator decision, while preserving risk treatment, effort ceilings and model/tier confidence gates.
 9. As a Pi user, I want only thinking levels supported by the resolved model to be dispatched, so that provider incompatibility does not produce invalid requests.
 10. As a Pi user, I want requested and effective thinking levels to be distinguishable, so that host clamping or unsupported upstream levels are visible rather than misreported.
 11. As a Pi user, I want continuation requests and retries to preserve the applied route where supported, so that the port avoids unnecessary cache churn and repeated classification.
@@ -78,7 +78,7 @@ The operator approved [decision gating](decision-gating.md), then clarified effo
 - Preserve pure decision policy and parsing where possible. Separate it from transport and host effects so policy parity is testable without live models.
 - Use five responsibility boundaries: decision policy; Pi configuration/transport/main routing; skill and design guidance; crew/subagent adapter; decision history/report/tuning. This is a proposed decomposition, not a requirement for five public packages or separate routing engines.
 - A single shared decision implementation supplies main and worker routing. Do not create independent rubrics per host adapter.
-- Preserve upstream confidence and risk semantics, except unresolved source discrepancies must be characterized before deciding parity. Do not silently change a policy bug under the label of porting.
+- Preserve upstream model/tier confidence and risk semantics. Effort confidence and short-follow-up vetoes are superseded by the approved 2026-10-25 authoritative-effort decision in decision-gating.md. Unresolved source discrepancies must be characterized before deciding parity; do not silently change policy under the label of porting.
 
 ### Pi integration
 
@@ -133,7 +133,7 @@ Test externally visible behavior, not private helper structure. Use captured ups
 |---|---|---|
 | AC-01 | A normal Pi package installation loads the extension without a Claude launcher or local model proxy. | Pi CLI package boundary |
 | AC-02 | Configured qualified identities resolve the three tiers and permitted custom slots without changing global defaults implicitly. | Pi config/registry integration |
-| AC-03 | Pinned routing fixtures preserve tier, confidence, follow-up, risk and ceiling outcomes except documented approved host differences. | Upstream parity fixtures plus host dispatch |
+| AC-03 | Pinned routing fixtures preserve model/tier confidence, risk and ceiling outcomes. Valid effort assessments apply without confidence or short-input vetoes under the approved 2026-10-25 decision; explicit validated choices precede compatible legacy normalization. | Upstream fixtures, authoritative-effort regression matrix and host dispatch |
 | AC-04 | With main-model routing disabled, eligible effort decisions do not replace the selected physical model. | Pi package boundary |
 | AC-05 | With automatic main routing enabled, eligible decisions dispatch the configured physical model and supported thinking setting. | Pi virtual-model integration |
 | AC-06 | Requested versus effective thinking is observable when unsupported upstream levels are adapted. | Dispatch and ledger evidence |

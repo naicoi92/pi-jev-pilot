@@ -207,16 +207,19 @@ test("AC-25 TUNE-25-describe: shows effective value against base and the suggest
   );
 });
 
-test("AC-25 TUNE-25-effective-policy: learned thresholds change a policy decision, defaults do not", () => {
-  // High at confidence .55 from medium: upstream bar .5 passes, a learned .6 rejects it.
+test("AE-2 TUNE-25-effective-policy: legacy confidence tuning cannot veto effort", () => {
+  // Approved effort authority supersedes confidence gates; stored fields remain compatible.
   const decision = { effort: 2, effortConfidence: 0.55, risky: 0 };
   const prompt = "Please review the complete patch with particular care for failure modes";
   expect(selectEffort(decision, "medium", prompt)).toBe("high");
-  expect(selectEffort(decision, "medium", prompt, { ...base, minHighConfidence: 0.6 })).toBeNull();
-  // Lowering high to medium at .65: upstream bar .6 passes, a learned .7 rejects it.
+  expect(selectEffort(decision, "medium", prompt, { ...base, minHighConfidence: 0.6 })).toBe(
+    "high",
+  );
   const lower = { effort: 1, effortConfidence: 0.65, risky: 0 };
   expect(selectEffort(lower, "high", prompt)).toBe("medium");
-  expect(selectEffort(lower, "high", prompt, { ...base, minDowngradeConfidence: 0.7 })).toBeNull();
+  expect(selectEffort(lower, "high", prompt, { ...base, minDowngradeConfidence: 0.7 })).toBe(
+    "medium",
+  );
   // Close call: probabilities .5/.4 (gap .1) lean up at margin .15, not at margin .05.
   const close = {
     effort: 0.9,
@@ -225,7 +228,7 @@ test("AC-25 TUNE-25-effective-policy: learned thresholds change a policy decisio
     risky: 0,
   };
   expect(selectEffort(close, "low", prompt)).toBe("medium");
-  expect(selectEffort(close, "low", prompt, { ...base, effortCloseMargin: 0.05 })).toBeNull();
+  expect(selectEffort(close, "low", prompt, { ...base, effortCloseMargin: 0.05 })).toBe("low");
 });
 
 test("AC-26 TUNE-26-persist: an applied tuning is read back from disk and overlays the base", async () => {
