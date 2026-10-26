@@ -171,7 +171,11 @@ test("AC-2 STATUS-1 command is available before selection with no inference API"
 function workerFixture() {
   const entries: DecisionRow[] = [];
   const lines: string[][] = [];
-  const visibility = new WorkerVisibility((row) => entries.push(row));
+  const visibility = new WorkerVisibility(
+    (row) => entries.push(row),
+    undefined,
+    (rows) => lines.push([...rows]),
+  );
   const ui = {
     setWidget(_key: string, value: string[] | undefined) {
       if (value) lines.push(value);

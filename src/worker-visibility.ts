@@ -12,7 +12,6 @@ import {
   type VisibleOutcome,
 } from "./decision-visibility.ts";
 
-const KEY = "jev-pilot-workers";
 const VISIBLE_ROWS = 4;
 const HISTORY_ROWS = 12;
 function nativeReceipt(
@@ -60,7 +59,6 @@ export type WorkerVisibilityOwner = WorkerRow;
 /** Bounded presentation state only. Executor cancellation/ownership remains in the adapter. */
 export class WorkerVisibility {
   private rows = new Map<string, WorkerRow>();
-  private ui: ExtensionUIContext | undefined;
   private sequence = 0;
   private rollover = false;
   /** Launch-allowed calls awaiting their tool result, and executor-accepted async runs
@@ -72,6 +70,7 @@ export class WorkerVisibility {
   constructor(
     private readonly persist?: (row: WorkerDecisionRow) => void,
     private readonly onRunning?: (count: number) => void,
+    private readonly onRows?: (rows: readonly string[]) => void,
   ) {}
 
   private notifyRunning(): void {
@@ -124,11 +123,10 @@ export class WorkerVisibility {
 
   start(
     toolCallId: string,
-    ui: ExtensionUIContext,
+    _ui: ExtensionUIContext,
     agent?: unknown,
     retained?: unknown,
   ): WorkerVisibilityOwner {
-    this.ui = ui;
     const label = this.nextLabel(toolCallId);
     const row: WorkerRow = {
       toolCallId,
@@ -307,25 +305,18 @@ export class WorkerVisibility {
     this.asyncRuns.clear();
     this.notifyRunning();
     this.rows.clear();
-    this.ui?.setWidget?.(KEY, undefined);
-    this.ui?.setStatus?.(KEY, undefined);
-    this.ui = undefined;
+    this.render();
   }
 
   private render(): void {
     const rows = [...this.rows.values()];
-    this.ui?.setWidget?.(
-      KEY,
+    this.onRows?.(
       rows
         .slice(-VISIBLE_ROWS)
         .map(
           (row) =>
-            `Jev worker ${row.agent} ${row.label} · ${row.decision}${row.executor ? ` · ${row.executor}` : ""}`,
+            `worker ${row.agent} ${row.label} · ${row.decision}${row.executor ? ` · ${row.executor}` : ""}`,
         ),
-    );
-    this.ui?.setStatus?.(
-      KEY,
-      `jev workers · ${rows.length} recent${rows.length > VISIBLE_ROWS ? ` · showing ${VISIBLE_ROWS}` : ""}`,
     );
   }
 }

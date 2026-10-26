@@ -1,5 +1,7 @@
 # Ticket 12 live status line validation
 
+Historical validation below. Current shared widget and assessment-only spinner contract supersedes its independent-worker-widget and agent-running-spinner claims: see [shared status regression](jev-shared-status.md).
+
 ## Scope
 
 Persistent single-line Jev status above the editor, replacing the transient "choosing effort" text widget. Footer/powerbar, the independent worker widget, `/jev status` and durable evidence storage are unchanged. Only successful Jev decision rows stop rendering in the conversation; timeout, error and blocked rows stay expandable. Stored entries are never rewritten.

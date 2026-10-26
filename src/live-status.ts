@@ -51,16 +51,18 @@ const TOOL_ACTIVITY: Record<string, string> = {
   bash: "running",
 };
 
-/** One persistent row above the editor; presentation only, never model context. */
+/** Shared Jev widget above the editor; presentation only, never model context. */
 export class LiveStatusLine {
   private ui: ExtensionUIContext | undefined;
   private tui: TUI | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
   private choosing = false;
+  private workerAssessments = new Set<symbol>();
   private running = false;
   private observedThinking = false;
   private tools = new Map<string, string>();
   private workers = 0;
+  private workerRows: readonly string[] = [];
   private effort: VisibleEffort | undefined;
   private requested: VisibleEffort | undefined;
   private skill: string | undefined;
@@ -106,6 +108,16 @@ export class LiveStatusLine {
     this.choosing = true;
     this.changed();
     return ++this.token;
+  }
+
+  /** Each assessment owns only its cleanup, including across session replacement. */
+  assessWorker(): () => void {
+    const assessment = Symbol();
+    this.workerAssessments.add(assessment);
+    this.changed();
+    return () => {
+      if (this.workerAssessments.delete(assessment)) this.changed();
+    };
   }
 
   /** Only a valid decision clears a warning; skipped and cancelled turns leave it. */
@@ -168,6 +180,11 @@ export class LiveStatusLine {
     this.changed();
   }
 
+  setWorkerRows(rows: readonly string[]): void {
+    this.workerRows = rows;
+    this.changed();
+  }
+
   /** A user-selected level replaces a known effort; it never creates one. */
   setEffort(effort: VisibleEffort): void {
     if (this.effort) {
@@ -181,10 +198,12 @@ export class LiveStatusLine {
   private reset(): void {
     this.token++;
     this.choosing = false;
+    this.workerAssessments.clear();
     this.running = false;
     this.observedThinking = false;
     this.tools.clear();
     this.workers = 0;
+    this.workerRows = [];
     this.effort = undefined;
     this.requested = undefined;
     this.skill = undefined;
@@ -193,7 +212,7 @@ export class LiveStatusLine {
   }
 
   private busy(): boolean {
-    return this.choosing || this.running;
+    return this.choosing || this.workerAssessments.size > 0;
   }
 
   private changed(): void {
@@ -215,6 +234,7 @@ export class LiveStatusLine {
 
   private activity(): string | undefined {
     if (this.choosing) return "choosing effort";
+    if (this.workerAssessments.size) return "assessing worker";
     if (this.running)
       return [...this.tools.values()].at(-1) ?? (this.observedThinking ? "thinking" : "working");
     if (this.workers) return `${this.workers} ${this.workers === 1 ? "worker" : "workers"} running`;
@@ -240,7 +260,7 @@ export class LiveStatusLine {
     if (options.skill) parts.push({ text: options.skill, color: "muted" });
     if (options.strategy && this.strategy)
       parts.push({ text: `strategy ${this.strategy}`, color: "dim" });
-    if (options.workers && this.busy() && this.workers)
+    if (options.workers && (this.busy() || this.running) && this.workers)
       parts.push({
         text: `${this.workers} ${this.workers === 1 ? "worker" : "workers"}`,
         color: "dim",
@@ -283,7 +303,11 @@ export class LiveStatusLine {
     const separator = theme.fg("dim", SEPARATOR);
     const styled = parts.map((part) => theme.fg(part.color, part.text)).join(separator);
     const line = truncateToWidth(`${theme.fg("accent", frame)} ${styled}`, budget, "…");
-    return [" ".repeat(Math.max(0, budget - visibleWidth(line))) + line];
+    const align = (text: string) => " ".repeat(Math.max(0, budget - visibleWidth(text))) + text;
+    return [
+      align(line),
+      ...this.workerRows.map((row) => align(truncateToWidth(`  ${row}`, budget, "…"))),
+    ];
   }
 }
 

@@ -62,7 +62,7 @@ test("LIVE-2 choosing effort shows spinner only while busy, then settled decisio
     skill: "systematic-debugging",
   });
   line.agentRunning(true);
-  expect(text()).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Jev · working · high · \/systematic-debugging$/);
+  expect(text()).toBe("Jev · working · high · /systematic-debugging");
   line.agentRunning(false);
   expect(text()).toBe("Jev · high · /systematic-debugging");
 });
@@ -91,11 +91,11 @@ test("LIVE-5 fallback warning keeps retained effort and survives activity update
   expect(text()).toBe("Jev · fallback · medium · timeout");
   line.agentRunning(true);
   line.toolStarted("call-1", "read");
-  expect(text()).toMatch(/^\S Jev · reading · fallback · medium · timeout$/);
+  expect(text()).toBe("Jev · reading · fallback · medium · timeout");
   line.toolFinished("call-1");
   line.settle(line.choose(), { kind: "skipped" });
   line.settle(line.choose(), { kind: "cancelled" });
-  expect(text()).toMatch(/^\S Jev · working · fallback · medium · timeout$/);
+  expect(text()).toBe("Jev · working · fallback · medium · timeout");
   line.settle(line.choose(), { kind: "decided", effort: "high", requested: "high" });
   line.agentRunning(false);
   expect(text()).toBe("Jev · high");
@@ -110,7 +110,7 @@ test("LIVE-6 invalid configuration is an error warning without an effort claim",
 test("LIVE-7 activity derives from public tool events and observed thinking only", () => {
   const { line, text } = mounted();
   line.agentRunning(true);
-  const activity = () => text().replace(/^\S /, "");
+  const activity = () => text();
   expect(activity()).toBe("Jev · working");
   line.thinking(true);
   expect(activity()).toBe("Jev · thinking");
@@ -153,7 +153,7 @@ test("LIVE-9 observed running workers: suffix while main is busy, activity when 
   line.setWorkers(2);
   line.agentRunning(true);
   line.toolStarted("c", "read");
-  expect(text()).toMatch(/^\S Jev · reading · high · \/tdd · 2 workers$/);
+  expect(text()).toBe("Jev · reading · high · /tdd · 2 workers");
   line.agentRunning(false);
   line.setWorkers(0);
   expect(text()).toBe("Jev · high · /tdd");
@@ -171,7 +171,7 @@ test("LIVE-10 narrowing drops strategy, then workers, then truncates skill; acti
   line.agentRunning(true);
   line.toolStarted("c", "read");
   line.setWorkers(2);
-  const at = (width: number) => h.plain(width)[0]!.replace(/^\s+/, "").replace(/^\S /, "");
+  const at = (width: number) => h.plain(width)[0]!.trim();
   const full = "Jev · reading · high · /very-long-skill-name · strategy parallel · 2 workers";
   const noStrategy = "Jev · reading · high · /very-long-skill-name · 2 workers";
   const noWorkers = "Jev · reading · high · /very-long-skill-name";
@@ -198,15 +198,16 @@ test("LIVE-12 spinner repaints only while busy and detach removes widget and tim
   const line = new LiveStatusLine(5);
   line.attach(h.ui);
   const component = h.mount();
-  line.agentRunning(true);
+  const choice = line.choose();
   const busyFrom = h.renders();
   await Bun.sleep(60);
   expect(h.renders()).toBeGreaterThan(busyFrom + 2);
-  line.agentRunning(false);
+  line.settle(choice, { kind: "skipped" });
+  line.agentRunning(true);
   const idleAt = h.renders();
   await Bun.sleep(40);
   expect(h.renders()).toBe(idleAt);
-  line.agentRunning(true);
+  line.assessWorker();
   await Bun.sleep(30);
   line.detach();
   expect(h.widgets.at(-1)).toEqual({ key: "jev-pilot", content: undefined });
@@ -246,7 +247,7 @@ test("LIVE-15 public agent, tool and message events drive activity; nested tool 
     line,
   );
   const emit = (name: string, event: object = {}) => handlers.get(name)?.({ type: name, ...event });
-  const activity = () => text().replace(/^\S /, "");
+  const activity = () => text();
   emit("agent_start");
   expect(activity()).toBe("Jev · working");
   emit("message_update", { assistantMessageEvent: { type: "thinking_delta" } });
@@ -261,6 +262,45 @@ test("LIVE-15 public agent, tool and message events drive activity; nested tool 
   expect(activity()).toBe("Jev · working");
   emit("agent_end");
   expect(text()).toBe("Jev · ready");
+});
+
+// AC-5: independent pending identities, including cleanup arriving after reload.
+test("STATUS-5 old worker assessment cleanup cannot clear a newer assessment", () => {
+  const { h, line, text } = mounted();
+  const old = line.assessWorker();
+  expect(text()).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Jev/);
+  line.attach(h.ui);
+  const current = line.assessWorker();
+  old();
+  old();
+  expect(text()).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Jev/);
+  current();
+  expect(text()).toBe("Jev · ready");
+});
+
+// AC-5: main completion and sibling worker completion own independent pending work.
+test("STATUS-5 main completion cannot clear concurrent worker assessments", () => {
+  const { line, text } = mounted();
+  const main = line.choose();
+  const first = line.assessWorker();
+  const second = line.assessWorker();
+  line.settle(main, { kind: "decided", effort: "medium", requested: "medium" });
+  first();
+  expect(text()).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Jev · assessing worker/);
+  second();
+  expect(text()).toBe("Jev · medium");
+});
+
+// AC-6: worker details stay inside the shared widget at narrow widths.
+test("STATUS-6 worker rows fit shared status width without another widget", () => {
+  const { h, line } = mounted();
+  line.setWorkerRows([
+    "worker worker w1-122250 · launch unconfirmed · executor complete · model/effort unconfirmed",
+  ]);
+  expect(h.widgets).toHaveLength(1);
+  expect(h.plain(160)).toHaveLength(2);
+  for (let width = 1; width <= 160; width++)
+    for (const row of h.plain(width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
 });
 
 const user = (inputId: string | undefined, id: string) =>

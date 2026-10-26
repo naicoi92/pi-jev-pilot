@@ -61,7 +61,7 @@ export default function (pi: ExtensionAPI): void {
   const live = new LiveStatusLine();
   observeActivity(pi, live);
   registerCrewJunior(pi);
-  registerWorkerAdapter(pi, (count) => live.setWorkers(count));
+  registerWorkerAdapter(pi, (count) => live.setWorkers(count), live);
   const edits = new Map<string, number>();
   const runs = new Map<string, number>();
   let loopNoted = false;

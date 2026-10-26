@@ -11,6 +11,7 @@ import { WorkerVisibility } from "./worker-visibility.ts";
 import { configuredTiers } from "./routing-settings.ts";
 import { crewConfig } from "./crew-config.ts";
 import { appendDecisionRow } from "./decision-visibility.ts";
+import type { LiveStatusLine } from "./live-status.ts";
 
 function enabled(): boolean {
   const value = process.env.JEV_WORKER_ROUTING_ENABLED ?? "true";
@@ -25,8 +26,13 @@ function identity(value: string): string {
 export function registerWorkerAdapter(
   pi: ExtensionAPI,
   onWorkersRunning?: (count: number) => void,
+  live?: LiveStatusLine,
 ): void {
-  const visibility = new WorkerVisibility((row) => appendDecisionRow(pi, row), onWorkersRunning);
+  const visibility = new WorkerVisibility(
+    (row) => appendDecisionRow(pi, row),
+    onWorkersRunning,
+    (rows) => live?.setWorkerRows(rows),
+  );
   let childExtension: RequiredChildExtensionRegistration | undefined;
   const deliverChildExtension = (_event: unknown, ctx: ExtensionContext) => {
     childExtension?.dispose();
@@ -46,7 +52,11 @@ export function registerWorkerAdapter(
     childExtension?.dispose();
     childExtension = undefined;
   });
-  const authority = registerWorkerAuthorityLifecycle(pi, enabled);
+  const authority = registerWorkerAuthorityLifecycle(
+    pi,
+    enabled,
+    () => live?.assessWorker() ?? (() => {}),
+  );
   const allowedLaunches = new Set<string>();
   const owned = new Map<string, { signal?: AbortSignal; cancel: () => void }>();
   const stop = (id: string) =>

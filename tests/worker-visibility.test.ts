@@ -2,6 +2,10 @@ import { afterEach, expect, test } from "bun:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { statusLines, type WorkerDecisionRow } from "../src/decision-visibility.ts";
 import { registerWorkerAdapter } from "../src/worker-adapter.ts";
+import { LiveStatusLine } from "../src/live-status.ts";
+import { prepareFixtureWorker } from "./fixtures/worker-authority.ts";
+import type { Component, TUI } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,7 +38,8 @@ async function fixture(defaultContext = "fresh") {
   const listeners = new Map<string, Function[]>();
   const controls: unknown[] = [];
   const entries: unknown[] = [];
-  const widgets = new Map<string, string[] | undefined>();
+  type Factory = (tui: TUI, theme: Theme) => Component;
+  const widgets = new Map<string, Factory | string[] | undefined>();
   const statuses = new Map<string, string | undefined>();
   const snapshots: string[] = [];
   const signal = new AbortController();
@@ -65,6 +70,7 @@ async function fixture(defaultContext = "fresh") {
     id,
     api: "openai-completions",
     reasoning: true,
+    thinkingLevelMap: { low: "low", medium: "medium", high: "high" },
     contextWindow: 32000,
     maxTokens: 100,
     input: ["text"],
@@ -89,7 +95,7 @@ async function fixture(defaultContext = "fresh") {
       getBranch: () => [],
     },
     ui: {
-      setWidget(key: string, lines: string[] | undefined) {
+      setWidget(key: string, lines: Factory | string[] | undefined) {
         widgets.set(key, lines);
         snapshots.push(JSON.stringify(lines) ?? "cleared");
       },
@@ -99,7 +105,9 @@ async function fixture(defaultContext = "fresh") {
     },
   } as unknown as ExtensionContext;
   const running: number[] = [];
-  registerWorkerAdapter(pi as unknown as ExtensionAPI, (count) => running.push(count));
+  const live = new LiveStatusLine();
+  live.attach(ctx.ui);
+  registerWorkerAdapter(pi as unknown as ExtensionAPI, (count) => running.push(count), live);
   const fire = async (name: string, event: unknown = {}) => {
     let result;
     for (const handler of hooks.get(name) ?? []) result = await handler(event, ctx);
@@ -147,7 +155,17 @@ async function fixture(defaultContext = "fresh") {
     statuses,
     snapshots,
     running,
-    visible: () => (widgets.get("jev-pilot-workers") ?? []).join("\n"),
+    visible: () => {
+      const content = widgets.get("jev-pilot");
+      return typeof content === "function"
+        ? content(
+            { requestRender() {} } as TUI,
+            { fg: (_color: string, text: string) => text } as Theme,
+          )
+            .render(400)
+            .join("\n")
+        : (content ?? []).join("\n");
+    },
     delay: (value: number) => {
       delay = value;
     },
@@ -168,7 +186,55 @@ test("UNIT-WV-pending WV-02 leaves caller envelope intact until executor receipt
   expect(input.model).toBe("local/deep:high");
   expect(f.visible()).toContain("executor authority · decision pending · launch unconfirmed");
   expect(f.requests()).toBe(0);
+  expect([...f.widgets.keys()]).toEqual(["jev-pilot"]);
+  expect([...f.statuses.keys()]).not.toContain("jev-pilot-workers");
 });
+
+// AC-4: real public authority preparation, delayed local classifier, rendered shared component.
+test("STATUS-4 worker classifier spins only during assessment", async () => {
+  const f = await fixture();
+  f.delay(100);
+  await f.call({ agent: "worker", task: brief });
+  expect(f.visible().trim()).not.toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+  const preparation = prepareFixtureWorker(f.ctx, { agent: "worker", task: brief });
+  const deadline = Date.now() + 1000;
+  while (!f.requests() && Date.now() < deadline) await Bun.sleep(1);
+  expect(f.requests()).toBe(1);
+  expect(f.visible().trim()).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Jev · assessing worker/);
+  expect((await preparation).kind).toBe("committed");
+  expect(f.visible().trim()).not.toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+});
+
+// AC-5: failures and lifecycle invalidation clear real pending assessments.
+for (const transition of [
+  "error",
+  "timeout",
+  "abort",
+  "session_start",
+  "session_shutdown",
+  "session_before_switch",
+  "session_before_fork",
+  "session_before_tree",
+  "session_before_compact",
+]) {
+  test(`STATUS-5 worker ${transition} leaves no pending assessment`, async () => {
+    if (transition === "timeout") process.env.JEV_TIMEOUT_MS = "30";
+    const f = await fixture();
+    f.delay(100);
+    if (transition === "error") f.response({ answers: {} } as never);
+    const preparation = prepareFixtureWorker(f.ctx, { agent: "worker", task: brief });
+    const deadline = Date.now() + 1000;
+    while (!f.requests() && Date.now() < deadline) await Bun.sleep(1);
+    expect(f.requests()).toBe(1);
+    expect(f.visible().trim()).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+    if (transition === "abort") f.signal.abort();
+    else if (!["error", "timeout"].includes(transition)) await f.fire(transition);
+    if (!["error", "timeout"].includes(transition))
+      expect(f.visible().trim()).not.toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+    await preparation;
+    expect(f.visible().trim()).not.toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+  });
+}
 
 test("UNIT-WV-skips WV-04 workflow disabled and management stay executor-owned", async () => {
   const f = await fixture();
@@ -190,7 +256,7 @@ test("UNIT-WV-concurrent WV-05 pending sibling survives unrelated result", async
   await f.call({ agent: "worker", model: "local/fast", task: brief }, "slow");
   await f.call({ agent: "worker", model: "local/deep", task: brief }, "fast");
   await f.fire("tool_result", { toolName: "subagent", toolCallId: "fast", details: {} });
-  expect(f.visible().split("\n")).toHaveLength(2);
+  expect(f.visible().split("\n")).toHaveLength(3);
   expect(f.visible()).toContain("decision pending");
   expect(f.visible()).toContain("executor result · launch unconfirmed");
 });
@@ -217,6 +283,7 @@ for (const transition of [
       details: { asyncId: "late-run" },
     });
     f.pi.events.emit("subagent:async-complete", { runId: "late-run", state: "complete" });
+    expect(f.visible()).not.toContain("worker ");
     expect(f.widgets.get("jev-pilot-workers")).toBeUndefined();
     expect(f.statuses.get("jev-pilot-workers")).toBeUndefined();
   });
@@ -253,8 +320,8 @@ test("UNIT-WV-privacy WV-07 UI excludes task description errors and arbitrary ca
   );
   expect(f.visible()).not.toContain("PRIVATE_");
   expect(f.visible()).not.toContain("\u001b");
-  expect([...f.widgets.keys()]).toEqual(["jev-pilot-workers"]);
-  expect([...f.statuses.keys()]).toEqual(["jev-pilot-workers"]);
+  expect([...f.widgets.keys()]).toEqual(["jev-pilot"]);
+  expect([...f.statuses.keys()]).toEqual([]);
   await f.fire("tool_result", {
     toolName: "subagent",
     toolCallId: "PRIVATE_CALL_ID\u001b[31m",
@@ -280,7 +347,7 @@ for (const path of ["runtime-miss", "fork"])
         (row) => (row as WorkerDecisionRow).kind === "worker",
       ) as WorkerDecisionRow;
       expect(plan.agent).toBe("unknown");
-      expect(f.visible()).toContain(`Jev worker unknown ${plan.invocation}`);
+      expect(f.visible()).toContain(`worker unknown ${plan.invocation}`);
       await f.fire("tool_result", {
         toolName: "subagent",
         toolCallId: "call",
@@ -313,7 +380,7 @@ for (const path of ["runtime-miss", "fork"])
         outcome: proof ? "receipt" : "unconfirmed",
       });
       expect(plan.agent).toBe("unknown");
-      expect(f.visible()).toContain(`Jev worker ${expected} ${plan.invocation}`);
+      expect(f.visible()).toContain(`worker ${expected} ${plan.invocation}`);
       const branch = f.entries
         .filter((row) => (row as WorkerDecisionRow).kind === "worker")
         .map((data) => ({ type: "custom", customType: "jev-pilot:decision:v1", data }));
@@ -322,7 +389,7 @@ for (const path of ["runtime-miss", "fork"])
           { getThinkingLevel: () => "low" } as ExtensionAPI,
           { sessionManager: { getBranch: () => branch } } as unknown as ExtensionContext,
         ).join("\n"),
-      ).toContain(`Jev worker executor · ${expected} ${plan.invocation}`);
+      ).toContain(`worker executor · ${expected} ${plan.invocation}`);
       expect(JSON.stringify(branch)).not.toContain("PRIVATE_");
     });
 

@@ -13,7 +13,11 @@ const sessionKey = (ctx: ExtensionContext) =>
   ctx.sessionManager.getSessionFile() ?? ctx.sessionManager.getSessionId();
 
 /** Registration belongs to this extension instance; never invalidate a cleanup-time current owner. */
-export function registerWorkerAuthorityLifecycle(pi: ExtensionAPI, enabled: () => boolean) {
+export function registerWorkerAuthorityLifecycle(
+  pi: ExtensionAPI,
+  enabled: () => boolean,
+  assess?: () => () => void,
+) {
   let registration: WorkerDecisionAuthorityRegistration | undefined;
   let sessionId: string | undefined;
   let failed = false;
@@ -48,6 +52,8 @@ export function registerWorkerAuthorityLifecycle(pi: ExtensionAPI, enabled: () =
           context.signal.addEventListener("abort", abort, { once: true });
           if (context.signal.aborted) abort();
           assessments.add(controller);
+          const finishAssessment = controller.signal.aborted ? undefined : assess?.();
+          controller.signal.addEventListener("abort", () => finishAssessment?.(), { once: true });
           try {
             const result = await createWorkerAuthority({
               tiers: configuredTiers(pi.getSettings()),
@@ -61,6 +67,7 @@ export function registerWorkerAuthorityLifecycle(pi: ExtensionAPI, enabled: () =
             if (controller.signal.aborted) throw new WorkerDecisionAuthorityError("cancelled");
             throw error;
           } finally {
+            finishAssessment?.();
             assessments.delete(controller);
             context.signal.removeEventListener("abort", abort);
           }
