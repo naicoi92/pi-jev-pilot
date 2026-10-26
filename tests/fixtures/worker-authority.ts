@@ -64,6 +64,7 @@ export async function prepareFixtureWorker(
         kind: "selectable",
         models: ctx.modelRegistry.getAvailable().map((entry) => `${entry.provider}/${entry.id}`),
       },
+      comparison: { kind: "resolved", model, provenance: "explicit-caller" },
       original: baseline(model),
     },
     classifierTimeoutMs: 5000,

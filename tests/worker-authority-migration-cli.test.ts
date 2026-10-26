@@ -30,6 +30,7 @@ async function launch(env: Record<string, string> = {}, status = 200) {
     "--thinking",
     "high",
   ]);
+  f.skipPackageInstall = true;
   f.settings = {
     jevPilot: { tiers: { balanced: "fixture/fixture-model" } },
     subagents: { intercomBridge: { mode: "off" } },

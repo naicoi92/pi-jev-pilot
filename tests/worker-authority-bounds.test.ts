@@ -62,6 +62,11 @@ test("F4 classifier projection bounds task type and description without shrinkin
     policyContext: {
       ...revisions,
       modelContract: { kind: "selectable" as const, models: ["local/model"] },
+      comparison: {
+        kind: "resolved" as const,
+        model: "local/model",
+        provenance: "parent" as const,
+      },
       original,
     },
     classifierTimeoutMs: 5000,

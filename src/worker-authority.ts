@@ -40,7 +40,7 @@ export function createWorkerAuthority(options: {
 }): WorkerDecisionAuthority {
   return {
     async decide(request, context) {
-      const { original, modelContract } = request.policyContext;
+      const { original, modelContract, comparison } = request.policyContext;
       // Existing fork policy is executor-owned: retain only its verified effective pair.
       if (request.control.context !== "fresh") return retain(original);
       const agent =
@@ -62,36 +62,48 @@ export function createWorkerAuthority(options: {
             ? options.tiers.fast
             : undefined;
       if (specializedRole && !specialized) return retain(original);
-      let result;
-      if (!specialized) {
-        let config;
-        try {
-          config = systemOneConfig();
-        } catch (error) {
-          options.configurationError(error instanceof Error ? error.message : String(error));
-          return { kind: "reject", reason: "assessment-unavailable" };
-        }
-        result = await classify(
-          { ...config, timeoutMs: Math.min(config.timeoutMs, remaining) },
-          {
-            prompt: request.facts.task.slice(0, 2000),
-            agentType: agent.slice(0, 128),
-            ...(request.facts.role
-              ? { description: request.facts.role.description.slice(0, 512) }
-              : {}),
-          },
-          context.signal,
-          {
-            tier: Object.values(options.tiers).some(Boolean) || options.crew.offered.length > 0,
-            effort: true,
-            tiers: TIER_ORDER.filter((tier) => options.tiers[tier]),
-            slots: options.crew.offered,
-          },
-          { effort: WORKER_EFFORT_QUESTION },
-        );
-        if (result.outcome !== "classified") return retain(original);
+      const specializedTarget = specialized
+        ? await context.resolveTarget(
+            modelContract.kind === "fixed" ? modelContract.model : specialized,
+          )
+        : undefined;
+      if (specializedTarget?.kind === "unresolved")
+        return { kind: "reject", reason: specializedTarget.reason };
+      // Resolved specialized effort stays deterministic and never invokes assessment.
+      if (specializedTarget?.kind === "resolved" && specializedTarget.baseline.kind === "verified")
+        return retain(specializedTarget.baseline);
+      let config;
+      try {
+        config = systemOneConfig();
+      } catch (error) {
+        options.configurationError(error instanceof Error ? error.message : String(error));
+        return { kind: "reject", reason: "assessment-unavailable" };
       }
-      const decision = result?.decision;
+      const result = await classify(
+        { ...config, timeoutMs: Math.min(config.timeoutMs, remaining) },
+        {
+          prompt: request.facts.task.slice(0, 2000),
+          agentType: agent.slice(0, 128),
+          ...(request.facts.role
+            ? { description: request.facts.role.description.slice(0, 512) }
+            : {}),
+        },
+        context.signal,
+        {
+          tier:
+            !specialized &&
+            (Object.values(options.tiers).some(Boolean) || options.crew.offered.length > 0),
+          effort: true,
+          tiers: specialized ? [] : TIER_ORDER.filter((tier) => options.tiers[tier]),
+          slots: specialized ? [] : options.crew.offered,
+        },
+        { effort: WORKER_EFFORT_QUESTION },
+      );
+      if (result.outcome !== "classified")
+        return retain(
+          specializedTarget?.kind === "resolved" ? specializedTarget.baseline : original,
+        );
+      const decision = result.decision;
       const tierDecision = decision?.tier
         ? {
             tier: decision.tier,
@@ -106,7 +118,7 @@ export function createWorkerAuthority(options: {
         (tierDecision
           ? selectWorkerModel(
               tierDecision,
-              original.kind === "verified" ? original.model : "",
+              comparison.kind === "resolved" ? comparison.model : "",
               options.tiers,
               options.crew.offered,
             )

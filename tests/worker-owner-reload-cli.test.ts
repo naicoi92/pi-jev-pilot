@@ -33,6 +33,7 @@ test("owner reload restores native fresh dispatch without bypassing missing or s
     "--thinking",
     "high",
   ]);
+  fixture.skipPackageInstall = true;
   fixture.settings = {
     jevPilot: { tiers: { balanced: "fixture/fixture-model" } },
     subagents: { intercomBridge: { mode: "off" } },

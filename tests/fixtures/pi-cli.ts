@@ -49,6 +49,8 @@ export class PiFixture {
   singleThinkingLevel = false;
   /** Package directory passed to `pi install`; defaults to this checkout. */
   packageSource = root;
+  /** Explicit -e native fixtures need no package installation; packaged defaults stay unchanged. */
+  skipPackageInstall = false;
   configuredModelKey = true;
   sawClassifierBearer = false;
   classifierHeaderChecks = 0;
@@ -291,21 +293,23 @@ export default function (pi: ExtensionAPI) {
         : { JEV_STRATEGY_ENABLED: "false", JEV_QUALITY_ENABLED: "false" }),
       ...env,
     };
-    const install = Bun.spawn([process.execPath, "run", cli, "install", this.packageSource], {
-      cwd: this.directory,
-      env: childEnv,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [installCode, installStdout, installStderr] = await Promise.all([
-      install.exited,
-      new Response(install.stdout).text(),
-      new Response(install.stderr).text(),
-    ]);
-    if (installCode !== 0)
-      throw new Error(
-        `Local Pi package install failed: pid=${install.pid}; exitCode=${installCode}; signal=${install.signalCode}; stdout=${installStdout}; stderr=${installStderr}`,
-      );
+    if (!this.skipPackageInstall) {
+      const install = Bun.spawn([process.execPath, "run", cli, "install", this.packageSource], {
+        cwd: this.directory,
+        env: childEnv,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [installCode, installStdout, installStderr] = await Promise.all([
+        install.exited,
+        new Response(install.stdout).text(),
+        new Response(install.stderr).text(),
+      ]);
+      if (installCode !== 0)
+        throw new Error(
+          `Local Pi package install failed: pid=${install.pid}; exitCode=${installCode}; signal=${install.signalCode}; stdout=${installStdout}; stderr=${installStderr}`,
+        );
+    }
     const [executable, ...args] = this.commandLine ?? [
       process.execPath,
       "run",
