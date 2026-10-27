@@ -1,7 +1,7 @@
 # 03: Worker tiers and inline crew
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 
 **Parent:** [Single-file Jev configuration](../spec.md)
 
@@ -13,10 +13,10 @@ Implementation: in-progress
 
 ## Acceptance criteria
 
-- [ ] Native preflight → authority → actual worker uses the same captured tiers/crew, preserving sparse expert/slot/fallback/clamp gates.
-- [ ] Actual junior missing-effort assessment stays effort-only with fixed model; verified pair performs no assessment.
-- [ ] Changed registered junior definition is detected and reload-required without mixing policy/definition or changing active commitments.
-- [ ] Missing/stale owner, caller/parent comparison, cancellation and receipt controls remain fail-closed.
+- [x] Native preflight → authority → actual worker uses the same captured tiers/crew, preserving sparse expert/slot/fallback/clamp gates.
+- [x] Actual junior missing-effort assessment stays effort-only with fixed model; verified pair performs no assessment.
+- [x] Changed registered junior definition is detected and reload-required without mixing policy/definition or changing active commitments.
+- [x] Missing/stale owner, caller/parent comparison, cancellation and receipt controls remain fail-closed.
 
 ## Verification and handoff
 
@@ -70,3 +70,15 @@ Executable is actual `/bin/sh /Users/naicoi/.bun/bin/pi-bolt`, `1.4.0 (Pi-Bolt 1
 Failed extra workflow attempts are retained as evidence: named parallel resource defaults children to background, exceeding shared fixture prompt deadline; adding unsupported task fields rejects shape. Correct public scripted workflow `runs.all` with foreground child controls and bounded owned terminal wait passes. No production workaround or dependency edit. One initial regression command timed out at 60 seconds because unmigrated legacy fixture requests never reached localhost; migrated explicit JSON fixtures now pass.
 
 Limits and next owners: ticket04 must reconcile next-boundary enable/disable owner/admission/required-child-helper and both authority/native timeout budgets; registration-captured eligibility is not CFG-07 acceptance. No dispose/re-register refresh shortcut. Ticket05 still owns broader legacy native/package fixture migration and packed acceptance; full suite not run. Five baseline rubric failures untouched, not filtered in these targeted files. No packaged/deployment/full-spec acceptance claimed. Independent reviewer required.
+
+### Reviewed integration acceptance
+
+Candidate `adf1af71da317f5682f78e5eb02a6b7af65a5a5d` received independent **OK with notes** review: `/Users/naicoi/.pi/agent/sessions/--Users-naicoi-Projects-pi-jev-pilot--/subagent-artifacts/outputs/62b8934b-a195-44c2-9bbf-1958e93f436a/frontier02-03/review03.md`. Parent inspected ownership/snapshot source and verified exact candidate ancestry, clean status and unchanged executor pin. Review concerns about earlier failing regression logs were resolved by fresh exact-HEAD runs: 185 unit and 11 native tests passed, logs under `/Users/naicoi/Projects/jev-config-migration-evidence/parent03/`. Timeout/admission refresh remains mandatory 04 scope; main consumer consistency belongs 02, not waived release acceptance.
+
+Merger landed exact candidate as `bcff1444e503b6b6c8cfc7a5875698766c4bdf03`, with parents `37e4616c79b19d1a253c7510188fae8cc1d16f8d` and candidate SHA above. Parent reran on this integration SHA:
+
+- Focused 13-file unit union above: **185 pass, 0 fail, 590 assertions**.
+- `JEV_WORKER_CONFIG_EVIDENCE_DIR=/Users/naicoi/Projects/jev-config-migration-evidence/integration-03 bun test tests/worker-config-native.test.ts`: **11 pass, 0 fail, 32 assertions**, including real overlapping worker launches, actual provider calls and native launch receipts.
+- `bun run lint`, `bun run typecheck`, `bun run fmt:check`: PASS; merger diff checks and worktree/index clean.
+
+Integration source/logs/native receipts: `/Users/naicoi/Projects/jev-config-migration-evidence/integration-03/`. Ticket 03 implementation completed only; ticket 04 remains blocked by ticket 02 and must resolve registration eligibility and timeout refresh before whole-spec acceptance.
