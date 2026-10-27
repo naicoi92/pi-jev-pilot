@@ -1,12 +1,18 @@
 import { afterEach, expect, test } from "bun:test";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
-import { constants } from "node:fs";
+import { constants, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PiFixture, type RecordData } from "./fixtures/pi-cli.ts";
 
 let fixture: PiFixture | undefined;
 let receipt = 0;
-const executable = "/Users/naicoi/.bun/bin/pi-bolt";
+function requiredNativePath(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Set ${name} to the verified Pi-Bolt launcher or cache directory`);
+  return value;
+}
+const executable = requiredNativePath("JEV_NATIVE_EXECUTABLE");
+const nativeCache = requiredNativePath("JEV_NATIVE_CACHE");
 afterEach(async () => {
   if (fixture && process.env.JEV_CONFIG_EVIDENCE_DIR) {
     await mkdir(process.env.JEV_CONFIG_EVIDENCE_DIR, { recursive: true });
@@ -35,11 +41,22 @@ function native(config: RecordData = {}) {
   f.nativeExecutable = executable;
   f.skipPackageInstall = true;
   f.prepare = async (cwd, agent, url) => {
-    await cp(
-      "/Users/naicoi/.pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64",
-      join(cwd, ".pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64"),
-      { recursive: true, mode: constants.COPYFILE_FICLONE },
-    );
+    await cp(nativeCache, join(cwd, ".pi-bolt/npm"), {
+      recursive: true,
+      mode: constants.COPYFILE_FICLONE,
+    });
+    const platform = process.platform === "darwin" ? "darwin" : "linux";
+    const variant =
+      platform === "darwin" || process.arch === "arm64"
+        ? "arm64"
+        : /\bavx2\b/.test(readFileSync("/proc/cpuinfo", "utf8"))
+          ? "x64"
+          : "x64-baseline";
+    if (!existsSync(join(cwd, `.pi-bolt/npm/1.0.4/pi-bolt-${platform}-${variant}/pi`))) {
+      throw new Error(
+        "Verified native cache does not contain the launcher platform executable; refusing installation",
+      );
+    }
     const version = Bun.spawn(["/bin/sh", executable, "--version"], {
       env: { HOME: cwd, PATH: process.env.PATH },
       stdout: "pipe",
