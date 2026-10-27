@@ -19,6 +19,7 @@
     "fmt": "oxfmt --write src tests package.json tsconfig.json README.md NOTICE.md docs/testing",
     "fmt:check": "oxfmt --check src tests package.json tsconfig.json README.md NOTICE.md docs/testing",
     "test": "bun test tests",
+    "test:tuning-native": ": ${JEV_NATIVE_BINARY:?Set JEV_NATIVE_BINARY to the direct native Pi-Bolt binary} && bun test tests/native-tuning.test.ts tests/tuning.test.ts tests/jev-config.test.ts",
     "typecheck": "bun check",
     "test:e2e": "bun test tests/pi-cli.test.ts tests/main-routing.test.ts tests/skill-matching.test.ts tests/guidance.test.ts tests/design-pack.test.ts"
   },
