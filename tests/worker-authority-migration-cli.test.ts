@@ -1,19 +1,19 @@
 import { expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { PiFixture, root, type RecordData } from "./fixtures/pi-cli.ts";
 
 // F3: public tool_call -> actual executor consumption; main consumers disabled, loopback only.
-async function launch(env: Record<string, string> = {}, status = 200) {
-  const cli =
-    process.env.JEV_OWNER_CLI ??
-    join(root, "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js");
+async function launch(classifier: Record<string, unknown> = {}, status = 200) {
+  const cli = process.env.JEV_OWNER_CLI ?? "/Users/naicoi/.bun/bin/pi-bolt";
   const executor = process.env.JEV_OWNER_EXECUTOR ?? join(root, "node_modules/pi-subagents");
   const f = new PiFixture([
-    ...(cli.endsWith(".js") ? [process.execPath, "run", cli] : [cli]),
+    ...(cli.endsWith(".js") ? [process.execPath, "run", cli] : ["/bin/sh", cli]),
     "--no-extensions",
     "-e",
     join(executor, "index.ts"),
+    "-e",
+    join(root, "tests/fixtures/worker-config-boundary.ts"),
     "-e",
     join(root, "src/extension.ts"),
     "--mode",
@@ -31,6 +31,21 @@ async function launch(env: Record<string, string> = {}, status = 200) {
     "high",
   ]);
   f.skipPackageInstall = true;
+  f.jevConfig = {
+    effortEnabled: false,
+    skillsEnabled: false,
+    qualityEnabled: false,
+    strategyEnabled: false,
+    designEnabled: false,
+    tiers: { balanced: "fixture/fixture-model" },
+  };
+  f.prepare = async (directory) => {
+    await cp(
+      "/Users/naicoi/.pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64",
+      join(directory, ".pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64"),
+      { recursive: true },
+    );
+  };
   f.settings = {
     jevPilot: { tiers: { balanced: "fixture/fixture-model" } },
     subagents: { intercomBridge: { mode: "off" } },
@@ -49,8 +64,11 @@ async function launch(env: Record<string, string> = {}, status = 200) {
       JEV_SKILLS_ENABLED: "false",
       JEV_WORKER_ROUTING_ENABLED: "true",
       TYPESAFE_API_KEY: "",
-      ...env,
+      JEV_SYSTEM_ONE_API_KEY: "legacy-must-not-rescue",
     });
+    const path = join(f.directory, "agent/jev-pilot.json");
+    const config = JSON.parse(await readFile(path, "utf8"));
+    await writeFile(join(f.directory, "hold-worker"), "hold");
     await mkdir(join(f.directory, "agent/agents"), { recursive: true });
     await writeFile(
       join(f.directory, "agent/agents/migration-worker.md"),
@@ -65,7 +83,17 @@ async function launch(env: Record<string, string> = {}, status = 200) {
         options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
       },
     });
-    await f.prompt("Run local migration fixture worker.");
+    const pending = f.prompt("Run local migration fixture worker.");
+    const deadline = Date.now() + 10000;
+    while (!(await Bun.file(join(f.directory, "worker-held")).exists()) && Date.now() < deadline)
+      await Bun.sleep(20);
+    expect(await Bun.file(join(f.directory, "worker-held")).exists()).toBe(true);
+    await writeFile(
+      path,
+      JSON.stringify({ ...config, classifier: { ...config.classifier, ...classifier } }),
+    );
+    await rm(join(f.directory, "hold-worker"));
+    await pending;
     const terminal = f.records.find(
       (row) => row.type === "tool_execution_end" && row.toolName === "subagent",
     )!;
@@ -82,25 +110,13 @@ async function launch(env: Record<string, string> = {}, status = 200) {
   }
 }
 
-for (const [name, env, expected] of [
-  [
-    "missing key",
-    { JEV_SYSTEM_ONE_API_KEY: "" },
-    "Set JEV_SYSTEM_ONE_API_KEY (or TYPESAFE_API_KEY) for System One.",
-  ],
-  [
-    "invalid URL",
-    { JEV_SYSTEM_ONE_URL: "invalid" },
-    "Set JEV_SYSTEM_ONE_URL to a valid HTTP(S) System One endpoint.",
-  ],
-  [
-    "blank model",
-    { JEV_SYSTEM_ONE_MODEL: " " },
-    "Set JEV_SYSTEM_ONE_MODEL to a decision model ID (default: jev-latest).",
-  ],
+for (const [name, classifier, expected] of [
+  ["missing key", { apiKeyEnv: "ABSENT_NAMED_WORKER_KEY" }, "ABSENT_NAMED_WORKER_KEY"],
+  ["invalid URL", { url: "invalid" }, "classifier.url"],
+  ["blank model", { model: " " }, "classifier.model"],
 ] as const) {
   test(`F3 native ${name} refuses actionably before child`, async () => {
-    const observed = await launch(env);
+    const observed = await launch(classifier);
     expect(observed.terminal?.isError, JSON.stringify(observed)).toBe(true);
     expect(JSON.stringify(observed.records)).toContain(expected);
     expect(observed.requests).toHaveLength(2);

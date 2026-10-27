@@ -5,9 +5,9 @@ import {
   type WorkerDecisionAuthorityRegistration,
 } from "pi-subagents/worker-decision-authority";
 import { createWorkerAuthority } from "./worker-authority.ts";
-import { configuredTiers } from "./routing-settings.ts";
-import { crewConfig } from "./crew-config.ts";
 import { effectiveTunables } from "./tuning.ts";
+import { assertRegisteredJunior } from "./crew-junior.ts";
+import { captureEffortAssessment } from "./effort-assessment.ts";
 import type { WorkerStatus } from "./worker-status.ts";
 
 const sessionKey = (ctx: ExtensionContext) =>
@@ -50,6 +50,40 @@ export function registerWorkerAuthorityLifecycle(
       assessmentTimeoutMs: effectiveTunables().timeoutMs,
       authority: {
         async decide(request, context) {
+          const assessment = (() => {
+            try {
+              return captureEffortAssessment();
+            } catch (error) {
+              ctx.ui.notify(
+                error instanceof Error ? error.message : "Invalid Jev worker configuration.",
+                "error",
+              );
+              throw error;
+            }
+          })();
+          const crew = {
+            ...assessment.config.crew,
+            slots: [...assessment.config.crew.slots],
+            offered: [...assessment.config.crew.offered],
+          };
+          assertRegisteredJunior(pi, crew, (message) => ctx.ui.notify(message, "warning"));
+          for (const slot of crew.offered) {
+            const slash = slot.model.indexOf("/");
+            const model = ctx.modelRegistry.find(
+              slot.model.slice(0, slash),
+              slot.model.slice(slash + 1),
+            );
+            const error =
+              !model || model.api === "pi-virtual"
+                ? "Jev worker slot must resolve to an exact physical Pi model."
+                : !ctx.modelRegistry.hasConfiguredAuth(model)
+                  ? "Configure Pi authentication for Jev worker slot."
+                  : undefined;
+            if (error) {
+              ctx.ui.notify(error, "error");
+              throw new Error(error);
+            }
+          }
           const controller = new AbortController();
           const abort = () => controller.abort();
           context.signal.addEventListener("abort", abort, { once: true });
@@ -60,8 +94,9 @@ export function registerWorkerAuthorityLifecycle(
           controller.signal.addEventListener("abort", () => finishAssessment?.(), { once: true });
           try {
             const result = await createWorkerAuthority({
-              tiers: configuredTiers(pi.getSettings()),
-              crew: crewConfig(ctx.cwd),
+              assessment,
+              tiers: assessment.config.tiers,
+              crew,
               warn: (message) => ctx.ui.notify(message, "warning"),
               configurationError: (message) => ctx.ui.notify(message, "error"),
               selectedTier: (tier) => status?.tier(presentation, tier),

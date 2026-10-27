@@ -1,0 +1,417 @@
+import { afterEach, expect, test } from "bun:test";
+import { cp, mkdir, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { PiFixture, root } from "./fixtures/pi-cli.ts";
+
+let fixture: PiFixture | undefined;
+afterEach(async () => {
+  if (fixture && process.env.JEV_WORKER_CONFIG_EVIDENCE_DIR) {
+    const directory = process.env.JEV_WORKER_CONFIG_EVIDENCE_DIR;
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      join(directory, `worker-receipt-${crypto.randomUUID()}.json`),
+      JSON.stringify(
+        {
+          executable: "/bin/sh /Users/naicoi/.bun/bin/pi-bolt",
+          isolatedHome: true,
+          classifierCount: fixture.classifications.length,
+          provider: fixture.generations.map(({ model, reasoning_effort }) => ({
+            model,
+            reasoning_effort,
+          })),
+          credentialMatched: fixture.sawClassifierBearer,
+          workerResults: fixture.records
+            .filter((row) => row.type === "tool_execution_end" && row.toolName === "subagent")
+            .map((row) => ({
+              isError: row.isError,
+              receiptPresent: JSON.stringify(row.result).includes("launchContractDigest"),
+            })),
+        },
+        null,
+        2,
+      ),
+    );
+  }
+  await fixture?.close();
+  fixture = undefined;
+});
+
+async function nativeWorker(config: Record<string, unknown> = {}) {
+  const f = new PiFixture([
+    "/bin/sh",
+    "/Users/naicoi/.bun/bin/pi-bolt",
+    "--no-extensions",
+    "-e",
+    join(root, "node_modules/pi-subagents/index.ts"),
+    "-e",
+    join(root, "tests/fixtures/worker-config-boundary.ts"),
+    "-e",
+    join(root, "src/extension.ts"),
+    "--mode",
+    "rpc",
+    "--no-mcp",
+    "--no-skills",
+    "--no-context-files",
+    "--no-prompt-templates",
+    "--no-themes",
+    "--offline",
+    "--no-approve",
+    "--model",
+    "fixture/fixture-model",
+    "--thinking",
+    "high",
+  ]);
+  fixture = f;
+  f.skipPackageInstall = true;
+  f.jevConfig = {
+    effortEnabled: false,
+    skillsEnabled: false,
+    strategyEnabled: false,
+    qualityEnabled: false,
+    designEnabled: false,
+    tiers: { balanced: "fixture-deep/judgment" },
+    ...config,
+  };
+  f.settings = {
+    jevPilot: { tiers: { balanced: "fixture-fast/lookup" } },
+    subagents: { intercomBridge: { mode: "off" } },
+  };
+  f.response = {
+    answers: {
+      effort: { choice: "low", confidence: 1 },
+      risky: { noul: 0 },
+      tier: { choice: "balanced", confidence: 1 },
+    },
+  };
+  f.prepare = async (directory, agent) => {
+    await cp(
+      "/Users/naicoi/.pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64",
+      join(directory, ".pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64"),
+      { recursive: true },
+    );
+    const modelsPath = join(agent, "models.json");
+    const models = JSON.parse(await Bun.file(modelsPath).text());
+    models.providers.fixture.models[1].thinkingLevelMap = { low: "low", high: "high" };
+    await writeFile(modelsPath, JSON.stringify(models));
+    await mkdir(join(agent, "agents"), { recursive: true });
+    await writeFile(
+      join(agent, "agents/config-worker.md"),
+      "---\nname: config-worker\ndescription: Local worker\nmodel: fixture/fixture-model\nthinking: high\ndefaultContext: fresh\ntools: read\n---\nReturn local result.\n",
+    );
+  };
+  await f.start({ JEV_EFFORT_ENABLED: "false", JEV_SKILLS_ENABLED: "false" });
+  return f;
+}
+
+test("WCFG-1 native worker uses JSON tiers rather than merged settings", async () => {
+  const f = await nativeWorker();
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "config-worker",
+      task: "Return local result.",
+      async: false,
+      options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+    },
+  });
+  await f.prompt("Run local worker.");
+  expect(f.classifications).toHaveLength(1);
+  expect(
+    f.generations.some(
+      (request) => request.model === "judgment" && request.reasoning_effort === "low",
+    ),
+  ).toBe(true);
+}, 30000);
+
+test("WCFG-3 changed registered junior refuses launch before assessment", async () => {
+  const f = await nativeWorker();
+  const path = join(f.directory, "agent/jev-pilot.json");
+  const base = JSON.parse(await Bun.file(path).text());
+  await writeFile(
+    path,
+    JSON.stringify({
+      ...base,
+      crew: { mode: "junior-lead", slots: [{ name: "helper", model: "fixture/fixture-model" }] },
+    }),
+  );
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "jev-pilot:junior",
+      task: "Return local result.",
+      async: false,
+      options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+    },
+  });
+  await f.prompt("Run junior worker.");
+  const terminal = f.records.find(
+    (row) => row.type === "tool_execution_end" && row.toolName === "subagent",
+  );
+  expect(JSON.stringify(terminal)).toContain("reload");
+  expect(f.classifications).toHaveLength(0);
+}, 30000);
+
+test("WCFG-verified native junior retains verified fixed pair without assessment", async () => {
+  const f = await nativeWorker({
+    crew: { mode: "junior-lead", slots: [{ name: "helper", model: "fixture/fixture-model" }] },
+  });
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "jev-pilot:junior",
+      task: "Return local result.",
+      model: "fixture/fixture-model:low",
+      async: false,
+      options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+    },
+  });
+  await f.prompt("Run junior worker.");
+  expect(f.classifications).toHaveLength(0);
+  expect(f.generations.some((row) => row.reasoning_effort === "low")).toBe(true);
+  expect(
+    JSON.stringify(
+      f.records.find((row) => row.type === "tool_execution_end" && row.toolName === "subagent"),
+    ),
+  ).toContain("launchContractDigest");
+}, 30000);
+
+test("WCFG-snapshot native edit during assessment retains captured tier", async () => {
+  const f = await nativeWorker();
+  f.classifierDelay = 500;
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "config-worker",
+      task: "Return local result.",
+      async: false,
+      options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+    },
+  });
+  const pending = f.prompt("Run local worker.");
+  const deadline = Date.now() + 15000;
+  while (!f.classifications.length && Date.now() < deadline) await Bun.sleep(20);
+  expect(f.classifications).toHaveLength(1);
+  const path = join(f.directory, "agent/jev-pilot.json");
+  const config = JSON.parse(await Bun.file(path).text());
+  await writeFile(path, JSON.stringify({ ...config, tiers: { balanced: "fixture-fast/lookup" } }));
+  await pending;
+  expect(
+    f.generations.some((row) => row.model === "judgment" && row.reasoning_effort === "low"),
+  ).toBe(true);
+}, 30000);
+
+test("WCFG-2 native missing junior effort assesses only effort at fixed model", async () => {
+  const f = await nativeWorker({
+    crew: {
+      mode: "junior-lead",
+      slots: [{ name: "helper", model: "fixture/fixture-other-model" }],
+    },
+  });
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "jev-pilot:junior",
+      task: "Return local result.",
+      async: false,
+      options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+    },
+  });
+  await f.prompt("Run junior worker.");
+  expect(f.classifications).toHaveLength(1);
+  expect(Object.keys(f.classifications[0]!.questions as object).sort()).toEqual([
+    "effort",
+    "risky",
+  ]);
+  expect(
+    f.generations.some(
+      (row) => row.model === "fixture-other-model" && row.reasoning_effort === "low",
+    ),
+  ).toBe(true);
+  expect(
+    JSON.stringify(
+      f.records.find((row) => row.type === "tool_execution_end" && row.toolName === "subagent"),
+    ),
+  ).toContain("launchContractDigest");
+}, 30000);
+
+for (const repaired of [true, false]) {
+  test(`WCFG-boundary native ${repaired ? "malformed edit repaired" : "valid edit becomes malformed"} before authority`, async () => {
+    const f = await nativeWorker();
+    const path = join(f.directory, "agent/jev-pilot.json");
+    const original = await Bun.file(path).text();
+    await writeFile(join(f.directory, "hold-worker"), "hold");
+    f.toolCalls.push({
+      name: "subagent",
+      input: {
+        agent: "config-worker",
+        task: "Return local result.",
+        async: false,
+        options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+      },
+    });
+    const pending = f.prompt("Run local worker.");
+    const deadline = Date.now() + 10000;
+    while (!(await Bun.file(join(f.directory, "worker-held")).exists()) && Date.now() < deadline)
+      await Bun.sleep(20);
+    expect(await Bun.file(join(f.directory, "worker-held")).exists()).toBe(true);
+    await writeFile(path, "{");
+    if (repaired) {
+      await Bun.sleep(100);
+      await writeFile(path, original);
+    }
+    await rm(join(f.directory, "hold-worker"));
+    await pending;
+    expect(f.classifications).toHaveLength(repaired ? 1 : 0);
+    expect(f.generations.some((row) => row.model === "judgment")).toBe(repaired);
+  }, 30000);
+}
+
+test("WCFG-3 registered old junior edit refuses until explicit reload", async () => {
+  const f = await nativeWorker({
+    crew: { mode: "junior-lead", slots: [{ name: "helper", model: "fixture/fixture-model" }] },
+  });
+  const path = join(f.directory, "agent/jev-pilot.json");
+  const config = JSON.parse(await Bun.file(path).text());
+  await writeFile(
+    path,
+    JSON.stringify({
+      ...config,
+      crew: {
+        mode: "junior-lead",
+        slots: [{ name: "helper", model: "fixture/fixture-other-model" }],
+      },
+    }),
+  );
+  const launch = () =>
+    f.toolCalls.push({
+      name: "subagent",
+      input: {
+        agent: "jev-pilot:junior",
+        task: "Return local result.",
+        async: false,
+        options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+      },
+    });
+  launch();
+  await f.prompt("Run junior worker.");
+  expect(f.classifications).toHaveLength(0);
+  expect(f.generations.some((row) => row.model === "fixture-other-model")).toBe(false);
+  expect(
+    f.records.some(
+      (row) =>
+        row.type === "extension_ui_request" && JSON.stringify(row).includes("reload required"),
+    ),
+  ).toBe(true);
+  await f.command("prompt", { message: "/worker-config-reload" });
+  await Bun.sleep(500);
+  await f.command("get_state");
+  launch();
+  await f.prompt("Run reloaded junior worker.");
+  expect(f.classifications).toHaveLength(1);
+  expect(
+    f.generations.some(
+      (row) => row.model === "fixture-other-model" && row.reasoning_effort === "low",
+    ),
+  ).toBe(true);
+}, 45000);
+
+test("WCFG-cancel native cancellation during assessment produces no worker provider call", async () => {
+  const f = await nativeWorker();
+  f.classifierDelay = 2000;
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "config-worker",
+      task: "Return local result.",
+      async: false,
+      options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+    },
+  });
+  const pending = f.prompt("Run local worker.");
+  const deadline = Date.now() + 10000;
+  while (!f.classifications.length && Date.now() < deadline) await Bun.sleep(20);
+  expect(f.classifications).toHaveLength(1);
+  await f.command("abort");
+  await pending;
+  expect(f.generations.some((row) => row.model === "judgment")).toBe(false);
+}, 30000);
+
+test("WCFG-3 active junior launch retains captured definition during edit", async () => {
+  const f = await nativeWorker({
+    crew: {
+      mode: "junior-lead",
+      slots: [{ name: "helper", model: "fixture/fixture-other-model" }],
+    },
+  });
+  f.classifierDelay = 500;
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "jev-pilot:junior",
+      task: "Return local result.",
+      async: false,
+      options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+    },
+  });
+  const pending = f.prompt("Run junior worker.");
+  const deadline = Date.now() + 10000;
+  while (!f.classifications.length && Date.now() < deadline) await Bun.sleep(20);
+  expect(f.classifications).toHaveLength(1);
+  const path = join(f.directory, "agent/jev-pilot.json");
+  const config = JSON.parse(await Bun.file(path).text());
+  await writeFile(
+    path,
+    JSON.stringify({
+      ...config,
+      crew: { mode: "junior-lead", slots: [{ name: "helper", model: "fixture/fixture-model" }] },
+    }),
+  );
+  await pending;
+  expect(
+    f.generations.some(
+      (row) => row.model === "fixture-other-model" && row.reasoning_effort === "low",
+    ),
+  ).toBe(true);
+}, 30000);
+
+// AC-1: executor workflow owns sibling IDs; no Jev correlation or snapshot queue.
+test("WCFG-concurrent native parallel workers keep captured policy after edit", async () => {
+  const f = await nativeWorker();
+  f.classifierDelay = 700;
+  await writeFile(
+    join(f.directory, "parallel-workers.js"),
+    `return await runs.all([
+    { key: "first", agent: "config-worker", task: "Return first local result.", async: false, context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+    { key: "second", agent: "config-worker", task: "Return second local result.", async: false, context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 }
+  ]);`,
+  );
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      workflow: "./parallel-workers.js",
+      async: false,
+      options: { acceptance: false, artifacts: false, timeoutMs: 10000 },
+    },
+  });
+  const offset = f.records.length;
+  await f.command("prompt", { message: "Run parallel local workers." });
+  const pending = f.wait(
+    () => f.records.slice(offset).some((row) => row.type === "agent_settled"),
+    30000,
+  );
+  const deadline = Date.now() + 15000;
+  while (f.classifications.length < 2 && Date.now() < deadline) await Bun.sleep(20);
+  expect(f.classifications).toHaveLength(2);
+  const path = join(f.directory, "agent/jev-pilot.json");
+  const config = JSON.parse(await Bun.file(path).text());
+  await writeFile(path, JSON.stringify({ ...config, tiers: { balanced: "fixture-fast/lookup" } }));
+  await pending;
+  expect(
+    f.generations.filter((row) => row.model === "judgment" && row.reasoning_effort === "low"),
+  ).toHaveLength(2);
+  const terminal = f.records.find(
+    (row) => row.type === "tool_execution_end" && row.toolName === "subagent",
+  );
+  expect(terminal?.isError).toBe(false);
+  expect(JSON.stringify(terminal).match(/launchContractDigest/g)?.length).toBeGreaterThanOrEqual(2);
+}, 45000);

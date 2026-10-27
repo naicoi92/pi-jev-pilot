@@ -3,15 +3,15 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crewConfig, DEFAULT_SLOT_WHEN } from "../src/crew-config.ts";
-const saved = process.env.JEV_CREW_CONFIG;
+const saved = process.env.PI_CODING_AGENT_DIR;
 afterEach(() => {
-  if (saved === undefined) delete process.env.JEV_CREW_CONFIG;
-  else process.env.JEV_CREW_CONFIG = saved;
+  if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = saved;
 });
 async function config(value: unknown) {
   const cwd = await mkdtemp(join(tmpdir(), "jev-crew-config-"));
-  await writeFile(join(cwd, "crew.json"), JSON.stringify(value));
-  process.env.JEV_CREW_CONFIG = "crew.json";
+  await writeFile(join(cwd, "jev-pilot.json"), JSON.stringify({ crew: value }));
+  process.env.PI_CODING_AGENT_DIR = cwd;
   return () => crewConfig(cwd);
 }
 test("CREW-18 default when remains read-only and standard excludes slots", async () => {
@@ -40,20 +40,20 @@ test("CREW-18 validates original names, count and field types", async () => {
       ],
     },
   ])
-    expect(await config(value)).toThrow("Invalid JEV_CREW_CONFIG");
+    expect(await config(value)).toThrow("crew");
 });
 test("CREW-18 explicit null mode is an actionable enum error", async () => {
-  expect(await config({ mode: null })).toThrow("mode must be standard, budget or junior-lead");
+  expect(await config({ mode: null })).toThrow("crew.mode");
 });
 test("CREW-18 explicit null slots is an actionable array error", async () => {
-  expect(await config({ slots: null })).toThrow("slots must be an array");
+  expect(await config({ slots: null })).toThrow("crew.slots");
 });
 test("CREW-18 omitted mode and slots retain defaults", async () => {
   expect((await config({}))()).toEqual({ mode: "standard", slots: [], offered: [] });
 });
 test("CREW-02 slot target requires qualified identity without effort", async () => {
   for (const model of ["cheap", "local/cheap:high", "local/a b", ""])
-    expect(await config({ slots: [{ name: "alpha", model }] })).toThrow("qualified");
+    expect(await config({ slots: [{ name: "alpha", model }] })).toThrow("crew.slots");
 });
 test("CREW-19 named junior uses configured slot then first slot by order", async () => {
   const slots = [
