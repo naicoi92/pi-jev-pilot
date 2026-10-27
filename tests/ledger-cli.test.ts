@@ -159,9 +159,9 @@ test("AC-22 LEDGER-22-tools counts tool calls and the longest failed-call run", 
 
 for (const mode of ["error", "timeout"] as const) {
   test(`AC-22 LEDGER-22-classifier-${mode} records an unanswered turn that kept the current effort`, async () => {
-    const f = await (fixture = new PiFixture()).start(
-      mode === "timeout" ? { JEV_TIMEOUT_MS: "100" } : {},
-    );
+    const f = (fixture = new PiFixture());
+    if (mode === "timeout") f.classifierConfig = { timeoutMs: 100 };
+    await f.start();
     if (mode === "error") {
       f.status = 503;
       f.response = "PRIVATE_PROVIDER_ERROR";

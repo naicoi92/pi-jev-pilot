@@ -18,6 +18,9 @@ export function answer(level = "high", confidence = 0.95, risky = 0): RecordData
 export class PiFixture {
   directory = "";
   settings: RecordData = {};
+  jevConfig: RecordData = {};
+  classifierConfig: RecordData = {};
+  writeJevConfig = true;
   server!: ReturnType<typeof Bun.serve>;
   process!: ChildProcessWithoutNullStreams;
   records: RecordData[] = [];
@@ -52,6 +55,12 @@ export class PiFixture {
   /** Explicit -e native fixtures need no package installation; packaged defaults stay unchanged. */
   skipPackageInstall = false;
   configuredModelKey = true;
+  /** Native launcher executes through its shell wrapper, never the bundled JavaScript CLI. */
+  nativeExecutable: string | undefined;
+  defaultAgentDirectory = false;
+  prepare: ((directory: string, agent: string, serverUrl: string) => Promise<void>) | undefined;
+  expectedClassifierBearer = "fixture-not-a-credential";
+  classifierHeaders: Record<string, string> = {};
   sawClassifierBearer = false;
   classifierHeaderChecks = 0;
   private sequence = 0;
@@ -69,8 +78,10 @@ export class PiFixture {
 
   async start(env: Record<string, string> = {}, thinkingOverride?: string): Promise<this> {
     this.directory = await mkdtemp(join(tmpdir(), "pi-jev-ticket01-"));
-    const agent = join(this.directory, "agent");
-    await mkdir(agent);
+    const agent = this.defaultAgentDirectory
+      ? join(this.directory, ".pi", "agent")
+      : join(this.directory, "agent");
+    await mkdir(agent, { recursive: true });
     if (this.projectContext)
       await writeFile(join(this.directory, "AGENTS.md"), this.projectContext);
     for (const skill of this.skills) {
@@ -90,12 +101,13 @@ export class PiFixture {
           this.classifications.push(body);
           this.classifierHeaderChecks++;
           this.sawClassifierBearer =
-            request.headers.get("authorization") === "Bearer fixture-not-a-credential";
+            request.headers.get("authorization") === `Bearer ${this.expectedClassifierBearer}`;
           request.signal.addEventListener("abort", () => this.classifierAborts++, { once: true });
           if (this.classifierDelay) await Bun.sleep(this.classifierDelay);
           const response = this.classifierResponse ? this.classifierResponse(body) : this.response;
           return new Response(typeof response === "string" ? response : JSON.stringify(response), {
             status: this.status,
+            headers: this.classifierHeaders,
           });
         }
         this.generations.push(body);
@@ -250,7 +262,12 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("fixture-reload", { handler: async (_args, ctx) => { await ctx.reload(); } });
   pi.registerCommand("fixture-tree", { handler: async (id, ctx) => { await ctx.navigateTree(id, { summarize: false }); } });
   pi.registerCommand("fixture-fork-at", { handler: async (id, ctx) => { await ctx.fork(id, { position: "at" }); } });
-  pi.registerCommand("fixture-effort", { handler: async (value) => { process.env.JEV_EFFORT_ENABLED = value; } });
+  pi.registerCommand("fixture-effort", { handler: async (value) => {
+    const path = ${JSON.stringify(join(agent, "jev-pilot.json"))};
+    const config = JSON.parse(readFileSync(path, "utf8"));
+    config.effortEnabled = value === "true";
+    writeFileSync(path, JSON.stringify(config));
+  } });
   pi.registerCommand("fixture-tier-deep", { handler: async (value, ctx) => {
     const path = ${JSON.stringify(join(this.directory, "agent/settings.json"))};
     const settings = JSON.parse(readFileSync(path, "utf8"));
@@ -279,14 +296,28 @@ export default function (pi: ExtensionAPI) {
         compaction: { enabled: false, keepRecentTokens: 50 },
       }),
     );
+    if (this.writeJevConfig)
+      await writeFile(
+        join(agent, "jev-pilot.json"),
+        JSON.stringify({
+          ...this.jevConfig,
+          classifier: {
+            url: `${this.server.url}systemone`,
+            apiKeyEnv: "CFG_TEST_KEY",
+            ...this.classifierConfig,
+          },
+        }),
+      );
+    await this.prepare?.(this.directory, agent, this.server.url.toString());
     const childEnv = {
       PATH: process.env.PATH,
       HOME: this.directory,
-      PI_CODING_AGENT_DIR: agent,
+      ...(this.defaultAgentDirectory ? {} : { PI_CODING_AGENT_DIR: agent }),
       PI_OFFLINE: "1",
       PI_TELEMETRY: "0",
       JEV_SYSTEM_ONE_URL: `${this.server.url}systemone`,
       JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
+      CFG_TEST_KEY: "fixture-not-a-credential",
       ...(this.useDesignDefaults ? {} : { JEV_DESIGN_ENABLED: "false" }),
       ...(this.useGuidanceDefaults
         ? {}
@@ -311,10 +342,10 @@ export default function (pi: ExtensionAPI) {
         );
     }
     const [executable, ...args] = this.commandLine ?? [
-      process.execPath,
-      "run",
-      cli,
-      ...(this.jevBeforeControls ? ["-e", root] : []),
+      ...(this.nativeExecutable
+        ? ["/bin/sh", this.nativeExecutable]
+        : [process.execPath, "run", cli]),
+      ...(this.jevBeforeControls || this.nativeExecutable ? ["-e", root] : []),
       "-e",
       controls,
       "--mode",

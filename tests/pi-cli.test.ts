@@ -42,7 +42,8 @@ for (const change of ["thinking", "model"]) {
   test(`CLI-26${change === "thinking" ? "n" : "o"} manual ${change} change invalidates in-flight effort but not future prompts`, async () => {
     fixture = new PiFixture();
     fixture.classifierDelay = 300;
-    await fixture.start({ JEV_TIMEOUT_MS: "5000" });
+    fixture.classifierConfig = { timeoutMs: 5000 };
+    await fixture.start();
     const offset = fixture.records.length;
     await fixture.command("prompt", { message: task });
     await fixture.wait(() => fixture!.classifications.length === 1);
@@ -133,20 +134,22 @@ for (const fault of [
   }, 20000);
 }
 
-for (const env of [
-  { JEV_TIMEOUT_MS: "0" },
-  { JEV_SYSTEM_ONE_URL: "not-a-url" },
-  { JEV_SYSTEM_ONE_API_KEY: "" },
-  { JEV_SYSTEM_ONE_MODEL: "" },
-  { JEV_EFFORT_ENABLED: "invalid" },
-] as Record<string, string>[]) {
-  test(`CLI-13 invalid ${Object.keys(env)[0]} stops generation with an actionable error`, async () => {
+for (const invalid of [
+  { field: "classifier.timeoutMs", classifier: { timeoutMs: 0 } },
+  { field: "classifier.url", classifier: { url: "not-a-url" } },
+  { field: "classifier.apiKeyEnv", classifier: { apiKeyEnv: "" } },
+  { field: "classifier.model", classifier: { model: "" } },
+  { field: "effortEnabled", config: { effortEnabled: "invalid" } },
+]) {
+  test(`CLI-13 invalid ${invalid.field} stops generation with an actionable error`, async () => {
     fixture = new PiFixture();
-    await fixture.start(env);
+    fixture.classifierConfig = invalid.classifier ?? {};
+    fixture.jevConfig = invalid.config ?? {};
+    await fixture.start();
     await fixture.prompt(task);
     expect(fixture.generations).toHaveLength(0);
     const output = JSON.stringify(fixture.records) + fixture.stderr;
-    expect(output).toContain(Object.keys(env)[0]!);
+    expect(output).toContain(invalid.field);
   }, 20000);
 }
 
@@ -276,7 +279,8 @@ for (const example of [
 
 test("CLI-01b configured classifier model and bearer auth reach the endpoint", async () => {
   fixture = new PiFixture();
-  await fixture.start({ JEV_SYSTEM_ONE_MODEL: "fixture-decision-model" });
+  fixture.classifierConfig = { model: "fixture-decision-model" };
+  await fixture.start();
   await fixture.prompt(task);
   expect(fixture.classifications[0]?.model).toBe("fixture-decision-model");
   expect(fixture.sawClassifierBearer).toBe(true);
@@ -289,7 +293,7 @@ test("CLI-01b configured classifier model and bearer auth reach the endpoint", a
 test("CLI-09b non-reasoning model has no applicable effort questions or extension writes", async () => {
   fixture = new PiFixture();
   fixture.reasoning = false;
-  await fixture.start({ JEV_SYSTEM_ONE_API_KEY: "" });
+  await fixture.start({ CFG_TEST_KEY: "" });
   await fixture.prompt(task);
   await fixture.prompt("continue");
   await fixture.command("prompt", { message: "/fixture-reload" });
@@ -305,7 +309,7 @@ test("CLI-09b non-reasoning model has no applicable effort questions or extensio
 test("CLI-09b single-supported-level reasoning model has zero applicable effort calls or writes", async () => {
   fixture = new PiFixture();
   fixture.singleThinkingLevel = true;
-  await fixture.start({ JEV_SYSTEM_ONE_API_KEY: "" });
+  await fixture.start({ CFG_TEST_KEY: "" });
   await fixture.prompt(task);
   expect(fixture.classifications).toHaveLength(0);
   expect(fixture.generations[0]?.reasoning_effort).toBe("high");
@@ -317,7 +321,8 @@ test("CLI-09b single-supported-level reasoning model has zero applicable effort 
 
 test("CLI-09a disabled effort has zero classifier requests and writes across owned-history reload", async () => {
   fixture = new PiFixture();
-  await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_SYSTEM_ONE_API_KEY: "" });
+  fixture.jevConfig = { effortEnabled: false };
+  await fixture.start({ CFG_TEST_KEY: "" });
   await fixture.prompt(task);
   await fixture.prompt("continue");
   await fixture.command("prompt", { message: "/fixture-reload" });
@@ -387,7 +392,8 @@ test("CLI-13b missing model authentication never invents a route", async () => {
 
 test("CLI-11b network disconnection preserves the current effort", async () => {
   fixture = new PiFixture();
-  await fixture.start({ JEV_SYSTEM_ONE_URL: "http://127.0.0.1:1/systemone" });
+  fixture.classifierConfig = { url: "http://127.0.0.1:1/systemone" };
+  await fixture.start();
   await fixture.prompt(task);
   expect(fixture.generations[0]).toMatchObject({
     model: "fixture-model",
@@ -902,7 +908,8 @@ test("CLI-26a new session does not reuse another session's decision", async () =
 test("CLI-12a a configurable deadline aborts HTTP and fails open", async () => {
   fixture = new PiFixture();
   fixture.classifierDelay = 1000;
-  await fixture.start({ JEV_TIMEOUT_MS: "100" });
+  fixture.classifierConfig = { timeoutMs: 100 };
+  await fixture.start();
   await fixture.prompt(task);
   expect(fixture.generations[0]).toMatchObject({
     model: "fixture-model",
@@ -918,7 +925,8 @@ test("CLI-12a a configurable deadline aborts HTTP and fails open", async () => {
 test("CLI-12b explicit abort during classification never generates fallback", async () => {
   fixture = new PiFixture();
   fixture.classifierDelay = 3000;
-  await fixture.start({ JEV_TIMEOUT_MS: "5000" });
+  fixture.classifierConfig = { timeoutMs: 5000 };
+  await fixture.start();
   await fixture.command("prompt", { message: task });
   await fixture.wait(() => fixture!.classifications.length === 1);
   await fixture.command("abort");

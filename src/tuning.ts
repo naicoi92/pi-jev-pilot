@@ -252,8 +252,7 @@ function saveTuning(tuning: Tuning): void {
  * takes effect on the next eligible prompt and survives reload; an unreadable tuning
  * file never blocks a turn and falls back to the base configuration.
  */
-export function effectiveTunables(): TunableConfig {
-  const base = baseTunables();
+export function effectiveTunables(base: TunableConfig = baseTunables()): TunableConfig {
   try {
     return overlay(base, loadTuning());
   } catch {

@@ -97,9 +97,9 @@ test("AC-5 RESTORE-4 late main completion cannot append to replacement session",
 }, 10000);
 for (const mode of ["error", "timeout"] as const) {
   test(`AC-6 MAIN-3 official classifier ${mode} persists safe outcome`, async () => {
-    const f = await (fixture = new PiFixture()).start(
-      mode === "timeout" ? { JEV_TIMEOUT_MS: "100" } : {},
-    );
+    const f = (fixture = new PiFixture());
+    if (mode === "timeout") f.classifierConfig = { timeoutMs: 100 };
+    await f.start();
     if (mode === "error") {
       f.status = 503;
       f.response = "PRIVATE_PROVIDER_ERROR";

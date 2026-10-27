@@ -24,13 +24,15 @@ import {
   safeEffort,
   type VisibleOutcome,
 } from "./decision-visibility.ts";
-import { classify, systemOneConfig, effortEnabled, type Decision } from "./system-one.ts";
+import { classify, systemOneConfig, type Decision } from "./system-one.ts";
 import { classifierState } from "./classifier-context.ts";
 import { decideMain, skillBlock } from "./skill-matching.ts";
 import { SKILL_ENTRY_TYPE as SKILL_TYPE, type SkillCandidate } from "./skill-policy.ts";
 import { guidanceEnabled, observeLoop, QUALITY_BARS, stepBackNote } from "./guidance-policy.ts";
 import { ledgerEnabled, recordCorrection, recordTurn } from "./ledger.ts";
-import { dueProposals, effectiveTunables } from "./tuning.ts";
+import { dueProposals } from "./tuning.ts";
+import { captureEffortAssessment, type EffortAssessment } from "./effort-assessment.ts";
+import { loadJevConfig } from "./jev-config.ts";
 import {
   completedEntry,
   lastUserTurnId,
@@ -123,15 +125,7 @@ export default function (pi: ExtensionAPI): void {
     pending = [];
   };
   const commitPending = (ctx: ExtensionContext) => {
-    try {
-      if (!effortEnabled() || !applicable(ctx)) {
-        pending = [];
-        return;
-      }
-    } catch {
-      pending = [];
-      return;
-    }
+    // Each pending application already passed its owning assessment's eligibility gate.
     const branch = ctx.sessionManager.getBranch();
     for (const state of pending) {
       if (state.signal.aborted || state.sessionId !== ctx.sessionManager.getSessionId()) continue;
@@ -143,12 +137,15 @@ export default function (pi: ExtensionAPI): void {
   const applicable = (ctx: ExtensionContext) =>
     !!ctx.model?.reasoning && getSupportedThinkingLevels(ctx.model).length > 1;
   const restoreThinking = (ctx: ExtensionContext, fromTree = false) => {
-    // Inapplicable/disabled effort has no consumer and must not create diagnostics
-    // or setter writes, including when retained history contains old decisions.
+    // Disabled/inapplicable effort never replays setter writes. Invalid files remain visible.
     try {
-      if (!effortEnabled() || !applicable(ctx)) return;
-    } catch {
-      return; // Eligible input reports invalid feature configuration actionably.
+      if (!loadJevConfig().effortEnabled || !applicable(ctx)) return;
+    } catch (error) {
+      ctx.ui.notify(
+        error instanceof Error ? error.message : "Invalid Jev Pilot configuration.",
+        "error",
+      );
+      return;
     }
     const branch = ctx.sessionManager.getBranch();
     // Before the first eligible application, leave native startup thinking alone.
@@ -339,9 +336,11 @@ export default function (pi: ExtensionAPI): void {
     }
     let withEffort: boolean;
     let recording: boolean;
+    let assessment: EffortAssessment;
     try {
+      assessment = captureEffortAssessment();
       recording = ledgerEnabled();
-      withEffort = effortEnabled() && applicable(ctx);
+      withEffort = assessment.config.effortEnabled && applicable(ctx);
       if (withEffort && (!ctx.model || !ctx.modelRegistry.hasConfiguredAuth(ctx.model)))
         throw new Error(
           "Select a configured physical Pi model with authentication before submitting work.",
@@ -391,10 +390,14 @@ export default function (pi: ExtensionAPI): void {
         selectedNative = nativeSkill(prompt);
         prompt = native.task;
         if (!withEffort) {
-          finish(uiOwner, `effort skipped: ${effortEnabled() ? "inapplicable" : "disabled"}`, {
-            kind: "skipped",
-            skill: selectedNative,
-          });
+          finish(
+            uiOwner,
+            `effort skipped: ${assessment.config.effortEnabled ? "inapplicable" : "disabled"}`,
+            {
+              kind: "skipped",
+              skill: selectedNative,
+            },
+          );
           return;
         }
       }
@@ -412,12 +415,25 @@ export default function (pi: ExtensionAPI): void {
         ? { result: { outcome: "classified" as const, decision: previous }, skill: undefined }
         : native
           ? {
-              result: await classify(systemOneConfig(), await buildState(), controller.signal, {
-                tier: false,
-                effort: true,
-              }),
+              result: await classify(
+                systemOneConfig(assessment),
+                await buildState(),
+                controller.signal,
+                {
+                  tier: false,
+                  effort: true,
+                },
+              ),
             }
-          : await decideMain(pi, prompt, buildState, controller.signal, withEffort, ctx.cwd);
+          : await decideMain(
+              pi,
+              prompt,
+              buildState,
+              controller.signal,
+              withEffort,
+              ctx.cwd,
+              assessment,
+            );
       if (
         controller.signal.aborted ||
         initialRevision !== selectionRevision ||
@@ -431,6 +447,7 @@ export default function (pi: ExtensionAPI): void {
         return;
       }
       active = undefined;
+      if (result?.diagnostic) ctx.ui.notify(result.diagnostic, "error");
       const read: Decision | undefined =
         result?.adviceDecision ?? (result?.outcome === "classified" ? result.decision : undefined);
       if (draft) {
@@ -448,7 +465,7 @@ export default function (pi: ExtensionAPI): void {
           // The ledger is observational; a failed write never blocks the turn.
         }
       }
-      const skipReason = effortEnabled() ? "inapplicable" : "disabled";
+      const skipReason = assessment.config.effortEnabled ? "inapplicable" : "disabled";
       const shownSkill = selectedNative ?? safeSkillName(skill?.name);
       if (!result || (!skill && !advice && !withEffort)) {
         finish(
@@ -474,7 +491,7 @@ export default function (pi: ExtensionAPI): void {
       }
       const current = pi.getThinkingLevel();
       const decision = result.outcome === "classified" ? result.decision : null;
-      const tuned = effectiveTunables();
+      const tuned = assessment.tuning;
       const requested = decision
         ? (selectEffort(decision, current, prompt, tuned) ?? current)
         : current;
