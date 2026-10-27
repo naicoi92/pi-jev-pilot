@@ -6,6 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { loadLedger, resetLedger, summarizeLedger } from "./ledger.ts";
+import { loadJevConfig, type JevConfig } from "./jev-config.ts";
 import { tuneCommand, type TuneAction } from "./tuning.ts";
 
 export const DECISION_TYPE = "jev-pilot:decision:v1";
@@ -160,15 +161,28 @@ export function latestDecisionRows(branch: SessionEntry[]): DecisionRow[] {
   }
   return [...(main ? [main] : []), ...workers.values()];
 }
-function flag(name: string): string {
-  const value = process.env[`JEV_${name}_ENABLED`] ?? "true";
-  return value === "true" ? "enabled" : value === "false" ? "disabled" : "invalid configuration";
-}
-export function statusLines(pi: ExtensionAPI, ctx: ExtensionContext): string[] {
+export function statusLines(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  config: JevConfig = loadJevConfig(),
+): string[] {
   const rows = latestDecisionRows(ctx.sessionManager.getBranch());
+  const capabilities = [
+    ["effort", config.effortEnabled],
+    ["workers", config.workerRoutingEnabled],
+    ["skills", config.skillsEnabled],
+    ["rerank", config.skillRerank],
+    ["strategy", config.strategyEnabled],
+    ["quality", config.qualityEnabled],
+    ["design", config.designEnabled],
+    ["recording", config.recordDecisions],
+  ]
+    .map(([name, on]) => `${name} ${on ? "enabled" : "disabled"}`)
+    .join("; ");
   return [
     "Jev loaded · durable decision UI",
-    `Capabilities: effort ${flag("EFFORT")}; workers ${flag("WORKER_ROUTING")}; skills ${flag("SKILLS")}; strategy ${flag("STRATEGY")}; quality ${flag("QUALITY")}; design ${flag("DESIGN")}`,
+    `Capabilities: ${capabilities}`,
+    "Configuration: latest validated file for the next assessment; active work retains its captured options.",
     `Main model (Pi-selected): ${safeIdentity(ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined)}`,
     `Current effort: ${safeEffort(pi.getThinkingLevel())}`,
     ...(rows.length ? rows.flatMap((row) => decisionLines(row, true)) : ["No selection yet"]),
@@ -186,9 +200,16 @@ export function registerDecisionVisibility(pi: ExtensionAPI): void {
       else if (command === "report reset") ctx.ui.notify(resetText(), "info");
       else if (/^tune(?: (?:apply|reset))?$/.test(command))
         ctx.ui.notify(tuneCommand((command.split(" ")[1] ?? "show") as TuneAction), "info");
-      else if (command === "status" || command === "")
-        ctx.ui.notify(statusLines(pi, ctx).join("\n"), "info");
-      else
+      else if (command === "status" || command === "") {
+        try {
+          ctx.ui.notify(statusLines(pi, ctx).join("\n"), "info");
+        } catch (error) {
+          ctx.ui.notify(
+            error instanceof Error ? error.message : "Invalid Jev Pilot configuration.",
+            "error",
+          );
+        }
+      } else
         ctx.ui.notify(
           "Usage: /jev status | report | report reset | tune | tune apply | tune reset",
           "info",

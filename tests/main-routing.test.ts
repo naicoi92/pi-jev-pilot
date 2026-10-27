@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
-import { PiFixture, answer, type RecordData } from "./fixtures/pi-cli.ts";
+import { answer, type RecordData } from "./fixtures/pi-cli.ts";
+import { MainConfigFixture as PiFixture } from "./fixtures/main-config.ts";
 
 const task = "Please review the complete patch with particular care for failure modes";
 let fixture: PiFixture | undefined;
@@ -11,7 +12,8 @@ afterEach(async () => {
 async function start() {
   fixture = new PiFixture();
   fixture.settings = { jevPilot: { mainRoutingEnabled: true, tiers: { fast: "invalid" } } };
-  return fixture.start({ JEV_MAIN_ROUTING_ENABLED: "true", JEV_TIER_DEEP: "invalid" });
+  fixture.environment = { JEV_MAIN_ROUTING_ENABLED: "true", JEV_TIER_DEEP: "invalid" };
+  return fixture.start();
 }
 async function fixed(f: PiFixture) {
   expect((await f.command("get_state")).data).toMatchObject({

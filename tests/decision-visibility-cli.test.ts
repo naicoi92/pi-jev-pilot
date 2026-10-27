@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { PiFixture, answer, type RecordData } from "./fixtures/pi-cli.ts";
+import { answer, type RecordData } from "./fixtures/pi-cli.ts";
+import { MainConfigFixture as PiFixture } from "./fixtures/main-config.ts";
 const TYPE = "jev-pilot:decision:v1";
 let fixture: PiFixture | undefined;
 afterEach(async () => {

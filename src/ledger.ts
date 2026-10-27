@@ -156,11 +156,8 @@ export function markCorrected(
   return entries.map((entry) => (entry.id === id ? { ...entry, corrected } : entry));
 }
 
-export function ledgerEnabled(): boolean {
-  const value = process.env.JEV_RECORD_DECISIONS ?? "true";
-  if (value !== "true" && value !== "false")
-    throw new Error("Set JEV_RECORD_DECISIONS to true or false (default: true).");
-  return value === "true";
+export function ledgerEnabled(recordDecisions: boolean): boolean {
+  return recordDecisions;
 }
 
 export function ledgerPath(): string {

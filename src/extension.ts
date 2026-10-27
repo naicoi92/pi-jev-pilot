@@ -28,7 +28,7 @@ import { classify, systemOneConfig, type Decision } from "./system-one.ts";
 import { classifierState } from "./classifier-context.ts";
 import { decideMain, skillBlock } from "./skill-matching.ts";
 import { SKILL_ENTRY_TYPE as SKILL_TYPE, type SkillCandidate } from "./skill-policy.ts";
-import { guidanceEnabled, observeLoop, QUALITY_BARS, stepBackNote } from "./guidance-policy.ts";
+import { observeLoop, QUALITY_BARS, stepBackNote } from "./guidance-policy.ts";
 import { ledgerEnabled, recordCorrection, recordTurn } from "./ledger.ts";
 import { dueProposals } from "./tuning.ts";
 import { captureEffortAssessment, type EffortAssessment } from "./effort-assessment.ts";
@@ -76,10 +76,18 @@ export default function (pi: ExtensionAPI): void {
   const tally = new ToolTally();
   let ledgerDraft: LedgerDraft | undefined;
   pi.on("agent_start", () => tally.reset());
+  let observation:
+    | {
+        sessionId: string;
+        qualityEnabled: boolean;
+        recordDecisions: boolean;
+      }
+    | undefined;
   pi.on("tool_result", (event, ctx) => {
-    if (!event.parentToolCallId) tally.observe(event.isError);
-    if (ctx.signal?.aborted || event.parentToolCallId || loopNoted || !guidanceEnabled("QUALITY"))
+    if (event.parentToolCallId || observation?.sessionId !== ctx.sessionManager.getSessionId())
       return;
+    if (observation.recordDecisions) tally.observe(event.isError);
+    if (ctx.signal?.aborted || loopNoted || !observation.qualityEnabled) return;
     const circle = observeLoop(event.toolName, event.input, event.isError, edits, runs);
     if (!circle) return;
     loopNoted = true;
@@ -116,6 +124,7 @@ export default function (pi: ExtensionAPI): void {
   const dispose = () => {
     resetLoop();
     ledgerDraft = undefined;
+    observation = undefined;
     tally.reset();
     selectionRevision++;
     ownThinking = undefined;
@@ -176,6 +185,7 @@ export default function (pi: ExtensionAPI): void {
     restoreThinking(ctx, true);
   });
   pi.on("agent_end", (event, ctx) => {
+    observation = undefined;
     resetLoop();
     pending = [];
     // The draft belongs to the session that started the turn; replacement drops it.
@@ -277,6 +287,8 @@ export default function (pi: ExtensionAPI): void {
   pi.on("message_start", async (event, ctx) => {
     if (event.message.role !== "user" || executionChildren.has(ctx.sessionManager.getSessionId()))
       return;
+    observation = undefined;
+    ledgerDraft = undefined;
     resetLoop();
     // Pi persisted the preceding queued user at message_end. Commit it before a
     // following continuation reads its predecessor, even in steering mode "all".
@@ -339,7 +351,13 @@ export default function (pi: ExtensionAPI): void {
     let assessment: EffortAssessment;
     try {
       assessment = captureEffortAssessment();
-      recording = ledgerEnabled();
+      recording = ledgerEnabled(assessment.config.recordDecisions);
+      // Tool observations and the ledger belong to this boundary, not later file edits.
+      observation = {
+        sessionId: uiSession,
+        qualityEnabled: assessment.config.qualityEnabled,
+        recordDecisions: recording,
+      };
       withEffort = assessment.config.effortEnabled && applicable(ctx);
       if (withEffort && (!ctx.model || !ctx.modelRegistry.hasConfiguredAuth(ctx.model)))
         throw new Error(
@@ -425,15 +443,7 @@ export default function (pi: ExtensionAPI): void {
                 },
               ),
             }
-          : await decideMain(
-              pi,
-              prompt,
-              buildState,
-              controller.signal,
-              withEffort,
-              ctx.cwd,
-              assessment,
-            );
+          : await decideMain(pi, prompt, buildState, controller.signal, withEffort, assessment);
       if (
         controller.signal.aborted ||
         initialRevision !== selectionRevision ||

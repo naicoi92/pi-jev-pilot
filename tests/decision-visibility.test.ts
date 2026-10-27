@@ -310,21 +310,16 @@ test("AC-5 RESTORE-5 restored invocation sequence cannot reuse same-call label",
   expect(next.label).toStartWith("w2-");
 });
 test("AC-2 STATUS-2 disabled flag stays legible without claiming classification", async () => {
-  const previous = process.env.JEV_EFFORT_ENABLED;
-  process.env.JEV_EFFORT_ENABLED = "false";
-  try {
-    const { statusLines } = await import("../src/decision-visibility.ts");
-    const text = statusLines(
-      { getThinkingLevel: () => "low" } as ExtensionAPI,
-      { sessionManager: { getBranch: () => [] }, model: undefined } as unknown as ExtensionContext,
-    ).join("\n");
-    expect(text).toContain("effort disabled");
-    expect(text).toContain("No selection yet");
-    expect(text).not.toContain("classified");
-  } finally {
-    if (previous === undefined) delete process.env.JEV_EFFORT_ENABLED;
-    else process.env.JEV_EFFORT_ENABLED = previous;
-  }
+  const { statusLines } = await import("../src/decision-visibility.ts");
+  const { loadJevConfig } = await import("../src/jev-config.ts");
+  const text = statusLines(
+    { getThinkingLevel: () => "low" } as ExtensionAPI,
+    { sessionManager: { getBranch: () => [] }, model: undefined } as unknown as ExtensionContext,
+    { ...loadJevConfig(), effortEnabled: false },
+  ).join("\n");
+  expect(text).toContain("effort disabled");
+  expect(text).toContain("No selection yet");
+  expect(text).not.toContain("classified");
 });
 
 for (const sequence of [

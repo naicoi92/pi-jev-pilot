@@ -59,6 +59,11 @@ function native(config: Record<string, unknown> = {}): PiFixture {
     await writeFile(
       join(agent, "jev-pilot.json"),
       JSON.stringify({
+        // This tracer fixture isolates effort; main-consumer defaults have separate native proof.
+        skillsEnabled: false,
+        strategyEnabled: false,
+        qualityEnabled: false,
+        designEnabled: false,
         classifier: { url: `${url}systemone`, apiKeyEnv: "CFG_TEST_KEY" },
         ...config,
       }),
@@ -79,6 +84,10 @@ for (const directory of ["custom", "default"]) {
       await writeFile(
         join(agent, "jev-pilot.json"),
         JSON.stringify({
+          skillsEnabled: false,
+          strategyEnabled: false,
+          qualityEnabled: false,
+          designEnabled: false,
           classifier: { url: `${url}systemone`, model: "file-model", apiKeyEnv: "CFG_TEST_KEY" },
         }),
       );
@@ -148,7 +157,7 @@ test("CFG-04-missing: native named credential has no fallback", async () => {
   expect(output).not.toContain("fallback-not-used");
 }, 20000);
 
-test("CFG-04-lazy: native disabled effort does not require unused credential", async () => {
+test("CFG-04-lazy: native effort-only fixture with effort disabled does not require unused credential", async () => {
   const f = native({ effortEnabled: false });
   await f.start({ CFG_TEST_KEY: "", JEV_EFFORT_ENABLED: "true" });
   await f.prompt(task);
@@ -207,6 +216,10 @@ test("CFG-01-overlay: native captures learned timeout until next boundary", asyn
     await writeFile(
       join(agent, "jev-pilot.json"),
       JSON.stringify({
+        skillsEnabled: false,
+        strategyEnabled: false,
+        qualityEnabled: false,
+        designEnabled: false,
         classifier: { url: `${url}systemone`, apiKeyEnv: "CFG_TEST_KEY", timeoutMs: 30 },
       }),
     );
@@ -255,7 +268,13 @@ test("CFG-01-owner: native conflicting legacy effort toggle cannot erase capture
   ).toMatchObject({ outcome: "classified", effective: "high" });
   await writeFile(
     join(agentDir, "jev-pilot.json"),
-    JSON.stringify({ classifier: { url: `${f.server.url}systemone`, apiKeyEnv: "CFG_TEST_KEY" } }),
+    JSON.stringify({
+      skillsEnabled: false,
+      strategyEnabled: false,
+      qualityEnabled: false,
+      designEnabled: false,
+      classifier: { url: `${f.server.url}systemone`, apiKeyEnv: "CFG_TEST_KEY" },
+    }),
   );
   await f.command("prompt", { message: "/fixture-reload" });
   await f.prompt("continue");

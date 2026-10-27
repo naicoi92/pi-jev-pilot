@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { crewConfig } from "./crew-config.ts";
 import type { EffortAssessment } from "./effort-assessment.ts";
 import { crewAdvice } from "./crew-guidance.ts";
 import { dirname } from "node:path";
@@ -30,16 +29,13 @@ import {
   type SkillCandidate,
 } from "./skill-policy.ts";
 
-function flag(name: string, fallback: string): boolean {
-  const value = process.env[name] ?? fallback;
-  if (value !== "true" && value !== "false")
-    throw new Error(`Set ${name} to true or false (default: ${fallback}).`);
-  return value === "true";
-}
-
 /** The effective Pi resource catalog, never a parallel filesystem discovery. */
-export async function eligibleSkills(pi: ExtensionAPI, prompt: string): Promise<SkillCandidate[]> {
-  if (!flag("JEV_SKILLS_ENABLED", "true") || isContinuation(prompt)) return [];
+export async function eligibleSkills(
+  pi: ExtensionAPI,
+  prompt: string,
+  skillsEnabled: boolean,
+): Promise<SkillCandidate[]> {
+  if (!skillsEnabled || isContinuation(prompt)) return [];
   return resourceSkills(pi);
 }
 
@@ -72,7 +68,6 @@ export async function decideMain(
   state: () => Promise<unknown>,
   signal: AbortSignal,
   withEffort: boolean,
-  cwd: string,
   assessment: EffortAssessment,
 ): Promise<{
   result: Classification | null;
@@ -80,21 +75,16 @@ export async function decideMain(
   advice?: string;
   strategy?: Strategy;
 }> {
-  const crew = crewConfig(cwd);
+  const crew = assessment.config.crew;
   const enabled: DecisionQuestions = { tier: false, effort: withEffort, junior: !!crew.junior };
-  const quality = !isContinuation(prompt) && guidanceEnabled("QUALITY");
-  const strategy = !isContinuation(prompt) && guidanceEnabled("STRATEGY");
-  const design = !isContinuation(prompt) && guidanceEnabled("DESIGN");
-  const resources = design ? await resourceSkills(pi) : await eligibleSkills(pi, prompt);
-  const skills = design && !flag("JEV_SKILLS_ENABLED", "true") ? [] : resources;
-  const designNames = [
-    ...new Set(
-      (process.env.JEV_DESIGN_SKILLS ?? "design-taste-frontend, impeccable, web-design-guidelines")
-        .split(",")
-        .map((name) => name.trim())
-        .filter(Boolean),
-    ),
-  ];
+  const quality = !isContinuation(prompt) && guidanceEnabled("QUALITY", assessment.config);
+  const strategy = !isContinuation(prompt) && guidanceEnabled("STRATEGY", assessment.config);
+  const design = !isContinuation(prompt) && guidanceEnabled("DESIGN", assessment.config);
+  const resources = design
+    ? await resourceSkills(pi)
+    : await eligibleSkills(pi, prompt, assessment.config.skillsEnabled);
+  const skills = design && !assessment.config.skillsEnabled ? [] : resources;
+  const designNames = assessment.config.designSkills;
   const finish = (result: Classification | null, skill?: SkillCandidate) => {
     const adviceDecision = result?.adviceDecision;
     return {
@@ -126,7 +116,7 @@ export async function decideMain(
     return finish(
       await classify(config, context, signal, { ...enabled, quality, strategy, design }),
     );
-  const rerank = flag("JEV_SKILL_RERANK", "false");
+  const rerank = assessment.config.skillRerank;
   const batches = skillBatches(skills);
   const answers = await Promise.all(
     batches.map((batch, index) =>

@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { PiFixture, answer, type RecordData } from "./fixtures/pi-cli.ts";
+import { answer, type RecordData } from "./fixtures/pi-cli.ts";
+import { MainConfigFixture as PiFixture } from "./fixtures/main-config.ts";
 
 let fixture: PiFixture | undefined;
 afterEach(async () => {
@@ -198,8 +199,8 @@ test("AC-22 LEDGER-22-retention-cli 499 seeded plus two turns keeps the latest 5
   expect(rows.slice(498).some((row) => row.id.startsWith("seed:"))).toBe(false);
 }, 20000);
 
-test("AC-22 LEDGER-22-disabled JEV_RECORD_DECISIONS=false writes nothing", async () => {
-  const f = await (fixture = new PiFixture()).start({ JEV_RECORD_DECISIONS: "false" });
+test("AC-22 LEDGER-22-disabled recordDecisions=false writes nothing", async () => {
+  const f = await (fixture = new PiFixture()).start({ recordDecisions: false });
   await f.prompt("Review this patch carefully");
   expect(await ledger(f)).toEqual([]);
   await expect(stat(ledgerFile(f))).rejects.toThrow();

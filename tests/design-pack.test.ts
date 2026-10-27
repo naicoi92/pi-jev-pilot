@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { PiFixture, type RecordData } from "./fixtures/pi-cli.ts";
+import type { RecordData } from "./fixtures/pi-cli.ts";
+import { MainConfigFixture as PiFixture } from "./fixtures/main-config.ts";
 
 let fixture: PiFixture | undefined;
 afterEach(async () => {
@@ -26,8 +27,9 @@ function text(f: PiFixture, index = 0): string {
     )
     .join("\n");
 }
-async function start(env: Record<string, string> = {}) {
+async function start(config: RecordData = {}, environment: Record<string, string> = {}) {
   fixture = new PiFixture();
+  fixture.environment = environment;
   fixture.useDesignDefaults = true;
 
   fixture.response = {
@@ -35,14 +37,11 @@ async function start(env: Record<string, string> = {}) {
       ui_design: { noul: 0.97 },
     },
   };
-  return fixture.startWithRouting(
-    {},
-    {
-      JEV_EFFORT_ENABLED: "false",
-      JEV_SKILLS_ENABLED: "false",
-      ...env,
-    },
-  );
+  return fixture.start({
+    effortEnabled: false,
+    skillsEnabled: false,
+    ...config,
+  });
 }
 
 test("D09-design-only-default asks the upstream design noul in one installed request", async () => {
@@ -63,7 +62,7 @@ test("D17-resource-default references installed configured skills with active re
     { name: "unconfigured-design", body: "UNCONFIGURED_BODY" },
   ];
   fixture.response = { answers: { ui_design: { noul: 0.97 } } };
-  const f = await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_SKILLS_ENABLED: "false" });
+  const f = await fixture.start({ effortEnabled: false, skillsEnabled: false });
   await f.prompt("Restyle the dashboard with the existing project tokens");
   const pack = text(f).split("<jev_design>")[1]!.split("</jev_design>")[0]!;
   expect(pack).toContain("/impeccable");
@@ -117,7 +116,7 @@ for (const withRead of [false, true]) {
     fixture.skills = [{ name: "impeccable", body: "DO_NOT_INJECT_DESIGN_BODY" }];
     fixture.projectContext = "Use the existing ORBIT_DESIGN_TOKENS for every visible component.";
     fixture.response = { answers: { ui_design: { noul: 0.97 } } };
-    const f = await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_SKILLS_ENABLED: "false" });
+    const f = await fixture.start({ effortEnabled: false, skillsEnabled: false });
     await f.command("prompt", { message: "/fixture-tools" });
     const catalogs = (await Bun.file(`${f.directory}/lifecycle.jsonl`).text())
       .trim()
@@ -170,9 +169,9 @@ test("D17-resource-custom-exact-suffix excludes unconfigured disabled and unread
   ];
   fixture.response = { answers: { ui_design: { noul: 0.97 } } };
   const f = await fixture.start({
-    JEV_EFFORT_ENABLED: "false",
-    JEV_SKILLS_ENABLED: "false",
-    JEV_DESIGN_SKILLS: " craft,polish, disabled, unreadable, missing,craft, ,",
+    effortEnabled: false,
+    skillsEnabled: false,
+    designSkills: [" craft", "polish", "disabled", "unreadable", "missing", "craft", " "],
   });
   await Bun.file(`${f.directory}/agent/skills/unreadable/SKILL.md`).delete();
   await f.prompt("Design a dashboard");
@@ -188,7 +187,7 @@ test("D17-resource-custom-exact-suffix excludes unconfigured disabled and unread
 }, 20000);
 
 test("D17-resource-empty configured list stays empty without fallback aliases", async () => {
-  const f = await start({ JEV_DESIGN_SKILLS: " , , " });
+  const f = await start({ designSkills: [] });
   await f.prompt("Design a landing page");
   expect(text(f)).toContain("awesome-design-md");
   expect(text(f)).not.toContain("Load /");
@@ -205,14 +204,11 @@ test("D17-resource-empty configured list stays empty without fallback aliases", 
       { name: "impeccable", body: "DESIGN_NOT_AN_ORDINARY_SELECTION" },
     ];
 
-    const f = await fixture.startWithRouting(
-      {},
-      {
-        JEV_EFFORT_ENABLED: "true",
-        JEV_STRATEGY_ENABLED: "true",
-        JEV_QUALITY_ENABLED: "true",
-      },
-    );
+    const f = await fixture.start({
+      effortEnabled: true,
+      strategyEnabled: true,
+      qualityEnabled: true,
+    });
     f.response = {
       answers: {
         tier: { choice: "deep", confidence: 0.99 },
@@ -250,7 +246,7 @@ test("D17-resource-empty configured list stays empty without fallback aliases", 
     });
   }, 20000);
   test(`D17-raw-consumer-physical design is independent of routing rejection`, async () => {
-    const f = await start({ JEV_EFFORT_ENABLED: "true" });
+    const f = await start({ effortEnabled: true });
     f.response = {
       answers: {
         ui_design: { noul: 0.97 },
@@ -278,7 +274,7 @@ for (const choice of ["procedure", "(none)"]) {
     fixture.response = {
       answers: { which: { choice, confidence: 0.9 }, ui_design: { noul: 0.97 } },
     };
-    const f = await fixture.start({ JEV_EFFORT_ENABLED: "false" });
+    const f = await fixture.start({ effortEnabled: false });
     await f.prompt("Design the component with a specified procedure");
     expect(text(f).includes("ORDINARY_BODY_MARKER")).toBe(choice === "procedure");
     expect(text(f)).not.toContain("DESIGN_BODY_MARKER");
@@ -288,14 +284,17 @@ for (const choice of ["procedure", "(none)"]) {
   }, 20000);
 }
 test("D09-disabled-empty-continuation no questions ignores unused invalid configuration", async () => {
-  const f = await start({ JEV_DESIGN_ENABLED: "false", JEV_SYSTEM_ONE_URL: "invalid" });
+  const f = await start(
+    { designEnabled: false },
+    { JEV_SYSTEM_ONE_URL: "invalid", CFG_TEST_KEY: "" },
+  );
   await f.prompt("Design a landing page");
   expect(f.classifications).toHaveLength(0);
   expect(f.generations).toHaveLength(1);
 }, 20000);
 for (const prompt of ["", "/skill:missing", "continue"]) {
   test(`D09-disabled-empty-continuation ineligible ${JSON.stringify(prompt)}`, async () => {
-    const f = await start({ JEV_SYSTEM_ONE_URL: "invalid" });
+    const f = await start({}, { JEV_SYSTEM_ONE_URL: "invalid", CFG_TEST_KEY: "" });
     if (!prompt || prompt.startsWith("/")) await f.command("prompt", { message: prompt });
     else await f.prompt(prompt);
     expect(f.classifications).toHaveLength(0);
@@ -336,8 +335,8 @@ for (const rerank of [false, true]) {
       };
     };
     const f = await fixture.start({
-      JEV_EFFORT_ENABLED: "false",
-      JEV_SKILL_RERANK: String(rerank),
+      effortEnabled: false,
+      skillRerank: rerank,
     });
     await f.prompt("Design a screen using the matching procedure");
     expect(f.classifications).toHaveLength(rerank ? 3 : 2);
@@ -369,7 +368,7 @@ for (const rerank of [false, true]) {
   }, 20000);
 
   test(`D17-queue physical shares UUID and keeps design on substantive owner`, async () => {
-    const f = await start({ JEV_EFFORT_ENABLED: "true" });
+    const f = await start({ effortEnabled: true });
     f.response = {
       answers: {
         tier: { choice: "balanced", confidence: 0.99 },
@@ -498,7 +497,7 @@ for (const rerank of [false, true]) {
 
   for (const mode of ["abort", "thinking", "model", "timeout"] as const) {
     test(`D17-abort-timeout-manual physical/${mode} discards pending design`, async () => {
-      const f = await start({ JEV_TIMEOUT_MS: mode === "timeout" ? "80" : "5000" });
+      const f = await start({ classifier: { timeoutMs: mode === "timeout" ? 80 : 5000 } });
       f.classifierDelay = 500;
       const offset = f.records.length;
       await f.command("prompt", { message: "Restyle the dashboard" });
@@ -551,7 +550,7 @@ test("D09-privacy does not expand project design bodies or projected guidance in
   fixture.skills = [{ name: "impeccable", body: "PRIVATE_DESIGN_BODY_42" }];
   fixture.projectContext = "PRIVATE_PROJECT_TOKENS_42 are authoritative.";
   fixture.response = { answers: { ui_design: { noul: 0.97 } } };
-  const f = await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_SKILLS_ENABLED: "false" });
+  const f = await fixture.start({ effortEnabled: false, skillsEnabled: false });
   await f.prompt("Restyle the dashboard");
   f.nextReadPath = `${f.directory}/agent/settings.json`;
   await f.prompt("Restyle a separate settings screen");

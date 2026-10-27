@@ -64,7 +64,26 @@ export function qualityAdvice(decision: QualityReads): string | null {
     : null;
 }
 
-export function guidanceEnabled(name: "STRATEGY" | "QUALITY" | "DESIGN"): boolean {
+export type GuidanceFlag = "STRATEGY" | "QUALITY" | "DESIGN";
+
+const GUIDANCE_FLAG_KEY: Record<
+  GuidanceFlag,
+  "strategyEnabled" | "qualityEnabled" | "designEnabled"
+> = {
+  STRATEGY: "strategyEnabled",
+  QUALITY: "qualityEnabled",
+  DESIGN: "designEnabled",
+};
+
+export function guidanceEnabled(
+  name: GuidanceFlag,
+  config?: {
+    readonly strategyEnabled: boolean;
+    readonly qualityEnabled: boolean;
+    readonly designEnabled: boolean;
+  },
+): boolean {
+  if (config) return config[GUIDANCE_FLAG_KEY[name]];
   const key = `JEV_${name}_ENABLED`;
   const value = process.env[key] ?? "true";
   if (value !== "true" && value !== "false")

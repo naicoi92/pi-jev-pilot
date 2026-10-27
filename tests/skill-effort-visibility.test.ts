@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { PiFixture } from "./fixtures/pi-cli.ts";
+import { MainConfigFixture as PiFixture } from "./fixtures/main-config.ts";
 
 let fixture: PiFixture | undefined;
 afterEach(async () => {
@@ -50,7 +50,7 @@ test("CLI-SV02 empty explicit native skill keeps resource without classification
 test("CLI-SV03 later plain turn keeps native bodies private and preserves task suffix", async () => {
   fixture = new PiFixture();
   fixture.skills = [{ name: "debugging", body }];
-  await fixture.start({ JEV_SKILLS_ENABLED: "false" });
+  await fixture.start({ skillsEnabled: false });
   await fixture.prompt(`/skill:debugging ${task}`);
   await fixture.prompt("Why should we proceed with this independent review?");
   expect(JSON.stringify(fixture.classifications)).not.toContain("PRIVATE_");
@@ -86,9 +86,9 @@ for (const outcome of [
     if (outcome === "timeout") fixture.classifierDelay = 1000;
     await fixture.start(
       outcome === "disabled"
-        ? { JEV_EFFORT_ENABLED: "false" }
+        ? { effortEnabled: false }
         : outcome === "timeout"
-          ? { JEV_TIMEOUT_MS: "100" }
+          ? { classifier: { timeoutMs: 100 } }
           : {},
     );
     await fixture.prompt("Please review the complete patch with particular care for failure modes");
@@ -159,7 +159,7 @@ test("CLI-SV04 advice-only result does not claim effort changed or classifier sk
       corrects: { noul: 0.7 },
     },
   };
-  await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_QUALITY_ENABLED: "true" });
+  await fixture.start({ effortEnabled: false, qualityEnabled: true });
   await fixture.prompt("Fix the broken validation with a regression test");
   expect(fixture.classifications).toHaveLength(1);
   const status = String(uiRecords(fixture, "setStatus").at(-1)?.statusText);
@@ -184,11 +184,8 @@ for (const gate of ["disabled", "inapplicable"] as const) {
     fixture.useDesignDefaults = true;
     fixture.useGuidanceDefaults = true;
     if (gate === "inapplicable") fixture.reasoning = false;
-    await fixture.start(
-      gate === "disabled"
-        ? { JEV_EFFORT_ENABLED: "false", JEV_SYSTEM_ONE_API_KEY: "" }
-        : { JEV_SYSTEM_ONE_API_KEY: "" },
-    );
+    fixture.environment = { CFG_TEST_KEY: "" };
+    await fixture.start(gate === "disabled" ? { effortEnabled: false } : {});
     await fixture.prompt(`/skill:debugging ${task}`);
     expect(fixture.classifications).toHaveLength(0);
     expect(JSON.stringify(fixture.generations)).toContain("PRIVATE_SKILL_秘密");

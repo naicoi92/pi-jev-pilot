@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
-import { PiFixture, answer, type RecordData } from "./fixtures/pi-cli.ts";
+import { answer, type RecordData } from "./fixtures/pi-cli.ts";
+import { MainConfigFixture as PiFixture } from "./fixtures/main-config.ts";
 
 let fixture: PiFixture | undefined;
 afterEach(async () => {
@@ -23,15 +24,19 @@ function response(name = "debugging", confidence = 0.9, gate = 0.9): RecordData 
     },
   };
 }
-async function start(env: Record<string, string> = {}): Promise<PiFixture> {
+async function start(
+  config: RecordData = {},
+  environment: Record<string, string> = {},
+): Promise<PiFixture> {
   fixture = new PiFixture();
+  fixture.environment = environment;
   fixture.skills = [
     { name: "debugging", body },
     { name: "slides", body: "UNSELECTED_BODY_TOKEN" },
   ];
   fixture.response = response();
 
-  return fixture.startWithRouting({}, env);
+  return fixture.start(config);
 }
 function providerText(f: PiFixture, index = 0): string {
   const messages = f.generations[index]?.messages as
@@ -118,7 +123,7 @@ test("SK14-eligibility explicit skill invocation bypasses ordinary matching", as
 
 for (const nonReasoning of [false, true]) {
   test(`SK09-gating skill-only ${nonReasoning ? "non-reasoning" : "effort-disabled"}`, async () => {
-    const f = await start({ JEV_EFFORT_ENABLED: "false" });
+    const f = await start({ effortEnabled: false });
     if (nonReasoning) {
       await f.command("set_model", { provider: "fixture", modelId: "fixture-plain-model" });
       await f.command("prompt", { message: "/fixture-effort true" });
@@ -141,19 +146,20 @@ for (const nonReasoning of [false, true]) {
 }
 
 test("SK09-gating disabled matching leaves standalone effort routing", async () => {
-  const f = await start({ JEV_SKILLS_ENABLED: "false" });
+  const f = await start({ skillsEnabled: false });
   await f.prompt(task);
   expect(Object.keys(questions(f)).sort()).toEqual(["effort", "risky"]);
   expect(providerText(f)).not.toContain("<skill_relevance>");
 }, 20000);
 
 test("SK09-gating both disabled means zero HTTP with unusable classifier config", async () => {
-  const f = await start({
-    JEV_SKILLS_ENABLED: "false",
-    JEV_EFFORT_ENABLED: "false",
-    JEV_SYSTEM_ONE_URL: "invalid",
-    JEV_SYSTEM_ONE_API_KEY: "",
-  });
+  const f = await start(
+    {
+      skillsEnabled: false,
+      effortEnabled: false,
+    },
+    { JEV_SYSTEM_ONE_URL: "invalid", CFG_TEST_KEY: "" },
+  );
   await f.prompt(task);
   expect(f.classifications).toHaveLength(0);
   expect(f.generations).toHaveLength(1);
@@ -174,7 +180,8 @@ test("SK09-gating empty eligible roster with inapplicable effort performs zero H
   fixture = new PiFixture();
   fixture.reasoning = false;
   fixture.skills = [{ name: "manual-only", disabled: true, body: "BARRED_BODY" }];
-  await fixture.start({ JEV_SYSTEM_ONE_URL: "invalid", JEV_SYSTEM_ONE_API_KEY: "" });
+  fixture.environment = { JEV_SYSTEM_ONE_URL: "invalid", CFG_TEST_KEY: "" };
+  await fixture.start({});
   await fixture.prompt(task);
   expect(fixture.classifications).toHaveLength(0);
   expect(fixture.generations).toHaveLength(1);
@@ -194,7 +201,7 @@ for (const rerank of [false, true]) {
       (request.questions as RecordData)["fits::debugging"]
         ? { answers: { which: { choice: "debugging" }, "fits::debugging": { noul: 0.9 } } }
         : response();
-    const f = await fixture.start({ JEV_SKILL_RERANK: String(rerank) });
+    const f = await fixture.start({ skillRerank: rerank });
     await f.prompt(task);
     const firstCriteria = questions(f).which!.criteria as RecordData;
     expect(firstCriteria.debugging).toBe(
@@ -234,7 +241,7 @@ for (const rerank of [false, true]) {
       );
       return value;
     };
-    const f = await fixture.start({ JEV_SKILL_RERANK: String(rerank) });
+    const f = await fixture.start({ skillRerank: rerank });
     await f.prompt(task);
     expect(f.classifications).toHaveLength(rerank ? 3 : 2);
     const wide = f.classifications
@@ -258,7 +265,7 @@ for (const rerank of [false, true]) {
 
 for (const mode of ["reject-all", "winner-low", "stray", "failure", "select"] as const) {
   test(`SK14-rerank ${mode} follows independent fit gate`, async () => {
-    const f = await start({ JEV_SKILL_RERANK: "true" });
+    const f = await start({ skillRerank: true });
     f.classifierResponse = (request) => {
       if (!(request.questions as RecordData)["fits::debugging"])
         return {
@@ -383,7 +390,7 @@ for (const mode of ["reject-all", "winner-low", "stray", "failure", "select"] as
 
   for (const mode of ["abort", "thinking", "model", "timeout"] as const) {
     test(`SK14-cancel physical ${mode} never applies stale selected content`, async () => {
-      const f = await start({ JEV_TIMEOUT_MS: mode === "timeout" ? "80" : "5000" });
+      const f = await start({ classifier: { timeoutMs: mode === "timeout" ? 80 : 5000 } });
       f.classifierDelay = 500;
       const offset = f.records.length;
       await f.command("prompt", { message: task });
@@ -428,7 +435,7 @@ test("SK10-explicit-history explicit skill bodies stay out of later classifier h
 }, 20000);
 
 test("SK14-rerank-gate low first gate does not attempt optional rerank", async () => {
-  const f = await start({ JEV_SKILL_RERANK: "true" });
+  const f = await start({ skillRerank: true });
   f.response = response("debugging", 0.99, 0.29);
   await f.prompt(task);
   expect(f.classifications).toHaveLength(1);
@@ -470,7 +477,10 @@ test("SK14-batch-failure missing later batch rejects skill while first routing r
 }, 20000);
 
 test("SK14-no-questions-continuation without previous effort skips matching and classifier HTTP", async () => {
-  const f = await start({ JEV_EFFORT_ENABLED: "false", JEV_SYSTEM_ONE_URL: "invalid" });
+  const f = await start(
+    { effortEnabled: false },
+    { JEV_SYSTEM_ONE_URL: "invalid", CFG_TEST_KEY: "" },
+  );
   await f.prompt("continue");
   expect(f.classifications).toHaveLength(0);
   expect(f.generations).toHaveLength(1);
@@ -546,7 +556,7 @@ test("SK14-batch-none other qualifying batch leader can win without dropped cand
 
 {
   test(`SK14-rerank-cancel physical abort during optional second call stops generation`, async () => {
-    const f = await start({ JEV_SKILL_RERANK: "true", JEV_TIMEOUT_MS: "5000" });
+    const f = await start({ skillRerank: true, classifier: { timeoutMs: 5000 } });
     f.classifierResponse = () => {
       f.classifierDelay = 2000;
       return response();
@@ -592,10 +602,7 @@ for (const disabled of [false, true]) {
     fixture = new PiFixture();
     fixture.skills = [{ name: "debugging", disabled: !disabled, body }];
     fixture.response = response();
-    await fixture.startWithRouting(
-      {},
-      { JEV_SKILLS_ENABLED: String(!disabled), JEV_EFFORT_ENABLED: "false" },
-    );
+    await fixture.start({ skillsEnabled: !disabled, effortEnabled: false });
     await fixture.prompt(task);
     const entries = (
       (await fixture.command("get_entries")).data as {

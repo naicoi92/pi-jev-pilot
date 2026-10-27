@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
-import { PiFixture, answer } from "./fixtures/pi-cli.ts";
+import { answer } from "./fixtures/pi-cli.ts";
+import { MainConfigFixture as PiFixture } from "./fixtures/main-config.ts";
 
 const task = "Please review the complete patch with particular care for failure modes";
 let fixture: PiFixture | undefined;
@@ -293,7 +294,8 @@ test("CLI-01b configured classifier model and bearer auth reach the endpoint", a
 test("CLI-09b non-reasoning model has no applicable effort questions or extension writes", async () => {
   fixture = new PiFixture();
   fixture.reasoning = false;
-  await fixture.start({ CFG_TEST_KEY: "" });
+  fixture.environment = { CFG_TEST_KEY: "" };
+  await fixture.start();
   await fixture.prompt(task);
   await fixture.prompt("continue");
   await fixture.command("prompt", { message: "/fixture-reload" });
@@ -309,7 +311,8 @@ test("CLI-09b non-reasoning model has no applicable effort questions or extensio
 test("CLI-09b single-supported-level reasoning model has zero applicable effort calls or writes", async () => {
   fixture = new PiFixture();
   fixture.singleThinkingLevel = true;
-  await fixture.start({ CFG_TEST_KEY: "" });
+  fixture.environment = { CFG_TEST_KEY: "" };
+  await fixture.start();
   await fixture.prompt(task);
   expect(fixture.classifications).toHaveLength(0);
   expect(fixture.generations[0]?.reasoning_effort).toBe("high");
@@ -322,7 +325,8 @@ test("CLI-09b single-supported-level reasoning model has zero applicable effort 
 test("CLI-09a disabled effort has zero classifier requests and writes across owned-history reload", async () => {
   fixture = new PiFixture();
   fixture.jevConfig = { effortEnabled: false };
-  await fixture.start({ CFG_TEST_KEY: "" });
+  fixture.environment = { CFG_TEST_KEY: "" };
+  await fixture.start();
   await fixture.prompt(task);
   await fixture.prompt("continue");
   await fixture.command("prompt", { message: "/fixture-reload" });

@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { PiFixture, type RecordData } from "./fixtures/pi-cli.ts";
+import type { RecordData } from "./fixtures/pi-cli.ts";
+import { MainConfigFixture as PiFixture } from "./fixtures/main-config.ts";
 
 let fixture: PiFixture | undefined;
 afterEach(async () => {
@@ -24,8 +25,9 @@ function text(f: PiFixture, index = 0): string {
     .join("\n");
 }
 
-async function start(env: Record<string, string> = {}) {
+async function start(config: RecordData = {}, environment: Record<string, string> = {}) {
   fixture = new PiFixture();
+  fixture.environment = environment;
 
   fixture.response = {
     answers: {
@@ -35,14 +37,11 @@ async function start(env: Record<string, string> = {}) {
       corrects: { noul: 0.7 },
     },
   };
-  return fixture.startWithRouting(
-    {},
-    {
-      JEV_EFFORT_ENABLED: "false",
-      JEV_QUALITY_ENABLED: "true",
-      ...env,
-    },
-  );
+  return fixture.start({
+    effortEnabled: false,
+    qualityEnabled: true,
+    ...config,
+  });
 }
 test("G09-quality-only sends four nouls in one actual installed request", async () => {
   const f = await start();
@@ -60,7 +59,7 @@ test("G09-quality-only sends four nouls in one actual installed request", async 
 }, 20000);
 
 test("G15-guidance-only-physical strategy tier gates do not route the physical model", async () => {
-  const f = await start({ JEV_STRATEGY_ENABLED: "true", JEV_QUALITY_ENABLED: "false" });
+  const f = await start({ strategyEnabled: true, qualityEnabled: false });
   f.response = {
     answers: {
       tier: { choice: "deep", confidence: 0.95 },
@@ -80,7 +79,7 @@ test("G15-guidance-only-physical strategy tier gates do not route the physical m
 test("G16-edits fourth real write adds step-back without effort or classifier change", async () => {
   fixture = new PiFixture();
   fixture.tools = "read,write,bash";
-  const f = await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_QUALITY_ENABLED: "true" });
+  const f = await fixture.start({ effortEnabled: false, qualityEnabled: true });
   f.response = {
     answers: {
       bugfix: { noul: 0 },
@@ -117,7 +116,7 @@ for (const [strategy, tier, confidence, expected] of [
   ["junior", "balanced", 1, false],
 ] as const) {
   test(`G15-strategy-boundaries ${strategy}/${tier}/${confidence}`, async () => {
-    const f = await start({ JEV_STRATEGY_ENABLED: "true", JEV_QUALITY_ENABLED: "false" });
+    const f = await start({ strategyEnabled: true, qualityEnabled: false });
     f.response = {
       answers: {
         tier: { choice: tier, confidence: 0.99 },
@@ -150,14 +149,11 @@ for (const [name, below, at, phrase] of [
     fixture = new PiFixture();
     fixture.skills = [{ name: "procedure", body: "GUIDANCE_SELECTED_SKILL" }];
 
-    const f = await fixture.startWithRouting(
-      {},
-      {
-        JEV_EFFORT_ENABLED: "true",
-        JEV_STRATEGY_ENABLED: "true",
-        JEV_QUALITY_ENABLED: "true",
-      },
-    );
+    const f = await fixture.start({
+      effortEnabled: true,
+      strategyEnabled: true,
+      qualityEnabled: true,
+    });
     f.response = {
       answers: {
         tier: { choice: "deep", confidence: 0.99 },
@@ -214,7 +210,7 @@ for (const [name, below, at, phrase] of [
   }, 20000);
   for (const mode of ["abort", "thinking", "model", "timeout"] as const) {
     test(`G15-cancel physical/${mode} drops stale advice`, async () => {
-      const f = await start({ JEV_TIMEOUT_MS: mode === "timeout" ? "80" : "5000" });
+      const f = await start({ classifier: { timeoutMs: mode === "timeout" ? 80 : 5000 } });
       f.classifierDelay = 500;
       const offset = f.records.length;
       await f.command("prompt", { message: "Fix the concrete bug" });
@@ -237,13 +233,20 @@ for (const [name, below, at, phrase] of [
 }
 
 test("G09-none no applicable questions ignores invalid backend", async () => {
-  const f = await start({ JEV_QUALITY_ENABLED: "false", JEV_SYSTEM_ONE_URL: "invalid" });
+  const f = await start(
+    { qualityEnabled: false },
+    { JEV_SYSTEM_ONE_URL: "invalid", CFG_TEST_KEY: "" },
+  );
+  // Legacy malformed option is ignored; unused credential is never resolved.
   await f.prompt("Perform the task");
   expect(f.classifications).toHaveLength(0);
   expect(f.generations).toHaveLength(1);
 }, 20000);
 test("G09-continuation guidance-only has zero questions even invalid backend", async () => {
-  const f = await start({ JEV_STRATEGY_ENABLED: "true", JEV_SYSTEM_ONE_URL: "invalid" });
+  const f = await start(
+    { strategyEnabled: true },
+    { JEV_SYSTEM_ONE_URL: "invalid", CFG_TEST_KEY: "" },
+  );
   await f.prompt("continue");
   expect(f.classifications).toHaveLength(0);
   expect(f.generations).toHaveLength(1);
@@ -366,7 +369,7 @@ for (const mode of [
   "invalid-distribution",
 ] as const) {
   test(`G15-distribution ${mode} confidence uses source precedence`, async () => {
-    const f = await start({ JEV_STRATEGY_ENABLED: "true", JEV_QUALITY_ENABLED: "false" });
+    const f = await start({ strategyEnabled: true, qualityEnabled: false });
     f.response = {
       answers: {
         tier: { choice: "deep", confidence: 0.99 },
@@ -390,7 +393,7 @@ for (const mode of [
 }
 
 test("G15-restrictions workflow guidance defers authority and never dispatches", async () => {
-  const f = await start({ JEV_STRATEGY_ENABLED: "true", JEV_QUALITY_ENABLED: "false" });
+  const f = await start({ strategyEnabled: true, qualityEnabled: false });
   f.response = {
     answers: {
       tier: { choice: "deep", confidence: 0.99 },
@@ -428,13 +431,10 @@ test("G27-exclusions quality guidance has no external-review or escalation machi
     fixture = new PiFixture();
     fixture.tools = "bash";
 
-    const f = await fixture.startWithRouting(
-      {},
-      {
-        JEV_EFFORT_ENABLED: "true",
-        JEV_QUALITY_ENABLED: "true",
-      },
-    );
+    const f = await fixture.start({
+      effortEnabled: true,
+      qualityEnabled: true,
+    });
     f.response = {
       answers: {
         tier: { choice: "balanced", confidence: 0.99 },
@@ -490,7 +490,7 @@ test("G27-exclusions quality guidance has no external-review or escalation machi
 test("G16-disabled repeated failed commands do not attach loop advice", async () => {
   fixture = new PiFixture();
   fixture.tools = "bash";
-  const f = await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_QUALITY_ENABLED: "false" });
+  const f = await fixture.start({ effortEnabled: false, qualityEnabled: false });
   f.toolCalls = Array.from({ length: 4 }, () => ({ name: "bash", input: { command: "exit 7" } }));
   await f.prompt("Run controlled commands");
   expect(text(f, 4)).not.toContain("may be going in circles");
@@ -500,7 +500,7 @@ test("G16-disabled repeated failed commands do not attach loop advice", async ()
 test("G16-edits actual edit results count the same file and reset for a fresh user", async () => {
   fixture = new PiFixture();
   fixture.tools = "write,edit";
-  const f = await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_QUALITY_ENABLED: "true" });
+  const f = await fixture.start({ effortEnabled: false, qualityEnabled: true });
   f.response = { answers: {} };
   const path = `${f.directory}/edit.txt`;
   f.toolCalls = [
@@ -524,9 +524,9 @@ test("G09-batches advice questions appear only in the first skill batch", async 
     body: "BATCH_BODY",
   }));
   const f = await fixture.start({
-    JEV_EFFORT_ENABLED: "false",
-    JEV_QUALITY_ENABLED: "true",
-    JEV_STRATEGY_ENABLED: "true",
+    effortEnabled: false,
+    qualityEnabled: true,
+    strategyEnabled: true,
   });
   f.classifierResponse = (request) => {
     const q = request.questions as Record<string, RecordData>;
@@ -586,7 +586,7 @@ test("G09-batches advice questions appear only in the first skill batch", async 
   }, 20000);
 }
 test("G15-raw-tier-risk strategy gate uses raw classified tier without model dispatch", async () => {
-  const f = await start({ JEV_STRATEGY_ENABLED: "true", JEV_QUALITY_ENABLED: "false" });
+  const f = await start({ strategyEnabled: true, qualityEnabled: false });
   f.response = {
     answers: {
       tier: { choice: "balanced", confidence: 0.99 },
@@ -612,7 +612,7 @@ test("G15-raw-tier-risk strategy gate uses raw classified tier without model dis
 test("G09-defaults production enables strategy and quality independently of effort", async () => {
   fixture = new PiFixture();
   fixture.useGuidanceDefaults = true;
-  const f = await fixture.start({ JEV_EFFORT_ENABLED: "false" });
+  const f = await fixture.start({ effortEnabled: false });
   f.response = {
     answers: {
       tier: { choice: "deep", confidence: 0.99 },
@@ -634,7 +634,7 @@ test("G09-defaults production enables strategy and quality independently of effo
 }, 20000);
 
 test("G09-rubric source wording and criteria reach the actual classifier", async () => {
-  const f = await start({ JEV_STRATEGY_ENABLED: "true" });
+  const f = await start({ strategyEnabled: true });
   f.response = {
     answers: {
       tier: { choice: "balanced", confidence: 0.99 },
@@ -688,7 +688,7 @@ for (const value of [undefined, 1.2, -0.1, "yes", null] as const) {
 test("G16-negative distinct failures and repeated successes are not circles", async () => {
   fixture = new PiFixture();
   fixture.tools = "bash";
-  const f = await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_QUALITY_ENABLED: "true" });
+  const f = await fixture.start({ effortEnabled: false, qualityEnabled: true });
   f.response = { answers: {} };
   f.toolCalls = [1, 2, 3]
     .map((i) => ({ name: "bash", input: { command: `exit ${i}` } }))
@@ -700,7 +700,7 @@ test("G16-negative distinct failures and repeated successes are not circles", as
 test("G16-cancelled aborted work cannot carry loop counters into the next request", async () => {
   fixture = new PiFixture();
   fixture.tools = "bash";
-  const f = await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_QUALITY_ENABLED: "true" });
+  const f = await fixture.start({ effortEnabled: false, qualityEnabled: true });
   f.response = { answers: {} };
   f.modelDelay = 200;
   f.toolCalls = [{ name: "bash", input: { command: "exit 8" } }];
@@ -716,7 +716,7 @@ test("G16-cancelled aborted work cannot carry loop counters into the next reques
 }, 20000);
 
 test("G15-partial-distribution upstream maximum probability need not sum to one", async () => {
-  const f = await start({ JEV_STRATEGY_ENABLED: "true", JEV_QUALITY_ENABLED: "false" });
+  const f = await start({ strategyEnabled: true, qualityEnabled: false });
   f.response = {
     answers: {
       tier: { choice: "balanced", confidence: 0.99 },
@@ -730,7 +730,7 @@ test("G15-partial-distribution upstream maximum probability need not sum to one"
 test("G16-branch abandoned failures cannot carry counters to another branch", async () => {
   fixture = new PiFixture();
   fixture.tools = "bash";
-  const f = await fixture.start({ JEV_EFFORT_ENABLED: "false", JEV_QUALITY_ENABLED: "true" });
+  const f = await fixture.start({ effortEnabled: false, qualityEnabled: true });
   f.response = { answers: {} };
   f.toolCalls = Array.from({ length: 2 }, () => ({ name: "bash", input: { command: "exit 9" } }));
   await f.prompt("Run initial controlled checks");
@@ -748,8 +748,8 @@ test("G16-branch abandoned failures cannot carry counters to another branch", as
 {
   test(`G15-partial-tier-physical advice uses raw tier without model dispatch`, async () => {
     const f = await start({
-      JEV_STRATEGY_ENABLED: "true",
-      JEV_QUALITY_ENABLED: "false",
+      strategyEnabled: true,
+      qualityEnabled: false,
     });
     f.response = {
       answers: {
@@ -773,8 +773,8 @@ test("G16-branch abandoned failures cannot carry counters to another branch", as
   ]) {
     test(`G15-invalid-tier-values physical/${JSON.stringify(tier)} cannot create advice`, async () => {
       const f = await start({
-        JEV_STRATEGY_ENABLED: "true",
-        JEV_QUALITY_ENABLED: "false",
+        strategyEnabled: true,
+        qualityEnabled: false,
       });
       f.response = {
         answers: {
@@ -802,21 +802,10 @@ for (const [tier, risky, confidence, expected] of [
   ["balanced", 0, 0.59, false],
 ] as const)
   test(`CREW-15 eligible junior advice ${tier}/${risky}/${confidence}`, async () => {
-    const { mkdtemp, writeFile } = await import("node:fs/promises");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
-    const path = join(await mkdtemp(join(tmpdir(), "jev-crew-guidance-")), "crew.json");
-    await writeFile(
-      path,
-      JSON.stringify({
-        mode: "junior-lead",
-        slots: [{ name: "alpha", model: "fixture/fixture-model" }],
-      }),
-    );
     const f = await start({
-      JEV_CREW_CONFIG: path,
-      JEV_STRATEGY_ENABLED: "true",
-      JEV_QUALITY_ENABLED: "false",
+      crew: { mode: "junior-lead", slots: [{ name: "alpha", model: "fixture/fixture-model" }] },
+      strategyEnabled: true,
+      qualityEnabled: false,
     });
     f.response = {
       answers: {

@@ -1,6 +1,7 @@
-import type { Crew } from "./crew-config.ts";
+import type { JevConfig } from "./jev-config.ts";
+
 /** Source-backed crew note; host model identities replace Claude router aliases. */
-export function crewAdvice(crew: Crew, workflows: boolean): string | null {
+export function crewAdvice(crew: JevConfig["crew"], workflows: boolean): string | null {
   const lines: string[] = [];
   if (crew.mode !== "standard")
     lines.push(
