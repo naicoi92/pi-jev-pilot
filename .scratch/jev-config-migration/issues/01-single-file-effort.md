@@ -1,7 +1,7 @@
 # 01: Single-file effort tracer
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 
 **Parent:** [Single-file Jev configuration](../spec.md)
 
@@ -13,10 +13,10 @@ Implementation: in-progress
 
 ## Acceptance criteria
 
-- [ ] Actual custom/default agent-directory files control the outgoing localhost request; project and merged Pi settings cannot override the tracer.
-- [ ] Missing fields/file use approved defaults; malformed/type/null/unknown/version diagnostics are actionable and secret-free.
-- [ ] Named credential resolves exactly once per request, no implicit fallback; unused credential is not required.
-- [ ] Endpoint validation and redirect rejection are verified with two local servers; no key/body reaches redirect target.
+- [x] Actual custom/default agent-directory files control the outgoing localhost request; project and merged Pi settings cannot override the tracer.
+- [x] Missing fields/file use approved defaults; malformed/type/null/unknown/version diagnostics are actionable and secret-free.
+- [x] Named credential resolves exactly once per request, no implicit fallback; unused credential is not required.
+- [x] Endpoint validation and redirect rejection are verified with two local servers; no key/body reaches redirect target.
 
 ## Verification and handoff
 
@@ -67,3 +67,16 @@ Limits: ticket 01 does not claim full CFG-03/06–12 or release/package acceptan
 Source/evidence receipt: implementation source `4b8eb56` (the follow-up commit changes only this ticket receipt). `bun test tests/pi-cli.test.ts --test-name-pattern '^(?!CLI-03 )'` explicitly excludes the five already-reproduced rubric failures and passes **52 / 52**, 5 filtered; `green-effort-cli.log`. This is a focused clean gate, not a replacement for the failing full-file result above. Native binary/launcher hashes: `native-source.sha256`. CodeGraph impact selection: `affected.txt`.
 
 Integration pre-handoff check: `git merge integration/jev-config-migration` reports `Already up to date.`; integration remains at `00e76b0814ed189bdc2ac6d08777613a8ba93c3a`. No integration worktree writes/merge or completion claim. Candidate requires independent review before integration acceptance.
+
+### Reviewed integration acceptance
+
+Candidate `ca1ada691905add859e36ca2f9b5fc1f248f5316` received independent review: **OK with notes**, no P0/P1 within ticket 01. Review artifact: `/Users/naicoi/.pi/agent/sessions/--Users-naicoi-Projects-pi-jev-pilot--/subagent-artifacts/outputs/eb7b78af-c480-4fe1-94f6-868bc577b28d/ticket01-r2/review.md`. Parent inspected the production diff and proof seam. Deferred legacy readers remain explicitly assigned to tickets 02–04, not waived for release.
+
+Merger landed exact candidate as `93745779ed1fbe6b0e4e4f1fe3cb445026cddbb5`, with baseline and candidate parents. Parent verified this integration SHA:
+
+- `JEV_CONFIG_EVIDENCE_DIR=/Users/naicoi/Projects/jev-config-migration-evidence/integration-01 bun test tests/config-native.test.ts tests/jev-config.test.ts`: **161 pass, 0 fail, 699 assertions**, including 17 real native Pi-Bolt cases.
+- Focused 19-file unit regression union listed above: **336 pass, 0 fail, 1320 assertions**.
+- `bun test tests/decision-visibility-cli.test.ts tests/ledger-cli.test.ts tests/pi-cli-fixture.test.ts tests/pi-cli.test.ts --test-name-pattern '^(?!CLI-03 )'`: **80 pass, 0 fail, 5 explicitly filtered baseline rubric cases, 296 assertions**.
+- `bun run lint`, `bun run typecheck`, `bun run fmt:check`, `git diff --check`: PASS.
+
+Integration logs, source SHA and native receipts: `/Users/naicoi/Projects/jev-config-migration-evidence/integration-01/`. These close ticket 01 only; no full-suite, whole-spec, installed packed-artifact or rollout acceptance is claimed. Five known baseline rubric failures still require explicit disposition at combined gate 05.
