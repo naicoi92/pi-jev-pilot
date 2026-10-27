@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
-import { constants, existsSync, readFileSync } from "node:fs";
+import { access, cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { constants, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PiFixture, type RecordData } from "./fixtures/pi-cli.ts";
 
@@ -52,9 +52,13 @@ function native(config: RecordData = {}) {
         : /\bavx2\b/.test(readFileSync("/proc/cpuinfo", "utf8"))
           ? "x64"
           : "x64-baseline";
-    if (!existsSync(join(cwd, `.pi-bolt/npm/1.0.4/pi-bolt-${platform}-${variant}/pi`))) {
+    const binary = join(cwd, `.pi-bolt/npm/1.0.4/pi-bolt-${platform}-${variant}/pi`);
+    try {
+      if (!(await stat(binary)).isFile()) throw new Error("not a regular file");
+      await access(binary, constants.X_OK);
+    } catch {
       throw new Error(
-        "Verified native cache does not contain the launcher platform executable; refusing installation",
+        "Verified native cache does not contain a regular executable launcher platform binary; refusing installation",
       );
     }
     const version = Bun.spawn(["/bin/sh", executable, "--version"], {

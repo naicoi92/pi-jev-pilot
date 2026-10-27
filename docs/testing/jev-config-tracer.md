@@ -33,6 +33,16 @@ The native suite runs `/bin/sh /Users/naicoi/.bun/bin/pi-bolt ...`: that install
 
 The harness copies the existing verified `1.0.4` native cache into a disposable HOME, checks version `1.4.0 (Pi-Bolt 1.0.4, ...)`, uses a disposable custom or default agent directory, and loads this checkout explicitly with `-e`. It does not install the package, use personal settings, call paid providers or constitute packed-artifact acceptance. Local classifier/provider HTTP receipts are asserted in memory; optional evidence contains counts/models/efforts only, never keys or prompts.
 
+`tests/main-config-native.test.ts` requires explicit `JEV_NATIVE_EXECUTABLE` and `JEV_NATIVE_CACHE` paths; missing paths fail at import rather than silently skip native coverage. `bun test tests` includes native suites and is not a portable non-native command. For the main native suite, opt in with a verified Pi-Bolt 1.0.4 shell launcher and its existing npm cache directory (containing `1.0.4/pi-bolt-<platform>-<variant>/pi`):
+
+```sh
+JEV_NATIVE_EXECUTABLE=/absolute/path/to/pi-bolt \
+JEV_NATIVE_CACHE=/absolute/path/to/.pi-bolt/npm \
+  bun test tests/main-config-native.test.ts
+```
+
+The main suite refuses a missing, non-regular or non-executable cached binary before running the launcher. Other native suites still use developer-specific paths and need their own verified environment; setting these variables does not make the full suite portable or prove full-suite success.
+
 ```sh
 JEV_CONFIG_EVIDENCE_DIR=/absolute/path/outside/repo \
   bun test tests/config-native.test.ts tests/jev-config.test.ts
@@ -43,6 +53,6 @@ bun run lint
 bun run fmt:check
 ```
 
-`tests/pi-cli.test.ts` retains the pre-existing five CLI-03 rubric wording failures. Their expected text conflicts with the baseline rubric; this ticket changes neither rubric nor those assertions. Record them as known failures, not a green run. Other CLI fixture tests remain unmigrated until their owning tickets; do not claim their legacy-env cases pass against this tracer.
+Other CLI fixture tests remain unmigrated until their owning tickets; do not claim their legacy-env cases pass against this tracer.
 
 Missing-file/default native tests explicitly omit fixture configuration and leave the default credential absent, proving default selection without contacting the remote default endpoint. Invalid legacy environment values have a separate native test; the fixture never converts environment input into JSON. Loader tests provide supporting complete schema and immutability coverage, not substitutes for native proof.

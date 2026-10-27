@@ -272,7 +272,7 @@ for (const example of [
       "A change across several files that needs working out, a bug whose cause is described but has to be traced, writing tests, or reviewing a diff with care.",
     );
     expect(questions.effort.instructions).toContain(
-      "takes the size of the work it approves, from the recent conversation",
+      "using recent conversation to identify work approved or continued",
     );
     expect(questions.risky.type).toBe("noul");
   }, 20000);
