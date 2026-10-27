@@ -77,18 +77,13 @@ const GUIDANCE_FLAG_KEY: Record<
 
 export function guidanceEnabled(
   name: GuidanceFlag,
-  config?: {
+  config: {
     readonly strategyEnabled: boolean;
     readonly qualityEnabled: boolean;
     readonly designEnabled: boolean;
   },
 ): boolean {
-  if (config) return config[GUIDANCE_FLAG_KEY[name]];
-  const key = `JEV_${name}_ENABLED`;
-  const value = process.env[key] ?? "true";
-  if (value !== "true" && value !== "false")
-    throw new Error(`Set ${key} to true or false (default: true).`);
-  return value === "true";
+  return config[GUIDANCE_FLAG_KEY[name]];
 }
 
 export const STRATEGY_CRITERIA = {

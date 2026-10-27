@@ -110,3 +110,40 @@ review, merge and integration verification. Next step: merge reviewed integratio
 `8ccc2f2` (tickets 01 and 03 completed) into this branch, remove temporary
 `guidanceEnabled` legacy overload once all callers supply captured options, then
 rerun combined gates and record exact merge/candidate sources.
+
+### Combined candidate verification
+
+Checkpoint commit: `eebcb5b` (main implementation, test migration and native proof).
+Merged reviewed integration tip `8ccc2f2` via `7b322a8`, with no conflicts and no
+integration-checkout writes. Ticket03 source/tests preserved. Removed the temporary
+no-argument `guidanceEnabled` legacy env path after CodeGraph caller inspection
+confirmed only `decideMain` remains and always supplies captured options. No late
+configuration read or legacy guidance fallback remains in migrated main consumers.
+
+Final combined source gates (logs under the evidence root's `resume/` directory):
+
+| Command | Result | Log |
+| --- | --- | --- |
+| `JEV_CONFIG_EVIDENCE_DIR=... bun test tests/main-config-native.test.ts tests/config-native.test.ts` | 32 pass, 0 fail, 244 assertions | `combined-main-effort.log` |
+| `JEV_WORKER_CONFIG_EVIDENCE_DIR=... bun test tests/worker-config-native.test.ts` | 11 pass, 0 fail, 32 assertions | `combined-worker.log` |
+| `bun test tests/worker-authority-context-cli.test.ts tests/worker-owner-reload-cli.test.ts tests/worker-authority-migration-cli.test.ts` | 16 pass, 0 fail, 102 assertions | `combined-worker-regressions-complete.log` |
+| Main eight-file guidance/design/skill/status/ledger regression union above | 247 pass, 0 fail, 882 assertions | `combined-regressions.log` |
+| Worker13 + loader/effort/native-skill/live-status/advised-strategy unit union (20 files) | 404 pass, 0 fail, 1611 assertions | `combined-units.log` |
+| `bun test tests/pi-cli.test.ts tests/main-routing.test.ts` | 57 pass, 5 known baseline CLI-03 rubric failures, 245 assertions | `combined-main-cli.log` |
+| `bun run lint && bun run typecheck && bun run fmt:check && git diff --check` | PASS; 201 typed files | `quality.log` |
+
+The 20-file union uses `tests/{worker-authority-registration,worker-authority-bounds,worker-authority-comparison,crew-junior,crew-config,crew-policy,worker-adapter,routing-settings-host,routing-settings,worker-status,worker-status-renderer,worker-visibility-state,worker-executor-pairing,jev-config,effort-policy,authoritative-effort,effort-visibility,native-skill,live-status,advised-strategy}.test.ts`.
+Native receipts: `resume/combined-native/{main-native-*,native-receipt-*}.json` and
+`resume/combined-worker/worker-receipt-*.json`. Worker owner evidence appears in its
+complete regression log. All native gates use actual Pi-Bolt/local transport;
+receipts contain only allowlisted counts/model/effort/credential-equality booleans.
+
+Two bounded combined shell attempts exceeded tool deadlines (240s for all three
+native files; 180s for worker regression trio). Logs retained without green claim:
+`combined-native.log` and `combined-worker-regressions.log`. Subsequent split runs
+above completed, with no test changes or assertion weakening. Full suite, packed
+artifact, ticket04 refresh, deployment and final-spec acceptance are not claimed.
+Five CLI-03 baseline rubric expectations remain unmodified and unfiltered. Earlier
+bare Python violation and retrospective RED limitations remain disclosed above.
+Implementation stays in-progress until independent exact-SHA review, reviewed merge
+and integration verification; ticket04 must not treat this candidate as completion.
