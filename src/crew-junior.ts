@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerAgentViaEvents } from "pi-subagents/agents";
 import { fileURLToPath } from "node:url";
-import { crewConfig } from "./crew-config.ts";
+import { crewConfig, type Crew } from "./crew-config.ts";
 // Pinned hooks/crew.ts juniorSpec. Tool names use the equivalent Pi tools.
 const definition = {
   description:
@@ -16,14 +16,44 @@ const definition = {
   tools: ["read", "edit", "write", "grep", "find", "bash"],
   defaultContext: "fresh" as const,
 };
+interface JuniorOwner {
+  junior?: Readonly<{ name: string; model: string; when: string }>;
+  error?: string;
+  warned: boolean;
+}
+const owners = new WeakMap<ExtensionAPI, JuniorOwner>();
+
+/** Registration metadata is local to this extension instance, never an executor capability. */
+export function assertRegisteredJunior(
+  pi: ExtensionAPI,
+  crew: Crew,
+  notify: (message: string) => void,
+): void {
+  const owner = owners.get(pi);
+  const same = JSON.stringify(owner?.junior ?? null) === JSON.stringify(crew.junior ?? null);
+  if (owner?.error) throw new Error(owner.error);
+  if (same) return;
+  const message =
+    "Jev junior definition changed; reload required before launching with new crew policy.";
+  if (owner && !owner.warned) {
+    owner.warned = true;
+    notify(message);
+  }
+  throw new Error(message);
+}
+
 /** Registration belongs to the installed executor; absence never breaks main-only startup. */
 export function registerCrewJunior(pi: ExtensionAPI): void {
   let registration: { dispose(): void } | undefined;
   let error: string | undefined;
+  let owner: JuniorOwner = { warned: false };
+  owners.set(pi, owner);
   const clear = () => {
     registration?.dispose();
     registration = undefined;
     error = undefined;
+    owner = { warned: false };
+    owners.set(pi, owner);
   };
   const ensure = (ctx: ExtensionContext) => {
     const junior = crewConfig(ctx.cwd).junior;
@@ -54,9 +84,11 @@ export function registerCrewJunior(pi: ExtensionAPI): void {
           ],
         },
       });
+      owner.junior = Object.freeze({ ...junior });
       error = undefined;
     } catch (cause) {
       error = `Jev junior registration failed: ${cause instanceof Error ? cause.message : String(cause)}`;
+      owner.error = error;
     }
   };
   pi.on("session_start", (_event, ctx) => {
@@ -65,9 +97,10 @@ export function registerCrewJunior(pi: ExtensionAPI): void {
   });
   // Before-switch/fork can be cancelled; only committed teardown releases this owner.
   pi.on("session_shutdown", clear);
-  pi.on("tool_call", (event, ctx) => {
+  pi.on("tool_call", (event) => {
     if (event.toolName !== "subagent" || event.input.agent !== "jev-pilot:junior") return;
-    ensure(ctx);
     if (error) return { block: true, reason: error };
+    if (!registration)
+      return { block: true, reason: "Jev junior definition is not registered; reload required." };
   });
 }

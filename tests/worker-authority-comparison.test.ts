@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { loadJevConfig } from "../src/jev-config.ts";
+import { DEFAULT_EFFORT_THRESHOLDS } from "../src/effort-policy.ts";
 import { createWorkerAuthority } from "../src/worker-authority.ts";
 import {
   prepareWorkerDecision,
@@ -54,6 +56,18 @@ for (const [name, comparison, selected] of [
       lifetimeDeadline: Number.MAX_SAFE_INTEGER,
       assessmentTimeoutMs: 5000,
       authority: createWorkerAuthority({
+        assessment: {
+          config: {
+            ...loadJevConfig(),
+            classifier: {
+              url: server.url.toString(),
+              apiKeyEnv: "JEV_SYSTEM_ONE_API_KEY",
+              model: "jev-latest",
+              timeoutMs: 1500,
+            },
+          },
+          tuning: { ...DEFAULT_EFFORT_THRESHOLDS, timeoutMs: 1500 },
+        },
         tiers: { fast: "local/fast", balanced: "local/balanced", deep: "local/deep" },
         crew: { mode: "standard", slots: [], offered: [] },
         warn() {},

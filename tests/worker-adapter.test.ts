@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerWorkerAdapter } from "../src/worker-adapter.ts";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerRequiredChildExtensions } from "pi-subagents/required-child-extensions";
@@ -105,7 +105,8 @@ async function fixture(defaultContext = "fresh") {
       blocked?.block ||
       input.action ||
       input.workflow ||
-      process.env.JEV_WORKER_ROUTING_ENABLED === "false"
+      JSON.parse(await readFile(join(agent, "jev-pilot.json"), "utf8")).workerRoutingEnabled ===
+        false
     )
       return blocked;
     const result = await prepareFixtureWorker(ctx, input, defaultContext);
@@ -138,11 +139,27 @@ async function fixture(defaultContext = "fresh") {
     },
   });
   process.env.JEV_SYSTEM_ONE_URL = server.url.toString();
+  await writeFile(
+    join(agent, "jev-pilot.json"),
+    JSON.stringify({
+      tiers: { fast: "local/fast", balanced: "local/balanced", deep: "local/deep" },
+      classifier: { url: server.url.toString(), apiKeyEnv: "JEV_SYSTEM_ONE_API_KEY" },
+    }),
+  );
+  const config = async (value: Record<string, unknown>) => {
+    const path = join(agent, "jev-pilot.json");
+    await writeFile(
+      path,
+      JSON.stringify({ ...JSON.parse(await readFile(path, "utf8")), ...value }),
+    );
+  };
   return {
     call,
     selected: (input: object) => selections.get(input),
-    settings: (value: unknown) => {
+    config,
+    settings: async (value: unknown) => {
       settings = value;
+      await config({ tiers: (value as { jevPilot?: { tiers?: unknown } }).jevPilot?.tiers ?? {} });
     },
     fire,
     pi,
@@ -322,15 +339,12 @@ test("WORKER-13 Jev-first owner survives late host collision and re-registers af
 
 test("CREW-18 offered custom keys stay distinct from real tiers", async () => {
   const f = await fixture();
-  const path = join(f.ctx.cwd, "crew.json");
-  process.env.JEV_CREW_CONFIG = path;
-  await writeFile(
-    path,
-    JSON.stringify({
+  await f.config({
+    crew: {
       mode: "budget",
       slots: ["fast", "balanced", "deep"].map((name) => ({ name, model: "local/fast" })),
-    }),
-  );
+    },
+  });
   for (const choice of ["slot::fast", "slot::balanced", "slot::deep", "balanced", "deep"]) {
     f.response({
       answers: {
@@ -357,11 +371,7 @@ test("CREW-18 offered custom keys stay distinct from real tiers", async () => {
 });
 test("CREW-03 risk forced deep overrides a custom slot named deep", async () => {
   const f = await fixture();
-  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
-  await writeFile(
-    process.env.JEV_CREW_CONFIG,
-    JSON.stringify({ mode: "budget", slots: [{ name: "deep", model: "local/fast" }] }),
-  );
+  await f.config({ crew: { mode: "budget", slots: [{ name: "deep", model: "local/fast" }] } });
   f.response({
     answers: {
       tier: { choice: "slot::deep", confidence: 0.9 },
@@ -375,21 +385,15 @@ test("CREW-03 risk forced deep overrides a custom slot named deep", async () => 
 });
 test("CREW-13 invalid eligible target fails before classifier", async () => {
   const f = await fixture();
-  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
-  await writeFile(
-    process.env.JEV_CREW_CONFIG,
-    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/missing" }] }),
-  );
-  await expect(f.call({ agent: "worker", task: "Read the logs" })).rejects.toThrow(
-    "exact physical",
-  );
+  await f.config({ crew: { mode: "budget", slots: [{ name: "alpha", model: "local/missing" }] } });
+  expect(await f.call({ agent: "worker", task: "Read the logs" })).toMatchObject({ block: true });
   expect(f.requests()).toBe(0);
 });
 
 test("routing-settings ordinary worker consumes public effective JSON tiers after session_start", async () => {
   const f = await fixture();
   for (const tier of ["FAST", "BALANCED", "DEEP"]) delete process.env[`JEV_TIER_${tier}`];
-  f.settings({
+  await f.settings({
     unrelated: { preserved: true },
     jevPilot: {
       mainRoutingEnabled: false,
@@ -409,12 +413,12 @@ test("routing-settings ordinary worker consumes public effective JSON tiers afte
   await f.call(input);
   expect(f.selected(input)).toBe("local/balanced:medium");
   expect(f.requests()).toBe(1);
-  f.settings({ jevPilot: { tiers: null } });
+  await f.settings({ jevPilot: { tiers: null } });
   await f.fire("session_start");
   const fork = { ...input, context: "fork" };
   await f.call(fork);
   expect(f.requests()).toBe(1);
-  process.env.JEV_WORKER_ROUTING_ENABLED = "false";
+  await f.config({ workerRoutingEnabled: false });
   await f.call({ ...input });
   expect(f.requests()).toBe(1);
 });
@@ -431,8 +435,7 @@ const answer = (choice: string, risky = 0, tier: Record<string, unknown> = {}) =
   },
 });
 const configure = async (f: Awaited<ReturnType<typeof fixture>>, tiers: unknown) => {
-  f.settings({ jevPilot: { tiers } });
-  await f.fire("session_start");
+  await f.settings({ jevPilot: { tiers } });
 };
 
 for (const absent of ["missing", "", "   "])
@@ -464,7 +467,7 @@ for (const value of [null, true, 1, {}, [], "unqualified", "local/white space"])
     const f = await fixture();
     await configure(f, { ...configuredModels, balanced: value });
     const input = { agent: "worker", model: "local/deep", task: "Implement work" };
-    await expect(f.call(input)).rejects.toThrow("jevPilot.tiers.balanced");
+    expect(await f.call(input)).toMatchObject({ block: true });
     expect(f.requests()).toBe(0);
     expect(input.model).toBe("local/deep");
   });
@@ -472,7 +475,7 @@ for (const value of [null, true, 1, {}, [], "unqualified", "local/white space"])
 for (const tiers of [undefined, {}, { fast: "", balanced: " ", deep: "\t" }]) {
   test(`SPARSE-01 no tier configured (${JSON.stringify(tiers)}) sends no tier question and keeps the baseline`, async () => {
     const f = await fixture();
-    f.settings(tiers === undefined ? {} : { jevPilot: { tiers } });
+    await f.settings(tiers === undefined ? {} : { jevPilot: { tiers } });
     await f.fire("session_start");
     f.response(answer("balanced"));
     const input = { agent: "worker", model: "local/deep", task: "Implement work" };
@@ -494,11 +497,7 @@ test("SPARSE-01 no tier and no slot with a high-risk answer changes only effort"
 
 test("SPARSE-01 configured tiers and offered custom slots are offered together", async () => {
   const f = await fixture();
-  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
-  await writeFile(
-    process.env.JEV_CREW_CONFIG,
-    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/fast" }] }),
-  );
+  await f.config({ crew: { mode: "budget", slots: [{ name: "alpha", model: "local/fast" }] } });
   await configure(f, { fast: "local/fast", deep: "local/deep" });
   await f.call({ agent: "worker", model: "local/deep", task: "Read the logs" });
   expect(Object.keys(sentQuestions(f).tier!.criteria)).toEqual(["fast", "deep", "slot::alpha"]);
@@ -506,11 +505,7 @@ test("SPARSE-01 configured tiers and offered custom slots are offered together",
 
 test("SPARSE-01 only offered slots are asked when no tier is configured", async () => {
   const f = await fixture();
-  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
-  await writeFile(
-    process.env.JEV_CREW_CONFIG,
-    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/fast" }] }),
-  );
+  await f.config({ crew: { mode: "budget", slots: [{ name: "alpha", model: "local/fast" }] } });
   await configure(f, {});
   f.response(answer("slot::alpha"));
   const input = { agent: "worker", model: "local/deep", task: "Read the logs" };
@@ -769,7 +764,7 @@ test("EXPERT-02 malformed expert identity names the setting and sends nothing", 
   const f = await fixture();
   await configure(f, { ...configuredModels, expert: null });
   const input = { agent: "worker", model: "local/deep", task: "Resolve" };
-  await expect(f.call(input)).rejects.toThrow("jevPilot.tiers.expert");
+  expect(await f.call(input)).toMatchObject({ block: true });
   expect(f.requests()).toBe(0);
 });
 
@@ -783,7 +778,7 @@ test("FALLBACK-04 an unresolvable selected tier is reported with its setting and
   expect(f.requests()).toBe(1);
   expect(f.notices).toHaveLength(1);
   expect(f.notices[0]).toContain("deep");
-  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
+  expect(f.notices[0]).toContain("tiers.deep");
   expect(f.notices[0]).toContain("missing/unknown");
 });
 
@@ -844,13 +839,11 @@ test("FALLBACK-04 an admitted expert tier that cannot run cascades downward thro
   expect(await fallbackCall(f, "expert")).toBe("local/balanced:high");
   expect(f.notices).toHaveLength(1);
   const report = f.notices[0]!;
-  expect(report).toContain("jevPilot.tiers.expert");
-  expect(report).toContain("jevPilot.tiers.deep");
+  expect(report).toContain("tiers.expert");
+  expect(report).toContain("tiers.deep");
   expect(report).not.toContain("Jev tier balanced");
   expect(report).toContain("Falling back to tier balanced");
-  expect(report.indexOf("jevPilot.tiers.expert")).toBeLessThan(
-    report.indexOf("jevPilot.tiers.deep"),
-  );
+  expect(report.indexOf("tiers.expert")).toBeLessThan(report.indexOf("tiers.deep"));
 });
 
 test("FALLBACK-04 the cascade stops at the first lower tier that runs", async () => {
@@ -870,8 +863,8 @@ test("FALLBACK-04 no configured tier runs retains the baseline model and reports
   await configure(f, { balanced: "missing/balanced", deep: "missing/deep" });
   expect(await fallbackCall(f, "deep", "local/fast")).toBe("local/fast:medium");
   expect(f.notices).toHaveLength(1);
-  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
-  expect(f.notices[0]).toContain("jevPilot.tiers.balanced");
+  expect(f.notices[0]).toContain("tiers.deep");
+  expect(f.notices[0]).toContain("tiers.balanced");
   expect(f.notices[0]).toContain("keeping the retained worker model");
 });
 
@@ -879,7 +872,7 @@ test("FALLBACK-04 the lowest tier unusable has nothing below it and retains the 
   const f = await fixture();
   await configure(f, { fast: "missing/fast", deep: "local/deep" });
   expect(await fallbackCall(f, "fast", "local/deep")).toBe("local/deep:medium");
-  expect(f.notices[0]).toContain("jevPilot.tiers.fast");
+  expect(f.notices[0]).toContain("tiers.fast");
 });
 
 test("FALLBACK-04 a tier model without configured authentication is reported and cascades", async () => {
@@ -887,7 +880,7 @@ test("FALLBACK-04 a tier model without configured authentication is reported and
   await configure(f, configuredModels);
   f.ctx.modelRegistry.hasConfiguredAuth = (model) => model.id !== "deep";
   expect(await fallbackCall(f, "deep")).toBe("local/balanced:high");
-  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
+  expect(f.notices[0]).toContain("tiers.deep");
   expect(f.notices[0]).toContain("target-unavailable");
 });
 
@@ -898,7 +891,7 @@ test("FALLBACK-04 a tier model that launch preflight rejects, as a rate-limited 
   f.ctx.modelRegistry.getAvailable = () => available.filter((model) => model.id !== "deep");
   expect(await fallbackCall(f, "deep")).toBe("local/balanced:high");
   expect(f.notices).toHaveLength(1);
-  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
+  expect(f.notices[0]).toContain("tiers.deep");
   expect(f.notices[0]).toContain("local/deep");
 });
 
@@ -918,8 +911,8 @@ test("FALLBACK-04 tiers sharing an unusable model are all reported and the casca
   const f = await fixture();
   await configure(f, { fast: "local/fast", balanced: "missing/shared", deep: "missing/shared" });
   expect(await fallbackCall(f, "deep", "local/balanced")).toBe("local/fast:high");
-  expect(f.notices[0]).toContain("jevPilot.tiers.deep");
-  expect(f.notices[0]).toContain("jevPilot.tiers.balanced");
+  expect(f.notices[0]).toContain("tiers.deep");
+  expect(f.notices[0]).toContain("tiers.balanced");
 });
 
 test("FALLBACK-04 an unusable tier that is not selected is not probed or reported", async () => {
@@ -933,22 +926,18 @@ test("FALLBACK-04 an invalid tier setting is still a configuration error even wh
   const f = await fixture();
   await configure(f, { fast: "local/fast", balanced: null, deep: "missing/unknown" });
   const input = { agent: "worker", model: "local/fast", task: "Implement work" };
-  await expect(f.call(input)).rejects.toThrow("jevPilot.tiers.balanced");
+  expect(await f.call(input)).toMatchObject({ block: true });
   expect(f.requests()).toBe(0);
-  expect(f.notices).toEqual([]);
+  expect(f.notices.join("\n")).toContain("tiers.balanced");
 });
 
 test("FALLBACK-04 a custom slot with an unresolvable model still fails before classification", async () => {
   const f = await fixture();
-  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
-  await writeFile(
-    process.env.JEV_CREW_CONFIG,
-    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/missing" }] }),
-  );
+  await f.config({ crew: { mode: "budget", slots: [{ name: "alpha", model: "local/missing" }] } });
   await configure(f, { ...configuredModels, deep: "missing/unknown" });
-  await expect(
-    f.call({ agent: "worker", model: "local/fast", task: "Implement work" }),
-  ).rejects.toThrow("exact physical");
+  expect(
+    await f.call({ agent: "worker", model: "local/fast", task: "Implement work" }),
+  ).toMatchObject({ block: true });
   expect(f.requests()).toBe(0);
 });
 
@@ -986,15 +975,29 @@ test("FALLBACK-04 an errored subagent tool_result from a rate-limited child run 
 
 test("FALLBACK-04 a custom slot pick sharing a tier model stays outside tier handling when launch preflight rejects it", async () => {
   const f = await fixture();
-  process.env.JEV_CREW_CONFIG = join(f.ctx.cwd, "crew.json");
-  await writeFile(
-    process.env.JEV_CREW_CONFIG,
-    JSON.stringify({ mode: "budget", slots: [{ name: "alpha", model: "local/deep" }] }),
-  );
+  await f.config({ crew: { mode: "budget", slots: [{ name: "alpha", model: "local/deep" }] } });
   await configure(f, configuredModels);
   const available = f.ctx.modelRegistry.getAvailable();
   f.ctx.modelRegistry.getAvailable = () => available.filter((model) => model.id !== "deep");
   expect(await fallbackCall(f, "slot::alpha", "local/fast")).toBeUndefined();
   expect(f.requests()).toBe(0);
   expect(f.notices).toEqual([]);
+});
+
+// AC-1: two public preparations overlap while their independently captured policies differ.
+test("WCFG-concurrent logical launches retain their own captured tiers", async () => {
+  const f = await fixture();
+  f.delay(100);
+  f.response(answer("balanced"));
+  const first = { agent: "worker", model: "local/fast", task: "First local worker" };
+  const second = { agent: "worker", model: "local/fast", task: "Second local worker" };
+  const pending = f.call(first, "first");
+  const deadline = Date.now() + 3000;
+  while (f.requests() < 1 && Date.now() < deadline) await Bun.sleep(5);
+  expect(f.requests()).toBe(1);
+  await f.config({ tiers: { balanced: "local/deep" } });
+  await f.call(second, "second");
+  await pending;
+  expect(f.selected(first)).toBe("local/balanced:medium");
+  expect(f.selected(second)).toBe("local/deep:medium");
 });

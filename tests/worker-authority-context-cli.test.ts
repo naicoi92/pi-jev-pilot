@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PiFixture, root, type RecordData } from "./fixtures/pi-cli.ts";
 
@@ -14,12 +14,10 @@ async function launch(
     model?: string;
   } = {},
 ) {
-  const cli =
-    process.env.JEV_OWNER_CLI ??
-    join(root, "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js");
+  const cli = process.env.JEV_OWNER_CLI ?? "/Users/naicoi/.bun/bin/pi-bolt";
   const executor = process.env.JEV_OWNER_EXECUTOR ?? join(root, "node_modules/pi-subagents");
   const f = new PiFixture([
-    ...(cli.endsWith(".js") ? [process.execPath, "run", cli] : [cli]),
+    ...(cli.endsWith(".js") ? [process.execPath, "run", cli] : ["/bin/sh", cli]),
     "--no-extensions",
     "-e",
     join(root, "tests/fixtures/worker-context.ts"),
@@ -52,6 +50,38 @@ async function launch(
     },
     subagents: { intercomBridge: { mode: "off" } },
   };
+  f.jevConfig = {
+    effortEnabled: false,
+    skillsEnabled: false,
+    qualityEnabled: false,
+    strategyEnabled: false,
+    designEnabled: false,
+    tiers: {
+      fast: "fixture/fixture-model",
+      balanced: "fixture/fixture-other-model",
+      deep: "fixture-deep/judgment",
+    },
+    ...(options.junior
+      ? {
+          crew: {
+            mode: "junior-lead",
+            slots: [{ name: "local", model: "fixture/fixture-other-model" }],
+            junior: "local",
+          },
+        }
+      : {}),
+  };
+  f.prepare = async (directory, agent) => {
+    await cp(
+      "/Users/naicoi/.pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64",
+      join(directory, ".pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64"),
+      { recursive: true },
+    );
+    const path = join(agent, "models.json");
+    const models = JSON.parse(await readFile(path, "utf8"));
+    models.providers.fixture.models[1].thinkingLevelMap = { low: "low", high: "high" };
+    await writeFile(path, JSON.stringify(models));
+  };
   f.status = options.status ?? 200;
   f.response = options.malformed
     ? { answers: { risky: { noul: 0 } } }
@@ -70,23 +100,6 @@ async function launch(
       JEV_TIMEOUT_MS: "5000",
       PI_SUBAGENTS_TEMP_ROOT: `/tmp/jctx-${crypto.randomUUID()}`,
     });
-    // Public model registry metadata, refreshed before dispatch. No authority baseline injection.
-    const modelsPath = join(f.directory, "agent/models.json");
-    const models = JSON.parse(await readFile(modelsPath, "utf8"));
-    models.providers.fixture.models[1].thinkingLevelMap = { low: "low", high: "high" };
-    await writeFile(modelsPath, JSON.stringify(models));
-    await f.command("prompt", { message: "/fixture-model-refresh" });
-    await f.command("get_state");
-    await writeFile(
-      join(f.directory, "crew.json"),
-      JSON.stringify({
-        mode: "junior-lead",
-        slots: [{ name: "local", model: "fixture/fixture-other-model" }],
-        junior: "local",
-      }),
-    );
-    await f.command("prompt", { message: "/fixture-crew" });
-    await f.command("get_state");
     await mkdir(join(f.directory, "agent/agents"), { recursive: true });
     await writeFile(
       join(f.directory, "agent/agents/context-worker.md"),

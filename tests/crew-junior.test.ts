@@ -5,17 +5,19 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-const saved = process.env.JEV_CREW_CONFIG;
+const saved = process.env.PI_CODING_AGENT_DIR;
 afterEach(() => {
-  if (saved === undefined) delete process.env.JEV_CREW_CONFIG;
-  else process.env.JEV_CREW_CONFIG = saved;
+  if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = saved;
 });
 async function fixture() {
   const cwd = await mkdtemp(join(tmpdir(), "jev-junior-owner-"));
-  process.env.JEV_CREW_CONFIG = join(cwd, "crew.json");
+  process.env.PI_CODING_AGENT_DIR = cwd;
   await writeFile(
-    process.env.JEV_CREW_CONFIG,
-    JSON.stringify({ mode: "junior-lead", slots: [{ name: "alpha", model: "local/cheap" }] }),
+    join(cwd, "jev-pilot.json"),
+    JSON.stringify({
+      crew: { mode: "junior-lead", slots: [{ name: "alpha", model: "local/cheap" }] },
+    }),
   );
   const hooks = new Map<string, Function[]>();
   const listeners = new Map<string, Function[]>();
