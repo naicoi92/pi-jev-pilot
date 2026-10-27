@@ -24,7 +24,7 @@ Before implementation, map each criterion to an observable test and record the R
 
 ## Comments
 
-### Restart candidate — 2026-06-05
+### Restart candidate
 
 Implementation: in-progress (candidate only; independent review, reviewed merge and integration verification remain required).
 
@@ -62,3 +62,8 @@ Scope decision: main effort/classifier uses an explicit captured snapshot API. N
 API contract: `loadJevConfig(): JevConfig` strictly validates the entire approved schema and returns a deeply frozen, secret-free snapshot. `captureEffortAssessment(): EffortAssessment` captures file base + learned tuning before awaits. Main `systemOneConfig(assessment)` resolves exactly the named credential lazily once into a request-local config, reused for batches/rerank. Main callers cannot omit `decideMain`'s assessment argument. Pending effort state commits use owning captured eligibility, not a reread; restore boundaries read current file and report invalid edits. Malformed next boundaries never reuse last-good options. Detailed contract and remaining reader ownership: `docs/testing/jev-config-tracer.md`.
 
 Limits: ticket 01 does not claim full CFG-03/06–12 or release/package acceptance. Main skills/guidance/design/crew/status/recording readers belong to 02; worker env/settings/crew and no-argument classifier readers to 03; no-argument tuning base/commands to 04. Their remaining legacy-env fixture cases are not represented as green. Ticket 05 must delete all legacy readers, migrate remaining fixtures and verify installed packed artifacts. Executor pin unchanged. Independent reviewer and reviewed integration merge/verification still required; Implementation remains in-progress.
+
+
+Source/evidence receipt: implementation source `4b8eb56` (the follow-up commit changes only this ticket receipt). `bun test tests/pi-cli.test.ts --test-name-pattern '^(?!CLI-03 )'` explicitly excludes the five already-reproduced rubric failures and passes **52 / 52**, 5 filtered; `green-effort-cli.log`. This is a focused clean gate, not a replacement for the failing full-file result above. Native binary/launcher hashes: `native-source.sha256`. CodeGraph impact selection: `affected.txt`.
+
+Integration pre-handoff check: `git merge integration/jev-config-migration` reports `Already up to date.`; integration remains at `00e76b0814ed189bdc2ac6d08777613a8ba93c3a`. No integration worktree writes/merge or completion claim. Candidate requires independent review before integration acceptance.
