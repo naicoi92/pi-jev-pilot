@@ -1,7 +1,7 @@
 # 02: Main consumers and effective status
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 
 **Parent:** [Single-file Jev configuration](../spec.md)
 
@@ -22,6 +22,14 @@ Implementation: in-progress
 Before implementation, map each criterion to an observable test and record the RED command. Use the highest approved native/local-provider seam; parser tests alone are insufficient. Record GREEN commands, source SHA, artifacts and limits. Keep intermediate changes on the integration branch; do not deploy or alter personal settings. Each ticket needs independent review before completion.
 
 ## Comments
+
+### Integration completion
+
+Reviewed candidate `78d5adca14292d448a317cd0158856b73a264ed3` was fast-forward merged to integration at the same SHA. Independent follow-up review returned OK with notes. Integration verification at that SHA: native main and effort 32 pass; CLI and main routing 62 pass; worker authority/owner 16 pass; cache guard 1 pass; lint, typecheck, formatting and diff checks pass. The obsolete CLI rubric assertion was corrected after full baseline and candidate runs reproduced the same five failures; behavior assertions remain. Evidence: `/Users/naicoi/Projects/jev-config-migration-evidence/integration-02/` and `ticket02-review-fix2/`.
+
+The initial worker native gate failed during the pre-RPC startup handshake and the outer command timed out. Focused WCFG-2 rerun passed 1/1 and full worker native rerun passed 11/11 at the same clean SHA, without changing inner deadlines. Independent review accepted the current gate with notes. The original failure and receipts remain preserved; its intermittent startup cause is unresolved, not claimed fixed. Diagnosis and complete receipts: `integration-02/diagnosis/`.
+
+Full suite and packed-artifact acceptance remain unverified; native test portability limitations remain. Ticket 04 refresh and ticket 05 final gates are not covered by this completion.
 
 ### Recovery chronology and acceptance matrix
 
