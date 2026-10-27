@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { crewConfig } from "./crew-config.ts";
+import type { EffortAssessment } from "./effort-assessment.ts";
 import { crewAdvice } from "./crew-guidance.ts";
 import { dirname } from "node:path";
 import { parseFrontmatter, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -71,7 +72,8 @@ export async function decideMain(
   state: () => Promise<unknown>,
   signal: AbortSignal,
   withEffort: boolean,
-  cwd = process.cwd(),
+  cwd: string,
+  assessment: EffortAssessment,
 ): Promise<{
   result: Classification | null;
   skill?: SkillCandidate;
@@ -118,7 +120,7 @@ export async function decideMain(
     };
   };
   if (!withEffort && !skills.length && !quality && !strategy && !design) return { result: null };
-  const config = systemOneConfig();
+  const config = systemOneConfig(assessment);
   const context = await state();
   if (!skills.length)
     return finish(

@@ -3,6 +3,7 @@ import { DESIGN_QUESTION, readDesign } from "./design-policy.ts";
 import { EFFORT_ORDER, type EffortDecision } from "./effort-policy.ts";
 import { ORDINARY_TIERS, TIER_ORDER, type Tier } from "./tier-policy.ts";
 import { effectiveTunables } from "./tuning.ts";
+import type { EffortAssessment } from "./effort-assessment.ts";
 import type { Slot } from "./crew-config.ts";
 import { slotKey } from "./crew-policy.ts";
 
@@ -46,7 +47,21 @@ export function effortEnabled(): boolean {
   return value === "true";
 }
 
-export function systemOneConfig(): SystemOneConfig {
+export function systemOneConfig(assessment?: EffortAssessment): SystemOneConfig {
+  if (assessment) {
+    const { classifier } = assessment.config;
+    const apiKey = process.env[classifier.apiKeyEnv];
+    if (!apiKey?.trim())
+      throw new Error(
+        `Set the credential named by classifier.apiKeyEnv (${classifier.apiKeyEnv}) before requesting classification.`,
+      );
+    return Object.freeze({
+      url: classifier.url,
+      model: classifier.model,
+      apiKey,
+      timeoutMs: assessment.tuning.timeoutMs,
+    });
+  }
   const url = process.env.JEV_SYSTEM_ONE_URL ?? "https://api.typesafe.ai/v1/systemone";
   let parsed: URL;
   try {
@@ -300,7 +315,7 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
 export type Classification = (
   | { outcome: "classified"; decision: Decision; value?: unknown }
   | { outcome: "timeout" | "service-error" | "schema-error" }
-) & { adviceDecision?: Decision; designScore?: number | null };
+) & { adviceDecision?: Decision; designScore?: number | null; diagnostic?: string };
 
 /** Deadline cancels transport; parent cancellation rejects and is never fail-open. */
 export async function classify(
@@ -388,6 +403,7 @@ export async function classify(
   try {
     const response = await fetch(config.url, {
       method: "POST",
+      redirect: "manual",
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${config.apiKey}`,
@@ -397,7 +413,15 @@ export async function classify(
     });
     if (!response.ok) {
       await response.body?.cancel();
-      return { outcome: "service-error" };
+      return {
+        outcome: "service-error",
+        ...(response.status >= 300 && response.status < 400
+          ? {
+              diagnostic:
+                "Classifier redirect rejected. Set classifier.url to the final HTTP(S) endpoint; redirects are not followed.",
+            }
+          : {}),
+      };
     }
     let value: unknown;
     try {
