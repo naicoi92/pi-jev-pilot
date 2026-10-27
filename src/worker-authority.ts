@@ -6,7 +6,7 @@ import type {
 } from "pi-subagents/worker-decision-authority";
 import { classify, systemOneConfig, WORKER_EFFORT_QUESTION } from "./system-one.ts";
 import { selectEffort } from "./effort-policy.ts";
-import { effectiveTunables } from "./tuning.ts";
+import { type EffortAssessment } from "./effort-assessment.ts";
 import { selectsSlot, selectWorkerModel } from "./crew-policy.ts";
 import { cascadeTiers } from "./tier-fallback.ts";
 import { TIER_ORDER, type Tiers, type Tier } from "./tier-policy.ts";
@@ -33,6 +33,7 @@ const retain = (baseline: WorkerDecisionBaseline): WorkerDecision =>
 
 /** Executor facts feed assessment; host target evidence, never SDK guesses, binds the final pair. */
 export function createWorkerAuthority(options: {
+  assessment: EffortAssessment;
   tiers: Tiers;
   crew: Crew;
   warn(message: string): void;
@@ -41,6 +42,7 @@ export function createWorkerAuthority(options: {
 }): WorkerDecisionAuthority {
   return {
     async decide(request, context) {
+      const assessment = options.assessment;
       const { original, modelContract, comparison } = request.policyContext;
       // Existing fork policy is executor-owned: retain only its verified effective pair.
       if (request.control.context !== "fresh") return retain(original);
@@ -75,7 +77,7 @@ export function createWorkerAuthority(options: {
         return retain(specializedTarget.baseline);
       let config;
       try {
-        config = systemOneConfig();
+        config = systemOneConfig(assessment);
       } catch (error) {
         options.configurationError(error instanceof Error ? error.message : String(error));
         return { kind: "reject", reason: "assessment-unavailable" };
@@ -159,7 +161,7 @@ export function createWorkerAuthority(options: {
       const requested = cascade?.fallbackTier
         ? supported.at(-1)
         : decision
-          ? selectEffort(decision, "", request.facts.task, effectiveTunables())
+          ? selectEffort(decision, "", request.facts.task, assessment.tuning)
           : undefined;
       if (!requested) {
         const baseline = specialized ? target.baseline : original;

@@ -30,10 +30,12 @@ afterEach(async () => {
 });
 const tiers = { fast: "local/fast", balanced: "local/balanced", deep: "local/deep" };
 
-test("routing-settings public host preserves unknown keys and recursively merges only trusted project in SDK agentDir", async () => {
+test("routing-settings ignores public merged settings and consumes only global JSON", async () => {
   directory = await mkdtemp(join(tmpdir(), "jev-settings-host-"));
   const agentDir = join(directory, "sdk-agent");
   await mkdir(agentDir);
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  await writeFile(join(agentDir, "jev-pilot.json"), JSON.stringify({ tiers }));
   await mkdir(join(directory, ".pi"));
   await writeFile(
     join(agentDir, "settings.json"),
@@ -46,7 +48,7 @@ test("routing-settings public host preserves unknown keys and recursively merges
   const host = SettingsManager.create(directory, agentDir, { projectTrusted: false });
   expect(configuredTiers(host.getSettings())).toEqual(tiers);
   host.setProjectTrusted(true);
-  expect(configuredTiers(host.getSettings())).toEqual({ ...tiers, deep: "project/deep" });
+  expect(configuredTiers(host.getSettings())).toEqual(tiers);
   expect(host.getSettings().packages).toEqual(["unrelated"]);
   host.setProjectTrusted(false);
   expect(configuredTiers(host.getSettings())).toEqual(tiers);
@@ -54,6 +56,7 @@ test("routing-settings public host preserves unknown keys and recursively merges
 
 test("routing-settings main lifecycle never registers, removes or selects any model", async () => {
   directory = await mkdtemp(join(tmpdir(), "jev-settings-binding-"));
+  process.env.PI_CODING_AGENT_DIR = directory;
   let settings: unknown = { jevPilot: { mainRoutingEnabled: true, tiers } };
   let registrations = 0;
   let removals = 0;
@@ -66,6 +69,7 @@ test("routing-settings main lifecycle never registers, removes or selects any mo
     },
     events: { on() {} },
     registerEntryRenderer() {},
+    registerToolRenderer() {},
     registerCommand() {},
     getSettings: () => settings,
     registerVirtualModel() {
@@ -84,6 +88,7 @@ test("routing-settings main lifecycle never registers, removes or selects any mo
     sessionManager: {
       getBranch: () => [],
       getSessionId: () => "settings-binding",
+      getSessionFile: () => undefined,
       getLeafId: () => null,
     },
     ui: { notify() {}, setWidget() {}, setStatus() {} },

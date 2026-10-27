@@ -8,24 +8,15 @@ import {
   type WorkerPresentationRegistration,
 } from "pi-subagents/worker-presentation";
 import { fileURLToPath } from "node:url";
-import { effortEnabled } from "./system-one.ts";
-import { guidanceEnabled } from "./guidance-policy.ts";
+import { loadJevConfig } from "./jev-config.ts";
 import { registerWorkerAuthorityLifecycle } from "./worker-authority-registration.ts";
 import { WorkerVisibility } from "./worker-visibility.ts";
-import { configuredTiers } from "./routing-settings.ts";
-import { crewConfig } from "./crew-config.ts";
 import { appendDecisionRow } from "./decision-visibility.ts";
 import type { LiveStatusLine } from "./live-status.ts";
 import { WorkerStatus } from "./worker-status.ts";
 import { registerWorkerStatusRenderer } from "./worker-status-renderer.ts";
 import { SUBAGENT_WORKER_DECISION_ACCEPTED_EVENT } from "pi-subagents/worker-decision-authority";
 
-function enabled(): boolean {
-  const value = process.env.JEV_WORKER_ROUTING_ENABLED ?? "true";
-  if (value !== "true" && value !== "false")
-    throw new Error("JEV_WORKER_ROUTING_ENABLED must be true or false.");
-  return value === "true";
-}
 function identity(value: string): string {
   return value.replace(/:(off|minimal|low|medium|high|xhigh|max)$/, "");
 }
@@ -35,6 +26,9 @@ export function registerWorkerAdapter(
   onWorkersRunning?: (count: number) => void,
   live?: LiveStatusLine,
 ): void {
+  // Registration eligibility is refreshed by reload; ticket 04 owns live admission refresh.
+  let admission: ReturnType<typeof loadJevConfig> | undefined;
+  const enabled = () => admission?.workerRoutingEnabled ?? false;
   const status = new WorkerStatus((summary) => {
     live?.setWorkerSummary(summary);
     onWorkersRunning?.(summary?.running ?? 0);
@@ -61,6 +55,7 @@ export function registerWorkerAdapter(
     });
   };
   pi.on("session_start", (_event, ctx) => {
+    admission = loadJevConfig();
     visibility.clear();
     visibility.restore(ctx.sessionManager.getBranch());
     childExtension?.dispose();
@@ -178,12 +173,14 @@ export function registerWorkerAdapter(
     const finish = (message: string) => visibility.finish(owner, message, false);
     try {
       const routing = enabled();
+      const helperOptions = admission;
       const automaticMain =
-        effortEnabled() ||
-        process.env.JEV_SKILLS_ENABLED !== "false" ||
-        guidanceEnabled("QUALITY") ||
-        guidanceEnabled("STRATEGY") ||
-        guidanceEnabled("DESIGN");
+        helperOptions &&
+        (helperOptions.effortEnabled ||
+          helperOptions.skillsEnabled ||
+          helperOptions.qualityEnabled ||
+          helperOptions.strategyEnabled ||
+          helperOptions.designEnabled);
       if (typeof input.agent === "string" && !childExtension && (routing || automaticMain)) {
         try {
           deliverChildExtension(undefined, ctx);
@@ -214,20 +211,6 @@ export function registerWorkerAdapter(
       ) {
         finish("executor-owned · fork model + effort");
         return;
-      }
-      configuredTiers(pi.getSettings());
-      for (const slot of crewConfig(ctx.cwd).offered) {
-        const slash = slot.model.indexOf("/");
-        const model = ctx.modelRegistry.find(
-          slot.model.slice(0, slash),
-          slot.model.slice(slash + 1),
-        );
-        if (!model || model.api === "pi-virtual")
-          throw new Error(
-            `Jev worker target ${slot.model} must resolve to an exact physical Pi model.`,
-          );
-        if (!ctx.modelRegistry.hasConfiguredAuth(model))
-          throw new Error(`Configure Pi authentication for Jev worker target ${slot.model}.`);
       }
       finish("executor authority · decision pending · launch unconfirmed");
       allowedLaunches.add(event.toolCallId);

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PiFixture, root } from "./fixtures/pi-cli.ts";
 
@@ -7,11 +7,9 @@ import { PiFixture, root } from "./fixtures/pi-cli.ts";
 // JEV_OWNER_CLI selects Pi-Bolt; executor may be a distinct installed copy to prove registry sharing.
 test("owner reload restores native fresh dispatch without bypassing missing or stale fences", async () => {
   const executor = process.env.JEV_OWNER_EXECUTOR ?? join(root, "node_modules/pi-subagents");
-  const cli =
-    process.env.JEV_OWNER_CLI ??
-    join(root, "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js");
+  const cli = process.env.JEV_OWNER_CLI ?? "/Users/naicoi/.bun/bin/pi-bolt";
   const fixture = new PiFixture([
-    ...(cli.endsWith(".js") ? [process.execPath, "run", cli] : [cli]),
+    ...(cli.endsWith(".js") ? [process.execPath, "run", cli] : ["/bin/sh", cli]),
     "--no-extensions",
     "-e",
     join(root, "tests/fixtures/worker-owner-lifecycle.ts"),
@@ -34,6 +32,21 @@ test("owner reload restores native fresh dispatch without bypassing missing or s
     "high",
   ]);
   fixture.skipPackageInstall = true;
+  fixture.jevConfig = {
+    effortEnabled: false,
+    skillsEnabled: false,
+    strategyEnabled: false,
+    qualityEnabled: false,
+    designEnabled: false,
+    tiers: { balanced: "fixture/fixture-model" },
+  };
+  fixture.prepare = async (directory) => {
+    await cp(
+      "/Users/naicoi/.pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64",
+      join(directory, ".pi-bolt/npm/1.0.4/pi-bolt-darwin-arm64"),
+      { recursive: true },
+    );
+  };
   fixture.settings = {
     jevPilot: { tiers: { balanced: "fixture/fixture-model" } },
     subagents: { intercomBridge: { mode: "off" } },
