@@ -199,9 +199,15 @@ test("AC-25 TUNE-25-bars-stop: no step is proposed past the upstream ceilings", 
 test("AC-25 TUNE-25-describe: shows effective value against base and the suggestion", () => {
   // upstream tuning.spec: text contains the tuned/settings pair and 'x → y'.
   const text = describeTuning(easyHigh(1), base, { values: { minHighConfidence: 0.6 }, since: 0 });
-  expect(text).toContain("minHighConfidence        0.6   (base: 0.5)");
+  expect(text).toContain("minHighConfidence        base: 0.5  overlay: 0.6  effective: 0.6");
   expect(text).toContain("minHighConfidence: 0.6 → 0.7");
   expect(text).toContain("/jev tune apply");
+  expect(describeTuning([], base, { values: { timeoutMs: 1500 }, since: 0 })).toContain(
+    "timeoutMs                base: 1500  overlay: 1500  effective: 1500",
+  );
+  expect(describeTuning([], base, { values: {}, since: 0 })).toContain(
+    "/jev tune reset clears learned values",
+  );
   expect(describeTuning([], base, { values: {}, since: 0 })).toContain(
     "No suggestion yet: 0 of the 20",
   );
@@ -253,9 +259,14 @@ test("AC-26 TUNE-26-unreadable: an unreadable tuning file never blocks decisions
   expect(loadTuning()).toEqual({ values: {}, since: 7 });
 });
 
-test("AC-25 TUNE-25-base-timeout: JEV_TIMEOUT_MS is the base and invalid values are rejected", () => {
-  process.env.JEV_TIMEOUT_MS = "100";
-  expect(baseTunables().timeoutMs).toBe(100);
-  process.env.JEV_TIMEOUT_MS = "0";
-  expect(() => baseTunables()).toThrow("Set JEV_TIMEOUT_MS");
+test("CFG-09 base timeout comes from JSON and ignores legacy environment", async () => {
+  process.env.JEV_TIMEOUT_MS = "invalid";
+  expect(baseTunables().timeoutMs).toBe(1500);
+  await Bun.write(
+    join(directory, "jev-pilot.json"),
+    JSON.stringify({ classifier: { timeoutMs: 1234 } }),
+  );
+  expect(baseTunables().timeoutMs).toBe(1234);
+  await Bun.write(join(directory, "jev-pilot.json"), "{ broken");
+  expect(() => baseTunables()).toThrow("expected valid JSON");
 });

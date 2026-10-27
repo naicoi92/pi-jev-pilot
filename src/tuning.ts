@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_EFFORT_THRESHOLDS, type EffortThresholds } from "./effort-policy.ts";
 import { loadLedger, percentile, share, type LedgerEntry } from "./ledger.ts";
+import { loadJevConfig } from "./jev-config.ts";
 
 /** The settings learned values may overlay; every other threshold is fixed. */
 export interface TunableConfig extends EffortThresholds {
@@ -27,8 +28,6 @@ export interface Tuning {
 /** Below this many fresh turns nothing is suggested. */
 export const MIN_TURNS_TO_SUGGEST = 20;
 
-const DEFAULT_TIMEOUT_MS = 1500;
-
 /** The range each learned value is kept in, whatever the file holds. */
 const RANGES: Record<keyof TunableConfig, [number, number]> = {
   timeoutMs: [300, 5000],
@@ -38,12 +37,9 @@ const RANGES: Record<keyof TunableConfig, [number, number]> = {
 };
 const KEYS = Object.keys(RANGES) as (keyof TunableConfig)[];
 
-/** Base configuration: upstream defaults, with the decision timeout from `JEV_TIMEOUT_MS`. */
+/** Base configuration: fixed effort defaults and the JSON classifier timeout. */
 export function baseTunables(): TunableConfig {
-  const timeoutMs = Number(process.env.JEV_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0)
-    throw new Error("Set JEV_TIMEOUT_MS to a positive integer in milliseconds (default: 1500).");
-  return { ...DEFAULT_EFFORT_THRESHOLDS, timeoutMs };
+  return { ...DEFAULT_EFFORT_THRESHOLDS, timeoutMs: loadJevConfig().classifier.timeoutMs };
 }
 
 /** A tuning read back from storage: unknown keys dropped, values kept in range. */
@@ -198,7 +194,7 @@ export function describeTuning(
   ];
   for (const key of KEYS)
     lines.push(
-      `  ${key.padEnd(24)} ${now[key]}${now[key] === base[key] ? "" : `   (base: ${base[key]})`}`,
+      `  ${key.padEnd(24)} base: ${base[key]}  overlay: ${tuning.values[key] ?? "none"}  effective: ${now[key]}`,
     );
   const fresh = evidence(entries, tuning.since).length;
   const found = proposals(entries, base, tuning);
@@ -216,6 +212,7 @@ export function describeTuning(
   }
   lines.push(
     "",
+    "/jev tune reset clears learned values and starts a new evidence window; configuration and ledger stay unchanged.",
     `Learned values are stored in ${tuningPath()}, shared by sessions of this Pi agent directory, and used by main-session and worker-plan decisions; ledger reset does not touch them.`,
   );
   return lines.join("\n");

@@ -110,7 +110,7 @@ test("AC-25 TUNE-CLI-25-apply-reset: stored confidence tuning cannot veto effort
 
   const applyText = await say(f, "/jev tune apply");
   expect(applyText).toContain("Applied minHighConfidence 0.5 → 0.6");
-  expect(applyText).toContain("minHighConfidence        0.6   (base: 0.5)");
+  expect(applyText).toContain("minHighConfidence        base: 0.5  overlay: 0.6  effective: 0.6");
   expect(applyText).toContain("No suggestion yet: 0 of the 20 turns");
   const stored = JSON.parse(await readFile(tuningFile(f), "utf8")) as RecordData;
   expect(stored).toMatchObject({ version: 1, values: { minHighConfidence: 0.6 } });
@@ -126,7 +126,7 @@ test("AC-25 TUNE-CLI-25-apply-reset: stored confidence tuning cannot veto effort
 
   const resetText = await say(f, "/jev tune reset");
   expect(resetText).toContain("Tuning cleared");
-  expect(resetText).not.toContain("(base:");
+  expect(resetText).toContain("overlay: none");
   expect(JSON.parse(await readFile(tuningFile(f), "utf8"))).toMatchObject({ values: {} });
   expect(await readFile(ledgerFile(f), "utf8")).toBe(ledgerBeforeReset);
   await f.prompt(task);
@@ -142,7 +142,9 @@ test("AC-24 TUNE-CLI-24-ledger-reset: ledger reset preserves stored tuning witho
   expect(await say(f, "/jev report reset")).toContain("tuning were not changed");
   expect(await exists(ledgerFile(f))).toBe(false);
   expect(await readFile(tuningFile(f), "utf8")).toBe(tuningBefore);
-  expect(await say(f, "/jev tune")).toContain("minHighConfidence        0.6   (base: 0.5)");
+  expect(await say(f, "/jev tune")).toContain(
+    "minHighConfidence        base: 0.5  overlay: 0.6  effective: 0.6",
+  );
   f.response = BORDERLINE();
   await f.prompt("Please review the complete patch with particular care for failure modes");
   expect(await thinking(f)).toBe("high");
@@ -153,7 +155,9 @@ test("AC-26 TUNE-CLI-26-reload-and-session: learned tuning survives reload and a
   await seedLedger(f, 20);
   await say(f, "/jev tune apply");
   await f.command("prompt", { message: "/fixture-reload" });
-  expect(await say(f, "/jev tune")).toContain("minHighConfidence        0.6   (base: 0.5)");
+  expect(await say(f, "/jev tune")).toContain(
+    "minHighConfidence        base: 0.5  overlay: 0.6  effective: 0.6",
+  );
   f.response = BORDERLINE();
   const task = "Please review the complete patch with particular care for failure modes";
   await f.prompt(task);
@@ -182,8 +186,11 @@ test("AC-25 TUNE-CLI-25-announce: the 20th fresh turn announces a proposal once 
   expect(await exists(tuningFile(f))).toBe(false);
 }, 40000);
 
-test("AC-25 TUNE-CLI-25-timeout: a learned timeout overlays the environment base for the next decision", async () => {
-  const f = await (fixture = new PiFixture()).start({ JEV_TIMEOUT_MS: "100" });
+test("AC-25 TUNE-CLI-25-timeout: a learned timeout overlays the JSON base for the next decision", async () => {
+  const f = new PiFixture();
+  fixture = f;
+  f.classifierConfig = { timeoutMs: 100 };
+  await f.start({ JEV_TIMEOUT_MS: "invalid" });
   f.classifierDelay = 500;
   await mkdir(jevDirectory(f), { recursive: true });
   // Learned value as upstream stores it: kept in 300..5000 ms.
@@ -191,7 +198,9 @@ test("AC-25 TUNE-CLI-25-timeout: a learned timeout overlays the environment base
     tuningFile(f),
     JSON.stringify({ version: 1, values: { timeoutMs: 2000 }, since: 0 }),
   );
-  expect(await say(f, "/jev tune")).toContain("timeoutMs                2000   (base: 100)");
+  expect(await say(f, "/jev tune")).toContain(
+    "timeoutMs                base: 100  overlay: 2000  effective: 2000",
+  );
   await f.prompt("Please review the complete patch with particular care for failure modes");
   expect((await ledgerRows(f))[0]).toMatchObject({ answered: true, requested: "high" });
 }, 20000);
