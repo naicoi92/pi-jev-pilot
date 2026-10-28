@@ -86,6 +86,7 @@ const cases = [
   { name: "profile", baseline: "low", background: false },
   { name: "profile-executor", baseline: "max", background: false },
   { name: "runtime", baseline: "max", background: true },
+  { name: "runtime-retained", baseline: "max", background: false },
   { name: "runtime-unknown", baseline: "max", background: false },
   { name: "coexistence-jev-first", baseline: "max", background: false },
   { name: "lifecycle", baseline: "max", background: true },
@@ -96,7 +97,7 @@ const cases = [
   { name: "pending-session", baseline: "max", background: false },
 ] as const;
 for (const scenario of cases)
-  test(`WORKER-${scenario.name.startsWith("junior-workflow-") && !scenario.name.endsWith("routing-off") ? "26" : scenario.name.startsWith("slot-risk-") ? (scenario.name.endsWith("disabled") || scenario.name.endsWith("error") ? "20" : "03") : scenario.name.startsWith("slot-") ? "18" : scenario.name.startsWith("junior-") ? "19" : scenario.name.includes("clamp") ? "06" : scenario.name.includes("coexistence") || scenario.name === "profile" || scenario.name === "runtime-unknown" ? "13" : scenario.name.includes("cancel") ? "12" : scenario.name.startsWith("pending-") || ["lifecycle", "resume"].includes(scenario.name) ? "26" : scenario.name === "workflow-guidance" ? "21" : "20"}-${scenario.name} packed production adapter actual receipt`, async () => {
+  test(`WORKER-${scenario.name.startsWith("junior-workflow-") && !scenario.name.endsWith("routing-off") ? "26" : scenario.name.startsWith("slot-risk-") ? (scenario.name.endsWith("disabled") || scenario.name.endsWith("error") ? "20" : "03") : scenario.name.startsWith("slot-") ? "18" : scenario.name.startsWith("junior-") ? "19" : scenario.name.includes("clamp") ? "06" : scenario.name.includes("coexistence") || scenario.name === "profile" || scenario.name === "runtime-retained" || scenario.name === "runtime-unknown" ? "13" : scenario.name.includes("cancel") ? "12" : scenario.name.startsWith("pending-") || ["lifecycle", "resume"].includes(scenario.name) ? "26" : scenario.name === "workflow-guidance" ? "21" : "20"}-${scenario.name} packed production adapter actual receipt`, async () => {
     const { name, baseline, background } = scenario;
     const junior = name.startsWith("junior-");
     const slot = name.startsWith("slot-");
@@ -202,12 +203,13 @@ for (const scenario of cases)
       name === "async-rejected-cancel" ||
       name === "async-noop-cancel" ||
       name === "profile-executor";
-    const runtime = name === "runtime" || name === "runtime-unknown";
+    const runtime = name === "runtime" || name === "runtime-retained" || name === "runtime-unknown";
     const omitted =
       riskOmitted ||
       name.startsWith("omitted") ||
       name === "rejected-tier" ||
       name === "retained-clamp" ||
+      name === "runtime-retained" ||
       name === "runtime-unknown" ||
       routingOff;
     const retained = omitted && !routingOff && !riskOmitted && name !== "omitted-upgrade";
@@ -481,6 +483,7 @@ for (const scenario of cases)
       observer,
       `import { appendFileSync } from "node:fs";
 import { registerRequiredChildExtensions } from "pi-subagents/required-child-extensions";
+import { SUBAGENT_WORKER_DECISION_ACCEPTED_EVENT } from "pi-subagents/worker-decision-authority";
 export default function(pi) {
  let registration;
  const lifecycle=(type,ctx,extra={})=>appendFileSync(${JSON.stringify(join(directory, "lifecycle.jsonl"))},JSON.stringify({type,pid:process.pid,sessionId:ctx.sessionManager.getSessionId(),at:Date.now(),...extra})+"\\n");
@@ -496,8 +499,9 @@ export default function(pi) {
   }});
  }
  pi.on("session_start", (_event,ctx) => {
-  if (${runtime}) { const input={version:1,name:"receipt-worker",definition:{description:"Runtime worker",systemPrompt:"Return CHILD_RECEIPT_OK without tools.",tools:["read"],model:"local/configured",thinking:"max",defaultContext:"fresh"}};pi.events.emit("pi-subagents:runtime-agent-register:v1",input);if(!input.result?.ok)throw new Error("Runtime registration failed"); }
+  if (${runtime}) { const input={version:1,name:"receipt-worker",definition:{description:"Runtime worker",systemPrompt:"Return CHILD_RECEIPT_OK without tools.",tools:["read"],model:"local/configured",${name === "runtime-unknown" ? "" : 'thinking:"max",'}defaultContext:"fresh"}};pi.events.emit("pi-subagents:runtime-agent-register:v1",input);if(!input.result?.ok)throw new Error("Runtime registration failed");appendFileSync(${JSON.stringify(join(directory, "runtime-registration.jsonl"))},JSON.stringify({name:input.name,definition:input.definition,ok:input.result.ok})+"\\n"); }
  });
+ if (${runtime}) pi.events.on(SUBAGENT_WORKER_DECISION_ACCEPTED_EVENT,event=>appendFileSync(${JSON.stringify(join(directory, "worker-decisions.jsonl"))},JSON.stringify(event)+"\\n"));
  pi.on("session_start", (_event,ctx) => { if (${name === "coexistence"}) registration = registerRequiredChildExtensions({sessionId:ctx.sessionManager.getSessionId(),extensions:[{id:"existing-owner",path:${JSON.stringify(join(installedPackage, "src/worker-child.ts"))}}]}); });
  pi.on("session_shutdown",()=>registration?.dispose());
  pi.registerCommand("worker-reload", { handler: async (_args,ctx) => { await ctx.waitForIdle(); await ctx.reload(); } });
@@ -819,13 +823,50 @@ export default function(pi) {
         expect(visible).toContain("not transparently intercepted");
         expect(JSON.stringify(records)).not.toContain("use fast for mechanical work");
       }
-      if (name === "runtime-unknown") {
-        expect(childStarted).toBe(false);
-        expect(classifications).toHaveLength(1);
-        expect(JSON.stringify(records)).toContain(
-          "Jev cannot resolve the retained worker target for an effort-only decision through public preflight",
+      if (name === "runtime-unknown" || name === "runtime-retained") {
+        const registration = JSON.parse(
+          (await Bun.file(join(directory, "runtime-registration.jsonl")).text()).trim(),
         );
-        return;
+        expect(registration).toMatchObject({
+          name: "receipt-worker",
+          ok: true,
+          definition: { model: "local/configured", defaultContext: "fresh" },
+        });
+        expect(await Bun.file(join(agentDir, "agents/receipt-worker.md")).exists()).toBe(false);
+        expect(original).not.toHaveProperty("model");
+        if (name === "runtime-unknown") {
+          // Pin resolves only suffix/config effort here, not parent/SDK defaults. No source supplies one.
+          expect(registration.definition).not.toHaveProperty("thinking");
+          const settings = await Bun.file(join(agentDir, "settings.json")).json();
+          expect(settings.subagents?.defaultThinking).toBeUndefined();
+          expect(settings.subagents?.agentOverrides).toBeUndefined();
+          expect(await Bun.file(join(directory, ".pi/settings.json")).exists()).toBe(false);
+          expect(childStarted).toBe(false);
+          expect(requests).toHaveLength(2);
+          expect(requests.every((request) => request.model === "parent")).toBe(true);
+          expect(classifications).toHaveLength(1);
+          expect(allClassifications).toHaveLength(2);
+          expect(classifications[0]!.state).toEqual({
+            prompt: direct.task,
+            agentType: "receipt-worker",
+            description: "Runtime worker",
+          });
+          const terminal = records.find((record) => record.type === "tool_execution_end");
+          expect(terminal?.isError).toBe(true);
+          expect(terminal?.result).toMatchObject({
+            content: [
+              { type: "text", text: "Worker decision authority blocked: baseline-unresolved." },
+            ],
+          });
+          expect(await Bun.file(join(directory, "worker-decisions.jsonl")).exists()).toBe(false);
+          receipt = await readResults();
+          expect(receipt).toMatchObject({ isError: true });
+          expect(
+            JSON.parse((await Bun.file(join(directory, "envelope.jsonl")).text()).trim()),
+          ).toEqual(original);
+          return;
+        }
+        expect(registration.definition.thinking).toBe("max");
       }
       if (name === "coexistence") {
         expect(childStarted).toBe(false);
@@ -948,7 +989,7 @@ export default function(pi) {
                 "jev-pilot-junior-turn-bound",
               );
             }
-          } else
+          } else {
             expect(result.details.results).toMatchObject([
               {
                 model: `local/${expectedIdentity}${junior && routingOff ? "" : `:${expectedThinking}`}`,
@@ -958,6 +999,28 @@ export default function(pi) {
                 usage: { input: 10, output: 4 },
               },
             ]);
+            if (name === "runtime-retained") {
+              expect(result.isError).toBe(false);
+              const accepted = JSON.parse(
+                (await Bun.file(join(directory, "worker-decisions.jsonl")).text()).trim(),
+              );
+              expect(accepted).toMatchObject({
+                version: 1,
+                toolCallId: terminal.toolCallId,
+                runId: result.details.runId,
+                receipt: {
+                  model: "local/configured",
+                  thinking: "medium",
+                  requestedThinking: "medium",
+                  reason: "assessed",
+                },
+              });
+              expect(result.details.results[0]).toMatchObject({
+                requestedModel: "local/configured",
+                context: "fresh",
+              });
+            }
+          }
         }
         const envelope = JSON.parse(
           (await Bun.file(join(directory, "envelope.jsonl")).text()).trim(),
@@ -970,7 +1033,11 @@ export default function(pi) {
               ? !JSON.stringify(request.messages).includes("PRIVATE_PARENT_HISTORY")
               : request.model !== "parent",
           );
-          if (["top-fresh", "scope-user", "profile", "profile-executor"].includes(name))
+          if (
+            ["top-fresh", "scope-user", "profile", "profile-executor", "runtime-retained"].includes(
+              name,
+            )
+          )
             expect(JSON.stringify(childRequest?.messages)).not.toContain("PRIVATE_PARENT_HISTORY");
           expect(childRequest).toMatchObject({
             model: expectedIdentity,
