@@ -72,10 +72,17 @@ for (const scenario of [
         },
       }),
     );
+    const home = join(directory, "home");
+    const cache = join(directory, ".bun/install/cache");
+    await mkdir(home, { recursive: true });
     const env = {
       PATH: Bun.env.PATH,
-      HOME: directory,
+      HOME: home,
       TMPDIR: directory,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_ASKPASS: "/usr/bin/false",
       PI_CODING_AGENT_DIR: agentDir,
       PI_OFFLINE: "1",
       PI_TELEMETRY: "0",
@@ -100,7 +107,7 @@ for (const scenario of [
       evidence.commands.push({ command: args, exitCode, output });
       expect(exitCode, output).toBe(0);
     };
-    await run([Bun.which("bun")!, "install"]);
+    await run([Bun.which("bun")!, "install", "--ignore-scripts", "--cache-dir", cache]);
     const packed = join(directory, "pi-jev-pilot.tgz");
     await run(
       [Bun.which("bun")!, "pm", "pack", "--filename", packed],
