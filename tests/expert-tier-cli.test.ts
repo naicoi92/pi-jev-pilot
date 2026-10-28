@@ -31,7 +31,7 @@ interface Scenario {
   selected: string;
 }
 
-// Deterministic real-Pi runs: settings -> classification request -> selected child model.
+// Deterministic real-Pi runs: config -> classification request -> selected child model.
 // The fake System One and OpenAI-compatible provider run on loopback; no hosted request is made.
 const scenarios: Scenario[] = [
   {
@@ -93,6 +93,7 @@ for (const scenario of scenarios)
     const records: Record<string, unknown>[] = [];
     const requests: Record<string, unknown>[] = [];
     const classifications: Record<string, unknown>[] = [];
+    const endpointEntries: string[] = [];
     let sent = false;
     const original = {
       agent: "receipt-worker",
@@ -105,6 +106,7 @@ for (const scenario of scenarios)
       hostname: "127.0.0.1",
       port: 0,
       async fetch(request) {
+        endpointEntries.push(new URL(request.url).pathname);
         const body = (await request.json()) as Record<string, unknown>;
         if (new URL(request.url).pathname === "/classify") {
           classifications.push(body);
@@ -177,7 +179,23 @@ for (const scenario of scenarios)
       JSON.stringify({
         retry: { enabled: false },
         compaction: { enabled: false },
-        jevPilot: { tiers: scenario.tiers },
+      }),
+    );
+    await writeFile(
+      join(agent, "jev-pilot.json"),
+      JSON.stringify({
+        tiers: scenario.tiers,
+        effortEnabled: false,
+        skillsEnabled: false,
+        strategyEnabled: false,
+        qualityEnabled: false,
+        designEnabled: false,
+        workerRoutingEnabled: true,
+        classifier: {
+          url: `${server.url}classify`,
+          apiKeyEnv: "EXPERT_FIXTURE_API_KEY",
+          timeoutMs: 5000,
+        },
       }),
     );
     await writeFile(
@@ -213,15 +231,7 @@ for (const scenario of scenarios)
         PI_OFFLINE: "1",
         PI_TELEMETRY: "0",
         PI_SUBAGENTS_TEMP_ROOT: join(directory, "runtime"),
-        JEV_EFFORT_ENABLED: "false",
-        JEV_SKILLS_ENABLED: "false",
-        JEV_STRATEGY_ENABLED: "false",
-        JEV_QUALITY_ENABLED: "false",
-        JEV_DESIGN_ENABLED: "false",
-        JEV_WORKER_ROUTING_ENABLED: "true",
-        JEV_SYSTEM_ONE_URL: `${server.url}classify`,
-        JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
-        JEV_TIMEOUT_MS: "5000",
+        EXPERT_FIXTURE_API_KEY: "fixture-not-a-credential",
       },
     });
     const process = child;
@@ -246,7 +256,9 @@ for (const scenario of scenarios)
       const until = Date.now() + 30000;
       while (!predicate()) {
         if (process.exitCode !== null || Date.now() > until)
-          throw new Error(`deadline; ${stderr}; ${JSON.stringify(records.slice(-5))}`);
+          throw new Error(
+            `deadline; endpoint=${server?.url}; ready=${records.some((record) => record.id === "ready")}; endpointEntries=${JSON.stringify(endpointEntries)}; providerRequests=${requests.length}; classifications=${classifications.length}; exitCode=${process.exitCode}; stderr=${stderr}; records=${JSON.stringify(records.slice(-5))}`,
+          );
         await Bun.sleep(20);
       }
     };
