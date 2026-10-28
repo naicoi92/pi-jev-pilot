@@ -211,6 +211,17 @@ export default function(pi) {
         directory,
         "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
       );
+      await writeFile(
+        join(agentDir, "jev-pilot.json"),
+        JSON.stringify({
+          workerRoutingEnabled: false,
+          effortEnabled: false,
+          skillsEnabled: false,
+          strategyEnabled: false,
+          qualityEnabled: false,
+          designEnabled: false,
+        }),
+      );
       const env = {
         PATH: Bun.env.PATH,
         HOME: directory,
@@ -218,12 +229,6 @@ export default function(pi) {
         PI_OFFLINE: "1",
         PI_TELEMETRY: "0",
         PI_SUBAGENTS_TEMP_ROOT: join(directory, "runtime"),
-        JEV_WORKER_ROUTING_ENABLED: "false",
-        JEV_EFFORT_ENABLED: "false",
-        JEV_SKILLS_ENABLED: "false",
-        JEV_STRATEGY_ENABLED: "false",
-        JEV_QUALITY_ENABLED: "false",
-        JEV_DESIGN_ENABLED: "false",
       };
       const commands: string[][] = [];
       const installReceipts: { command: string[]; output: string; exitCode: number }[] = [];
@@ -293,9 +298,9 @@ export default function(pi) {
           }
         }
       });
-      const wait = async (predicate: () => boolean) => {
+      const wait = async (predicate: () => boolean | Promise<boolean>) => {
         const deadline = Date.now() + 30000;
-        while (!predicate()) {
+        while (!(await predicate())) {
           if (process!.exitCode !== null || Date.now() > deadline)
             throw new Error(
               `directory=${directory}; stderr=${stderr}; records=${JSON.stringify(records.slice(-5))}`,
@@ -378,7 +383,9 @@ export default function(pi) {
             ),
           );
           const launched = JSON.parse(result.trim());
-          const status = await Bun.file(join(launched.details.asyncDir, "status.json")).json();
+          const statusFile = Bun.file(join(launched.details.asyncDir, "status.json"));
+          await wait(async () => (await statusFile.json()).processTerminal?.state === "observed");
+          const status = await statusFile.json();
           expect(status).toMatchObject({
             state: "complete",
             processTerminal: { state: "observed" },

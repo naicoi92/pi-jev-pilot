@@ -75,7 +75,7 @@ export class PiFixture {
   constructor(private readonly commandLine?: string[]) {}
 
   async startWithRouting(config: RecordData, env: Record<string, string> = {}): Promise<this> {
-    this.settings = { ...this.settings, jevPilot: config };
+    this.jevConfig = { ...this.jevConfig, ...config };
     return this.start(env);
   }
 
@@ -272,10 +272,10 @@ export default function (pi: ExtensionAPI) {
     writeFileSync(path, JSON.stringify(config));
   } });
   pi.registerCommand("fixture-tier-deep", { handler: async (value, ctx) => {
-    const path = ${JSON.stringify(join(this.directory, "agent/settings.json"))};
-    const settings = JSON.parse(readFileSync(path, "utf8"));
-    settings.jevPilot.tiers.deep = value;
-    writeFileSync(path, JSON.stringify(settings));
+    const path = ${JSON.stringify(join(agent, "jev-pilot.json"))};
+    const config = JSON.parse(readFileSync(path, "utf8"));
+    config.tiers = { ...config.tiers, deep: value };
+    writeFileSync(path, JSON.stringify(config));
     await ctx.reload();
   } });
   pi.registerCommand("fixture-model-refresh", { handler: async (_args, ctx) => { await ctx.modelRegistry.refresh(); } });
@@ -303,6 +303,8 @@ export default function (pi: ExtensionAPI) {
       await writeFile(
         join(agent, "jev-pilot.json"),
         JSON.stringify({
+          ...(this.useDesignDefaults ? {} : { designEnabled: false }),
+          ...(this.useGuidanceDefaults ? {} : { strategyEnabled: false, qualityEnabled: false }),
           ...this.jevConfig,
           classifier: {
             url: `${this.server.url}systemone`,
@@ -318,13 +320,7 @@ export default function (pi: ExtensionAPI) {
       ...(this.defaultAgentDirectory ? {} : { PI_CODING_AGENT_DIR: agent }),
       PI_OFFLINE: "1",
       PI_TELEMETRY: "0",
-      JEV_SYSTEM_ONE_URL: `${this.server.url}systemone`,
-      JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
       CFG_TEST_KEY: "fixture-not-a-credential",
-      ...(this.useDesignDefaults ? {} : { JEV_DESIGN_ENABLED: "false" }),
-      ...(this.useGuidanceDefaults
-        ? {}
-        : { JEV_STRATEGY_ENABLED: "false", JEV_QUALITY_ENABLED: "false" }),
       ...env,
     };
     if (!this.skipPackageInstall) {

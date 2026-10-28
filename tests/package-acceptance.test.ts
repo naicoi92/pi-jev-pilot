@@ -48,7 +48,10 @@ beforeAll(async () => {
   );
   // Host-provided Pi packages are not installed (peer dependencies omitted), as Pi's package
   // manager does for managed installs. The git dependency resolves from the Bun cache or GitHub.
-  await run([Bun.which("bun")!, "add", tarball, "--omit=peer", "--prefer-offline"], consumer);
+  await run(
+    [Bun.which("bun")!, "add", tarball, "--omit=peer", "--prefer-offline", "--ignore-scripts"],
+    consumer,
+  );
   installed = join(consumer, "node_modules", "pi-jev-pilot");
 }, 240000);
 
@@ -299,8 +302,9 @@ test("AC-07 PKG-07-new-session: a new session never reuses another session's dec
 // ------------------------------------------------------ AC-12: timeout abort and cancellation
 
 test("AC-12 PKG-12-timeout: deadline aborts the classifier HTTP request and generation continues", async () => {
-  const f = await packaged((fixture) => (fixture.classifierDelay = 1000), {
-    JEV_TIMEOUT_MS: "100",
+  const f = await packaged((fixture) => {
+    fixture.classifierDelay = 1000;
+    fixture.classifierConfig.timeoutMs = 100;
   });
   await f.prompt(task);
   await f.wait(() => f.classifierAborts === 1);
@@ -310,8 +314,9 @@ test("AC-12 PKG-12-timeout: deadline aborts the classifier HTTP request and gene
 }, 30000);
 
 test("AC-12 PKG-12-cancel: explicit abort during classification starts no fallback generation", async () => {
-  const f = await packaged((fixture) => (fixture.classifierDelay = 3000), {
-    JEV_TIMEOUT_MS: "5000",
+  const f = await packaged((fixture) => {
+    fixture.classifierDelay = 3000;
+    fixture.classifierConfig.timeoutMs = 5000;
   });
   await f.command("prompt", { message: task });
   await f.wait(() => f.classifications.length === 1);
@@ -389,20 +394,20 @@ test("AC-27 PKG-27-commands: excluded upstream commands only print usage and mak
 
 test("AC-27 PKG-27-crew-modes: only standard, budget and junior-lead modes exist", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "jev-acceptance-crew-"));
-  const saved = process.env.JEV_CREW_CONFIG;
+  const saved = process.env.PI_CODING_AGENT_DIR;
   try {
-    process.env.JEV_CREW_CONFIG = "crew.json";
+    process.env.PI_CODING_AGENT_DIR = cwd;
     for (const mode of ["quality", "second-opinion", "review", "codex"]) {
-      await writeFile(join(cwd, "crew.json"), JSON.stringify({ mode, slots: [] }));
-      expect(() => crewConfig(cwd)).toThrow("mode must be standard, budget or junior-lead");
+      await writeFile(join(cwd, "jev-pilot.json"), JSON.stringify({ crew: { mode, slots: [] } }));
+      expect(() => crewConfig(cwd)).toThrow("crew.mode");
     }
     for (const mode of ["standard", "budget", "junior-lead"]) {
-      await writeFile(join(cwd, "crew.json"), JSON.stringify({ mode, slots: [] }));
+      await writeFile(join(cwd, "jev-pilot.json"), JSON.stringify({ crew: { mode, slots: [] } }));
       expect(String(crewConfig(cwd).mode)).toBe(mode);
     }
   } finally {
-    if (saved === undefined) delete process.env.JEV_CREW_CONFIG;
-    else process.env.JEV_CREW_CONFIG = saved;
+    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = saved;
     await rm(cwd, { recursive: true, force: true });
   }
 });
