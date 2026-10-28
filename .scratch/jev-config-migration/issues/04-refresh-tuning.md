@@ -14,7 +14,7 @@ Implementation: pending
 ## Acceptance criteria
 
 - [ ] Native delayed main/worker tests prove new file affects the next boundary, not in-flight assessment, preflight, batches or committed launch.
-- [ ] Worker enable/disable admission and owner behavior reconcile safely; raised/lowered authority window and HTTP timeout both use the effective new value.
+- [ ] Worker routing and effective classifier timeout are captured at process registration; changes apply after Pi is closed and reopened once existing work has ended. Authority window and HTTP use the same registered budget, subject to existing deadline reserve. Same-process `/reload` is not claimed to apply enabled-to-disabled changes; no automatic restart or active-work preservation across shutdown.
 - [ ] A malformed/partially written new file rejects its boundary rather than using stale last-good data; active captured work remains stable.
 - [ ] Tune command displays base/overlay/effective; apply/reset, evidence window and ledger independence remain correct.
 - [ ] Any required executor API change gets separate isolated implementation/review and exact pin before integration; no stale timeout exception to acceptance.
@@ -24,6 +24,10 @@ Implementation: pending
 Before implementation, map each criterion to an observable test and record the RED command. Use the highest approved native/local-provider seam; parser tests alone are insufficient. Record GREEN commands, source SHA, artifacts and limits. Keep intermediate changes on the integration branch; do not deploy or alter personal settings. Each ticket needs independent review before completion.
 
 ## Comments
+
+### MVP worker registration amendment
+
+Operator accepted a full Pi process restart after existing work has ended for worker routing and effective timeout changes. Main timeout remains next-boundary; non-timeout worker settings retain their per-leaf snapshot. This supersedes only those original worker next-boundary requirements; all other acceptance remains open. Do not restart the operator's Pi automatically.
 
 ### Independent tuning slice
 

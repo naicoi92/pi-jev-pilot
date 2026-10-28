@@ -3,6 +3,10 @@
 Status: ready-for-agent
 Implementation: pending
 
+## MVP amendment: worker registration settings
+
+Operator accepted a full Pi process restart, after existing work has ended, to apply changes to `workerRoutingEnabled` and the effective worker classifier timeout (JSON base plus tuning overlay). Same-process `/reload` is not sufficient. Do not restart automatically or claim active work survives shutdown. Main assessments continue to capture the current timeout at their next boundary; non-timeout worker settings continue to use their existing per-leaf snapshot. This amendment supersedes next-boundary claims for these two worker registration settings only. Remaining acceptance and malformed-configuration requirements are unchanged and must not be silently waived.
+
 ## Problem Statement
 
 Jev options still span environment variables, merged Pi settings, a separately selected crew file and learned state. Operators cannot manage one global options file or predict whether an edit takes effect at the next assessment. Multiple readers can observe inconsistent state; legacy sources obscure effective values.
