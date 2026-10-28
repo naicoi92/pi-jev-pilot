@@ -77,6 +77,10 @@ Historical six feasibility/characterization tests are not production routing pro
 
 Concrete regression IDs: packed `omitted-direct`, `omitted-async`, `rejected-tier`, `retained-clamp`, `omitted-upgrade`, `top-fresh`, `scope-user`, `profile`, `profile-executor`, `runtime`, `runtime-unknown`, `coexistence`, `coexistence-jev-first`, `lifecycle` (repeat + actual reload), `resume`, `workflow-guidance`, `pending-model`, `pending-thinking`, `pending-session`; unit completion-release and all six pending transition events. Each row above owns its corresponding test; `pending-*` are AC26, registration negatives AC13, workflow guidance AC21. Profile/runtime-unknown are negative compatibility coverage, not successful routing claims.
 
+## Operator amendment: verified profile context
+
+For enabled routing, a `profile` launch verified and resolved to `fresh` by the pinned executor uses ordinary routing. Unknown or unverified context or target remains fail-closed. This narrowly supersedes the historical AC-13 profile row above; its prior failure receipt remains historical evidence. All other controls and acceptance gates remain in force.
+
 ## F5 fixture completion boundary (before test changes)
 
 The fresh review of `a6351ea158de11d1444aaa693065cd0c0f155078` closes F1–F4 but blocks on F5: the lifecycle fixture accepted the launch turn's earlier settle as completion of a later notification wake. The parent packed-CLI unsafe/control reproduction is independent evidence, not a replacement for final gates. This correction owns only the existing packed CLI fixture and this matrix; production routing authority and prior validation history remain unchanged.

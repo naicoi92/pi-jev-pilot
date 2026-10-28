@@ -819,13 +819,11 @@ export default function(pi) {
         expect(visible).toContain("not transparently intercepted");
         expect(JSON.stringify(records)).not.toContain("use fast for mechanical work");
       }
-      if (name === "profile" || name === "runtime-unknown") {
+      if (name === "runtime-unknown") {
         expect(childStarted).toBe(false);
-        expect(classifications).toHaveLength(name === "profile" ? 0 : 1);
+        expect(classifications).toHaveLength(1);
         expect(JSON.stringify(records)).toContain(
-          name === "profile"
-            ? "Jev adapter cannot resolve context: profile through the public preflight API"
-            : "Jev cannot resolve the retained worker target for an effort-only decision through public preflight",
+          "Jev cannot resolve the retained worker target for an effort-only decision through public preflight",
         );
         return;
       }
@@ -866,6 +864,11 @@ export default function(pi) {
           );
         }
         const result = await readResults();
+        if (name === "profile") {
+          expect(childStarted).toBe(true);
+          expect(result.isError).toBe(false);
+          expect(result.details.results[0].context).toBe("fresh");
+        }
         await awaitWorkflowChildren(result.details);
         if (background) {
           await wait(() => childStarted);
@@ -967,7 +970,7 @@ export default function(pi) {
               ? !JSON.stringify(request.messages).includes("PRIVATE_PARENT_HISTORY")
               : request.model !== "parent",
           );
-          if (["top-fresh", "scope-user", "profile-executor"].includes(name))
+          if (["top-fresh", "scope-user", "profile", "profile-executor"].includes(name))
             expect(JSON.stringify(childRequest?.messages)).not.toContain("PRIVATE_PARENT_HISTORY");
           expect(childRequest).toMatchObject({
             model: expectedIdentity,
