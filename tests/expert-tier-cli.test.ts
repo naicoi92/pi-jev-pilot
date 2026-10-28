@@ -270,6 +270,19 @@ for (const scenario of scenarios)
     );
     await wait(() => records.some((record) => record.type === "tool_execution_end"));
     const terminal = records.find((record) => record.type === "tool_execution_end")!;
+    if (terminal.isError === true) {
+      const sanitize = (key: string, value: unknown) => {
+        if (/body|headers?|api.?key|token|authorization|credential/i.test(key)) return "[redacted]";
+        if (typeof value === "string")
+          return /^(text|Worker decision authority blocked: [a-z-]+\.)$/.test(value)
+            ? value
+            : "[redacted]";
+        return value;
+      };
+      console.error(
+        `terminal failure; endpointEntries=${JSON.stringify(endpointEntries)}; providerRequests=${requests.length}; classifications=${classifications.length}; result=${JSON.stringify(terminal.result, sanitize)}`,
+      );
+    }
     expect(terminal.isError).not.toBe(true);
     const result = terminal.result as {
       details: { results: { model: string; thinking: string; exitCode: number }[] };
