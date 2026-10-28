@@ -943,8 +943,8 @@ export default function(pi) {
           } else
             expect(result.details.results).toMatchObject([
               {
-                model: `local/${expectedIdentity}${junior ? "" : `:${expectedThinking}`}`,
-                ...(!junior ? { thinking: expectedThinking } : {}),
+                model: `local/${expectedIdentity}${junior && routingOff ? "" : `:${expectedThinking}`}`,
+                ...(!junior || !routingOff ? { thinking: expectedThinking } : {}),
                 exitCode: 0,
                 finalOutput: "CHILD_RECEIPT_OK",
                 usage: { input: 10, output: 4 },
@@ -981,7 +981,19 @@ export default function(pi) {
           : 1,
       );
       if (!preserve && !classifierCancel && !childCancel) {
-        expect(allClassifications).toHaveLength(transition ? 3 : junior && !juniorWorkflow ? 1 : 2); // Workflow inner children retain executor-owned main guidance; direct children use the helper.
+        expect(allClassifications).toHaveLength(
+          transition ? 3 : junior && !juniorWorkflow && routingOff ? 1 : 2,
+        ); // Workflow inner children retain executor-owned main guidance; direct children use the helper.
+        if (junior && !juniorWorkflow && !routingOff) {
+          expect(allClassifications[1]!.state).toMatchObject({
+            prompt: direct.task,
+            agentType: "jev-pilot:junior",
+          });
+          expect(Object.keys(allClassifications[1]!.questions as object).sort()).toEqual([
+            "effort",
+            "risky",
+          ]);
+        }
       }
       if (classifications.length) {
         expect(classifications[0]!.state).toEqual({
