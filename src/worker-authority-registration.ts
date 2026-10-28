@@ -1,7 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   registerWorkerDecisionAuthority,
-  WorkerDecisionAuthorityError,
   type WorkerDecisionAuthorityRegistration,
 } from "pi-subagents/worker-decision-authority";
 import { createWorkerAuthority } from "./worker-authority.ts";
@@ -101,10 +100,10 @@ export function registerWorkerAuthorityLifecycle(
               configurationError: (message) => ctx.ui.notify(message, "error"),
               selectedTier: (tier) => status?.tier(presentation, tier),
             }).decide(request, { ...context, signal: controller.signal });
-            if (controller.signal.aborted) throw new WorkerDecisionAuthorityError("cancelled");
+            if (controller.signal.aborted) return { kind: "reject", reason: "cancelled" };
             return result;
           } catch (error) {
-            if (controller.signal.aborted) throw new WorkerDecisionAuthorityError("cancelled");
+            if (controller.signal.aborted) return { kind: "reject", reason: "cancelled" };
             throw error;
           } finally {
             finishAssessment?.();

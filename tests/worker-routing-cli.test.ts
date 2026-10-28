@@ -882,9 +882,26 @@ export default function(pi) {
         expect(classifierAborts).toBe(1);
         const terminal = records.find((record) => record.type === "tool_execution_end");
         expect(terminal?.isError).toBe(true);
-        expect(JSON.stringify(terminal?.result)).toMatch(
-          /Operation aborted|Jev worker classification cancelled; no child launched\.|Worker decision authority blocked: cancelled\./,
-        );
+        if (name === "pending-session") {
+          expect(records.find((record) => record.id === "change")).toMatchObject({
+            command: "new_session",
+            success: true,
+          });
+          expect(JSON.stringify(terminal?.result)).toMatch(
+            /Worker decision authority blocked: (cancelled|stale-revisions)\./,
+          );
+          expect(
+            requests.every(
+              (request) =>
+                request.model === "parent" ||
+                JSON.stringify(request.messages).includes("PRIVATE_PARENT_HISTORY"),
+            ),
+          ).toBe(true);
+        } else {
+          expect(JSON.stringify(terminal?.result)).toMatch(
+            /Operation aborted|Jev worker classification cancelled; no child launched\.|Worker decision authority blocked: cancelled\./,
+          );
+        }
       } else {
         await wait(() => records.some((record) => record.type === "tool_execution_end"));
         const terminal = records.find((record) => record.type === "tool_execution_end")!;
