@@ -1,0 +1,15 @@
+# Ticket 05 cutover acceptance checkpoint
+
+Base source: `0f3782c61faa50b705f87d44013de07c3baa2305`. MVP restart and disabled-native amendments in spec/plan supersede earlier worker refresh claims. This checkpoint is not rollout approval or ticket completion.
+
+## Test-from-spec map before production edits
+
+| Criterion                        | Observable proof / RED command                                                                                                                                                                                                                                                                                                         |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production readers               | `bun test tests/config-cutover.test.ts`: source audit forbids legacy System One option readers and requires an assessment. Existing tests exercise explicit snapshot.                                                                                                                                                                  |
+| Legacy conflicts and diagnostics | `bun test tests/config-native.test.ts tests/main-config-native.test.ts tests/worker-config-native.test.ts`: isolated Pi-Bolt reads conflicting file/env/settings and emits bounded name-only warnings.                                                                                                                                 |
+| Manual mapping/defaults          | Review README inventory against plan CFG-01–03, including inline crew, tiers, obsolete main router, defaults and credential naming; no secret values or paid mappings.                                                                                                                                                                 |
+| Native and packed install        | `bun test tests/config-native.test.ts tests/main-config-native.test.ts tests/worker-config-native.test.ts tests/package-acceptance.test.ts`: native and disposable installed package respectively; inspect fixtures before claiming same seam. Cancellation, status/Ctrl+O and spinner require explicit corresponding native evidence. |
+| Gates                            | `bun run lint`, `bun run fmt:check`, `bun run typecheck`, `bun test tests`; preserve failures and compare existing six tuning CLI failures. Independent review remains separate.                                                                                                                                                       |
+
+RED means pre-change observation, not necessarily every existing acceptance test failing. Test gate coverage is not assumed merely from test names; inspect results and seams. No paid provider calls; fixture uses localhost.

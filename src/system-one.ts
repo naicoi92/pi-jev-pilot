@@ -2,7 +2,6 @@
 import { DESIGN_QUESTION, readDesign } from "./design-policy.ts";
 import { EFFORT_ORDER, type EffortDecision } from "./effort-policy.ts";
 import { ORDINARY_TIERS, TIER_ORDER, type Tier } from "./tier-policy.ts";
-import { effectiveTunables } from "./tuning.ts";
 import type { EffortAssessment } from "./effort-assessment.ts";
 import type { Slot } from "./crew-config.ts";
 import { slotKey } from "./crew-policy.ts";
@@ -40,46 +39,19 @@ export interface SystemOneConfig {
   timeoutMs: number;
 }
 
-export function effortEnabled(): boolean {
-  const value = process.env.JEV_EFFORT_ENABLED ?? "true";
-  if (value !== "true" && value !== "false")
-    throw new Error("Set JEV_EFFORT_ENABLED to true or false (default: true).");
-  return value === "true";
-}
-
-export function systemOneConfig(assessment?: EffortAssessment): SystemOneConfig {
-  if (assessment) {
-    const { classifier } = assessment.config;
-    const apiKey = process.env[classifier.apiKeyEnv];
-    if (!apiKey?.trim())
-      throw new Error(
-        `Set the credential named by classifier.apiKeyEnv (${classifier.apiKeyEnv}) before requesting classification.`,
-      );
-    return Object.freeze({
-      url: classifier.url,
-      model: classifier.model,
-      apiKey,
-      timeoutMs: assessment.tuning.timeoutMs,
-    });
-  }
-  const url = process.env.JEV_SYSTEM_ONE_URL ?? "https://api.typesafe.ai/v1/systemone";
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error("Set JEV_SYSTEM_ONE_URL to a valid HTTP(S) System One endpoint.");
-  }
-  if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password)
+export function systemOneConfig(assessment: EffortAssessment): SystemOneConfig {
+  const { classifier } = assessment.config;
+  const apiKey = process.env[classifier.apiKeyEnv];
+  if (!apiKey?.trim())
     throw new Error(
-      "Set JEV_SYSTEM_ONE_URL to an HTTP(S) System One endpoint without embedded credentials.",
+      `Set the credential named by classifier.apiKeyEnv (${classifier.apiKeyEnv}) before requesting classification.`,
     );
-  const apiKey = process.env.JEV_SYSTEM_ONE_API_KEY ?? process.env.TYPESAFE_API_KEY ?? "";
-  if (!apiKey.trim())
-    throw new Error("Set JEV_SYSTEM_ONE_API_KEY (or TYPESAFE_API_KEY) for System One.");
-  const model = process.env.JEV_SYSTEM_ONE_MODEL ?? "jev-latest";
-  if (!model.trim())
-    throw new Error("Set JEV_SYSTEM_ONE_MODEL to a decision model ID (default: jev-latest).");
-  return { url, apiKey, model, timeoutMs: effectiveTunables().timeoutMs };
+  return Object.freeze({
+    url: classifier.url,
+    model: classifier.model,
+    apiKey,
+    timeoutMs: assessment.tuning.timeoutMs,
+  });
 }
 
 const rubric = [
