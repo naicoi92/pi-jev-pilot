@@ -79,7 +79,7 @@ const cases = [
   { name: "omitted-direct", baseline: "max", background: false },
   { name: "omitted-async", baseline: "low", background: true },
   { name: "rejected-tier", baseline: "max", background: false },
-  { name: "retained-clamp", baseline: "low", background: true },
+  { name: "retained-clamp", baseline: "off", background: true },
   { name: "omitted-upgrade", baseline: "max", background: false },
   { name: "top-fresh", baseline: "max", background: false },
   { name: "scope-user", baseline: "low", background: true },
