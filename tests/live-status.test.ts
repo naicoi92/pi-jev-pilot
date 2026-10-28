@@ -18,6 +18,7 @@ function host() {
   const widgets: { key: string; content: Factory | string[] | undefined }[] = [];
   let renders = 0;
   const ui = {
+    getToolsExpanded: () => false,
     setWidget(key: string, content: Factory | string[] | undefined) {
       widgets.push({ key, content });
     },
@@ -385,4 +386,27 @@ test("LIVE-18 a skipped effort decision still shows the skill and strategy actua
     skill: "tdd",
   });
   expect(text()).toBe("Jev · fallback · medium · timeout · /tdd");
+});
+
+test("worker widget follows public tool expansion state at render time", () => {
+  const h = host();
+  let expanded = false;
+  h.ui.getToolsExpanded = () => expanded;
+  const line = new LiveStatusLine();
+  line.attach(h.ui);
+  line.setWorkerSummary({
+    activity: "1 worker completed",
+    effort: "low",
+    running: 0,
+    details: ["worker · balanced · assessed · local/model · low · completed"],
+  });
+  const widget = h.mount();
+  expect(widget.render(120)).toHaveLength(1);
+  expanded = true;
+  expect(widget.render(120).map((row) => row.replace(ANSI, "").trim())).toEqual([
+    "Jev · 1 worker completed · low",
+    "worker · balanced · assessed · local/model · low · completed",
+  ]);
+  expanded = false;
+  expect(widget.render(120)).toHaveLength(1);
 });

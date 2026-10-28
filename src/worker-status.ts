@@ -11,6 +11,7 @@ export interface WorkerSummary {
   activity: string;
   effort?: string;
   running: number;
+  details?: string[];
 }
 
 type Status = "accepted" | "running" | "completed" | "failed" | "cancelled" | "paused" | "detached";
@@ -309,24 +310,27 @@ export class WorkerStatus {
       activity,
       ...(effort ? { effort } : {}),
       running: active.filter((worker) => worker.status === "running").length,
+      details: selected.map((worker) => this.formatDetails(worker)),
     };
   }
 
   details(toolCallId: string): string[] {
     return [...this.workers.values()]
       .filter((worker) => worker.binding?.toolCallId === toolCallId)
-      .map((worker) =>
-        [
-          worker.role ?? "Worker",
-          worker.tier,
-          worker.receipt?.reason,
-          safeIdentity(worker.receipt?.model),
-          worker.receipt?.thinking,
-          worker.status,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      );
+      .map((worker) => this.formatDetails(worker));
+  }
+
+  private formatDetails(worker: Worker): string {
+    return [
+      worker.role ?? "Worker",
+      worker.tier,
+      worker.receipt?.reason,
+      safeIdentity(worker.receipt?.model),
+      worker.receipt?.thinking,
+      worker.status,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
 
   historySize(): number {

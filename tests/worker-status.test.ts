@@ -62,14 +62,26 @@ test("worker-status exact assessment receipt supplies details; accepted is not r
   assess();
   expect(state.summary()).toBeUndefined();
   state.accepted(accepted());
-  expect(state.summary()).toEqual({ activity: "1 worker accepted", effort: "low", running: 0 });
+  expect(state.summary()).toMatchObject({
+    activity: "1 worker accepted",
+    effort: "low",
+    running: 0,
+  });
   expect(state.details("call-a")).toEqual([
     "worker · fast · assessed · local/fast · low · accepted",
   ]);
   state.child(child());
-  expect(state.summary()).toEqual({ activity: "1 worker running", effort: "low", running: 1 });
+  expect(state.summary()).toMatchObject({
+    activity: "1 worker running",
+    effort: "low",
+    running: 1,
+  });
   state.complete({ sessionId: "session-a", runId: "run-a", state: "complete" });
-  expect(state.summary()).toEqual({ activity: "1 worker completed", effort: "low", running: 0 });
+  expect(state.summary()).toMatchObject({
+    activity: "1 worker completed",
+    effort: "low",
+    running: 0,
+  });
 });
 
 for (const [name, expected] of [
@@ -118,9 +130,17 @@ test("worker-status overlap uses mixed efforts, completion leaves only active ef
   state.accepted(accepted(receipt("logical-b", "high"), "call-b", "run-b"));
   state.child(child());
   state.child(child("run-b"));
-  expect(state.summary()).toEqual({ activity: "2 workers running", effort: "mixed", running: 2 });
+  expect(state.summary()).toMatchObject({
+    activity: "2 workers running",
+    effort: "mixed",
+    running: 2,
+  });
   state.complete({ sessionId: "session-a", runId: "run-a", state: "failed" });
-  expect(state.summary()).toEqual({ activity: "1 worker running", effort: "high", running: 1 });
+  expect(state.summary()).toMatchObject({
+    activity: "1 worker running",
+    effort: "high",
+    running: 1,
+  });
 });
 
 test("worker-status unknown terminal and generic stopped child never invent cancellation", () => {
@@ -171,6 +191,41 @@ test("worker-status workflow siblings join explicit leaf childRunId not root fan
   ]);
   state.complete({ sessionId: "session-a", runId: "workflow", state: "complete" });
   expect(state.summary()?.running).toBe(1);
+});
+
+test("worker-status workflow summary details exclude terminal siblings while another runs", () => {
+  const { state, assess } = fixture();
+  assess();
+  assess("logical-b", "high");
+  state.accepted({ ...accepted(), parentWorkflowRunId: "workflow", workflowKey: "a" });
+  state.accepted({
+    ...accepted(receipt("logical-b", "high"), "call-a", "run-b"),
+    parentWorkflowRunId: "workflow",
+    workflowKey: "b",
+  });
+  state.child({ ...child("workflow"), childRunId: "run-a", workflowKey: "a" });
+  state.child({ ...child("workflow"), childRunId: "run-b", workflowKey: "b" });
+  state.complete({ sessionId: "session-a", runId: "run-a", state: "complete" });
+  expect(state.summary()?.details).toEqual([
+    "worker · fast · assessed · local/fast · high · running",
+  ]);
+});
+
+test("worker-status workflow summary details show only latest terminal sibling", () => {
+  const { state, assess } = fixture();
+  assess();
+  assess("logical-b", "high");
+  state.accepted({ ...accepted(), parentWorkflowRunId: "workflow", workflowKey: "a" });
+  state.accepted({
+    ...accepted(receipt("logical-b", "high"), "call-a", "run-b"),
+    parentWorkflowRunId: "workflow",
+    workflowKey: "b",
+  });
+  state.complete({ sessionId: "session-a", runId: "run-a", state: "complete" });
+  state.complete({ sessionId: "session-a", runId: "run-b", state: "failed" });
+  expect(state.summary()?.details).toEqual([
+    "worker · fast · assessed · local/fast · high · failed",
+  ]);
 });
 
 test("worker-status bound pre-start error terminalizes exact leaf, never root sibling", () => {

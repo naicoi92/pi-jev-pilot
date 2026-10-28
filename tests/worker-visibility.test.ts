@@ -96,6 +96,7 @@ async function fixture(defaultContext = "fresh", withLive = true, timeoutMs = 15
       getBranch: () => [],
     },
     ui: {
+      getToolsExpanded: () => false,
       setWidget(key: string, lines: Factory | string[] | undefined) {
         widgets.set(key, lines);
         snapshots.push(JSON.stringify(lines) ?? "cleared");
@@ -458,7 +459,7 @@ test("worker-status adapter joins applied assessment immediately and waits actua
   expect(f.visible().split("\n")).toHaveLength(1);
 });
 
-test("worker presentation acknowledges original event only after trusted summary, then disposes by generation", async () => {
+test("worker presentation passively observes acceptance without delegating native presentation", async () => {
   const { issueWorkerPresentationBinding, isWorkerPresentationDelegated } =
     await import("../node_modules/pi-subagents/src/shared/worker-presentation.ts");
   const f = await fixture();
@@ -477,50 +478,10 @@ test("worker presentation acknowledges original event only after trusted summary
   issueWorkerPresentationBinding(event);
   f.pi.events.emit("subagent:worker-decision-accepted", event);
   expect(f.visible()).toContain("1 worker accepted");
-  expect(isWorkerPresentationDelegated(sessionId, "leaf")).toBe(true);
-  await f.fire("session_before_tree");
   expect(isWorkerPresentationDelegated(sessionId, "leaf")).toBe(false);
-  await f.fire("session_start");
-  f.pi.events.emit("subagent:worker-decision-accepted", event);
-  expect(isWorkerPresentationDelegated(sessionId, "leaf")).toBe(false);
-  await f.fire("session_shutdown");
   const { registerWorkerPresentation } = await import("pi-subagents/worker-presentation");
-  const replacement = registerWorkerPresentation({ sessionId });
-  await f.fire("session_shutdown");
-  expect(() => registerWorkerPresentation({ sessionId })).toThrow("already registered");
-  replacement.dispose();
-});
-
-test("worker presentation false acknowledgement and duplicate owner retain native fallback", async () => {
-  const { registerWorkerPresentation } = await import("pi-subagents/worker-presentation");
-  const { isWorkerPresentationDelegated } =
-    await import("../node_modules/pi-subagents/src/shared/worker-presentation.ts");
-  const f = await fixture();
-  const sessionId = f.ctx.sessionManager.getSessionFile()!;
-  await f.call({ agent: "worker", task: brief }, "bound");
-  const prepared = await prepareFixtureWorker(f.ctx, { agent: "worker", task: brief });
-  if (prepared.kind !== "committed") throw new Error("No committed fixture receipt");
-  // A reconstructed/unissued event can update trusted local details, never hide native surfaces.
-  f.pi.events.emit("subagent:worker-decision-accepted", {
-    version: 1,
-    sessionId,
-    toolCallId: "bound",
-    runId: "unissued",
-    logicalLaunchId: prepared.receipt.logicalLaunchId,
-    receipt: prepared.receipt,
-  });
-  expect(f.visible()).toContain("1 worker accepted");
-  expect(isWorkerPresentationDelegated(sessionId, "unissued")).toBe(false);
-  await f.fire("session_shutdown");
   const other = registerWorkerPresentation({ sessionId });
-  try {
-    await f.fire("session_start");
-    await f.call({ agent: "worker", task: brief }, "new");
-    expect(isWorkerPresentationDelegated(sessionId, "unissued")).toBe(false);
-  } finally {
-    await f.fire("session_shutdown");
-    other.dispose();
-  }
+  other.dispose();
 });
 
 test("worker presentation without live summary never acknowledges native leaf", async () => {
