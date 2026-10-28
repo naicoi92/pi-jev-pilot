@@ -166,6 +166,7 @@ for (const scenario of scenarios)
             models: ["parent", "configured", "fast", "balanced", "deep", "expert"].map((id) => ({
               id,
               reasoning: true,
+              thinkingLevelMap: { off: "none", low: "low", medium: "medium", high: "high" },
               input: ["text"],
               contextWindow: 32000,
               maxTokens: 512,
@@ -280,7 +281,7 @@ for (const scenario of scenarios)
         return value;
       };
       console.error(
-        `terminal failure; endpointEntries=${JSON.stringify(endpointEntries)}; providerRequests=${requests.length}; classifications=${classifications.length}; result=${JSON.stringify(terminal.result, sanitize)}`,
+        `terminal failure; endpointEntries=${JSON.stringify(endpointEntries)}; providerModels=${JSON.stringify(requests.map((request) => (["parent", "configured", "fast", "balanced", "deep", "expert"].includes(String(request.model)) ? request.model : "[redacted]")))}; classifications=${classifications.length}; result=${JSON.stringify(terminal.result, sanitize)}`,
       );
     }
     expect(terminal.isError).not.toBe(true);
