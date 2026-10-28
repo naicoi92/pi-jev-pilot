@@ -1,7 +1,7 @@
 # 04: Next-boundary refresh and visible tuning
 
 Status: ready-for-agent
-Implementation: pending
+Implementation: completed
 
 **Parent:** [Single-file Jev configuration](../spec.md)
 
@@ -24,6 +24,12 @@ Implementation: pending
 Before implementation, map each criterion to an observable test and record the RED command. Use the highest approved native/local-provider seam; parser tests alone are insufficient. Record GREEN commands, source SHA, artifacts and limits. Keep intermediate changes on the integration branch; do not deploy or alter personal settings. Each ticket needs independent review before completion.
 
 ## Comments
+
+### Revised MVP integration verification
+
+Reviewed worker registration MVP merged at `9efe39f554a6ecafad272f8dca29238609fce1a7`. Integration verification at that SHA: worker native 15/15 including isolated process restart, main/config native 32/32, tuning and focused tests 158/158, focused v1 358/358, presentation 3/3, and lint/typecheck/format checks passed. Gates overlap and are not additive unique coverage. Evidence: `/Users/naicoi/Projects/jev-config-migration-evidence/integration-04-worker/run.oCcBeZ72/` and `ticket04-worker-mvp/`.
+
+Worker routing and effective timeout use the operator-approved process-restart boundary; disabled native workflow/RPC exception is the separately approved scope amendment below, not an implemented interception. Earlier native startup failures remain unexplained; the complete passing rerun does not establish a flake fix. Six pre-existing tuning CLI failures remain unwaived and require disposition in ticket 05. Two bare `python3` recorder invocations violated the required tooling rule; logs and disclosure are retained. Packaged acceptance remains ticket 05; rollout remains separately gated.
 
 ### MVP disabled native launch amendment
 
