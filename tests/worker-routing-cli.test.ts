@@ -131,21 +131,8 @@ for (const scenario of cases)
       PI_OFFLINE: "1",
       PI_TELEMETRY: "0",
       PI_SUBAGENTS_TEMP_ROOT: join(directory, "runtime"),
-      JEV_EFFORT_ENABLED: "true",
-      JEV_SKILLS_ENABLED: "false",
-      JEV_STRATEGY_ENABLED:
-        name === "workflow-guidance" || name === "slot-workflow" ? "true" : "false",
-      JEV_QUALITY_ENABLED: "false",
-      JEV_DESIGN_ENABLED: "false",
-      JEV_WORKER_ROUTING_ENABLED:
-        name === "disabled" ||
-        name === "slot-risk-disabled" ||
-        name === "profile-executor" ||
-        routingOff
-          ? "false"
-          : "true",
+      BUN_INSTALL_CACHE_DIR: Bun.env.BUN_INSTALL_CACHE_DIR,
       JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
-      JEV_TIMEOUT_MS: name.includes("timeout") ? "100" : "5000",
       ...(name === "json-only"
         ? {
             JEV_MAIN_ROUTING_ENABLED: "true",
@@ -155,32 +142,17 @@ for (const scenario of cases)
           }
         : {}),
     };
-    await writeFile(
-      join(agentDir, "settings.json"),
-      JSON.stringify({
-        jevPilot: {
-          tiers: {
-            fast: "local/parent",
-            balanced: "local/selected",
-            deep: riskOmitted ? "local/deep" : "local/configured",
-          },
-        },
-      }),
-    );
-    if (slot || junior) {
-      env.JEV_CREW_CONFIG = join(directory, "crew.json");
-      await writeFile(
-        env.JEV_CREW_CONFIG,
-        JSON.stringify({
-          mode: name === "slot-standard" ? "standard" : junior ? "junior-lead" : "budget",
-          slots: [
-            { name: "deep", model: "local/selected" },
-            { name: "alpha", model: "local/configured", when: "Read and report logs." },
-          ],
-          ...(name.startsWith("junior-selected") || juniorWorkflow ? { junior: "alpha" } : {}),
-        }),
-      );
-    }
+    const crew =
+      slot || junior
+        ? {
+            mode: name === "slot-standard" ? "standard" : junior ? "junior-lead" : "budget",
+            slots: [
+              { name: "deep", model: "local/selected" },
+              { name: "alpha", model: "local/configured", when: "Read and report logs." },
+            ],
+            ...(name.startsWith("junior-selected") || juniorWorkflow ? { junior: "alpha" } : {}),
+          }
+        : undefined;
     const commands = evidence.commands;
     const run = async (args: string[], cwd = directory) => {
       const child = Bun.spawn(args, { cwd, env, stdout: "pipe", stderr: "pipe" });
@@ -191,7 +163,19 @@ for (const scenario of cases)
       expect(exitCode, output).toBe(0);
       return output;
     };
-    await run([Bun.which("bun")!, "install"]);
+    await run([Bun.which("bun")!, "install", "--ignore-scripts"]);
+    await run([
+      Bun.which("node")!,
+      "-e",
+      `const fs=require("fs"); for (const name of ["@earendil-works/pi-coding-agent", "@earendil-works/pi-ai", "pi-subagents"]) { const p=JSON.parse(fs.readFileSync("node_modules/"+name+"/package.json", "utf8")); console.log(JSON.stringify({name, version:p.version})); }`,
+    ]);
+    await run([
+      "shasum",
+      "-a",
+      "256",
+      "bun.lock",
+      "node_modules/pi-subagents/src/shared/worker-decision-authority.ts",
+    ]);
     const packed = join(directory, "pi-jev-pilot.tgz");
     await run([Bun.which("bun")!, "pm", "pack", "--filename", packed], root);
     await run(["shasum", "-a", "256", packed]);
@@ -412,7 +396,34 @@ for (const scenario of cases)
         );
       },
     });
-    env.JEV_SYSTEM_ONE_URL = `${server.url}classify`;
+    await writeFile(
+      join(agentDir, "jev-pilot.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        effortEnabled: true,
+        skillsEnabled: false,
+        strategyEnabled: name === "workflow-guidance" || name === "slot-workflow",
+        qualityEnabled: false,
+        designEnabled: false,
+        workerRoutingEnabled: !(
+          name === "disabled" ||
+          name === "slot-risk-disabled" ||
+          name === "profile-executor" ||
+          routingOff
+        ),
+        classifier: {
+          url: `${server.url}classify`,
+          apiKeyEnv: "JEV_SYSTEM_ONE_API_KEY",
+          timeoutMs: name.includes("timeout") ? 100 : 5000,
+        },
+        tiers: {
+          fast: "local/parent",
+          balanced: "local/selected",
+          deep: riskOmitted ? "local/deep" : "local/configured",
+        },
+        ...(crew ? { crew } : {}),
+      }),
+    );
     await writeFile(
       join(agentDir, "models.json"),
       JSON.stringify({
@@ -457,9 +468,6 @@ for (const scenario of cases)
       await writeFile(
         join(agentDir, "settings.json"),
         JSON.stringify({
-          jevPilot: {
-            tiers: { fast: "local/parent", balanced: "local/selected", deep: "local/configured" },
-          },
           subagents: { defaultSubagentContext: "fork" },
         }),
       );
@@ -840,6 +848,23 @@ export default function(pi) {
         );
       } else {
         await wait(() => records.some((record) => record.type === "tool_execution_end"));
+        const terminal = records.find((record) => record.type === "tool_execution_end")!;
+        if (terminal.isError === true) {
+          const sanitize = (key: string, value: unknown) => {
+            if (/body|headers?|api.?key|token|authorization|credential/i.test(key))
+              return "[redacted]";
+            if (typeof value === "string")
+              return /^(text|Worker decision authority blocked: [a-z-]+\.|This operation was aborted)$/.test(
+                value,
+              )
+                ? value
+                : "[redacted]";
+            return value;
+          };
+          console.error(
+            `terminal failure; classifications=${classifications.length}; childStarted=${childStarted}; result=${JSON.stringify(terminal.result, sanitize)}`,
+          );
+        }
         const result = await readResults();
         await awaitWorkflowChildren(result.details);
         if (background) {
