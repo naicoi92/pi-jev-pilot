@@ -9,6 +9,7 @@ function host() {
   const statuses: (string | undefined)[] = [];
   let component: Component | undefined;
   const ui = {
+    getToolsExpanded: () => false,
     setWidget(_key: string, content: unknown) {
       widgets.push(content);
       component =

@@ -2,7 +2,7 @@
 
 ## Presentation contract
 
-Default Jev widget is one concise live row, for example `Jev · 1 worker running · low`. Worker debug rows, local labels, raw receipts, unknown identities and unconfirmed-launch text are not default presentation. Pi's standard tool-output expansion action (`app.tools.expand`, default Ctrl+O) reveals role, actual tier when known, committed decision reason, physical target, effort and lifecycle status per worker. Jev registers renderers, not a shortcut or editor/input replacement. Native expanded tool result/error content remains available; historical/unobserved tool calls keep their native renderer.
+Default Jev widget is one concise live row, for example `Jev · 1 worker running · low`. Pi's standard tool-output expansion action (`app.tools.expand`, default Ctrl+O) reveals selected worker role, tier when known, committed reason, physical target, effort and lifecycle status in the Jev widget. Native calls, results, notifications and Fleet remain executor-owned; Jev does not suppress or replace them.
 
 Only pending main/worker assessments animate. Acceptance is not running. The public authority request's resolved-agent role and actual Jev tier-selection metadata stay keyed by logical launch identity; `onApplied` records immutable committed target/effort. No task, description, private policy context, guessed default tier or internal ID formula enters presentation. Metadata joins a genuine tool row only after executor acceptance supplies the exact consumed receipt and originating public tool call. Acceptance itself remains logical commitment, never spawn/provider proof.
 
@@ -11,12 +11,14 @@ Actual child execution notifications advance accepted → running. Workflow stat
 ## Regression seams
 
 - `worker-status.test.ts`: exact receipt/session/generation joins; accepted versus actual start; terminal stickiness; overlap/mixed efforts; stale reload; bounded history; root/leaf workflow isolation.
-- `worker-status-renderer.test.ts`: collapsed versus standard expanded options; narrow widths; useful failure result preserved; historical native output preserved.
+- `worker-summary-terminal.py`: native call/result visibility and widget expansion in the exercised terminal scenarios.
 - `worker-visibility.test.ts`: real public authority preparation through delayed loopback classifier, actual applied receipt, accepted/run event projection, assessment spinner cleanup and no debug rows.
 - `live-status.test.ts`: one-row width budget, main versus worker effort, timer lifecycle and Unicode.
 - Existing authority/comparison/tier/crew tests remain policy controls. Optional observer callbacks do not change selected target/effort, owner fences, comparison, expert admission or fallback policy.
 
-## Recorded verification
+## Historical verification
+
+The following records describe earlier presentation versions; claims about renderer ownership or suppression are historical, not the current contract.
 
 Reviewed executor `9f0dcee736e64db6ecc1cfcd87bb0eecac5fbf51` supplies the exported acceptance type/channel, truthful child-start boundary, exact-event presentation delegation and typed attached foreground leaf terminals. Manifest, canonical Bun lock and active fixture pins match. `bun install --lockfile-only --ignore-scripts` updated the lock without installation or lifecycle scripts.
 
@@ -36,10 +38,8 @@ Original foreground workflow failure RED remains recorded in `/tmp/jev-worker-su
 
 Bounded source union: **249 tests passed, 0 failed, 1130 assertions across 13 files**. Native deterministic loopback proof uses the genuine Jev checkout and exact reviewed executor archive: ASYNC success, provider failure, explicit cancellation, foreground workflow failure, and running-child reload/disposal fallback. Default direct-leaf widget/render checks plus captured default terminal byte slices contain no acknowledged leaf debug/error/path rows; standard Ctrl+O reveals decision reason/metadata and useful failure/cancel output. Observer renders genuine native notification components with genuine message details identity, without replacing their registration. Reload restores native unacknowledged running rows and fresh Jev ready state. Logs and limitations: `/tmp/jev-worker-summary/final-integration-report.md`.
 
-## Limits
+## Current limits
 
-Jev registers public `pi-subagents/worker-presentation` ownership for the same file-first authority session before launches. Only the original executor event is acknowledged, synchronously after trusted state/details storage and live summary readiness. False acknowledgement, duplicate owner or missing live summary keeps native fallback. Switch/tree/compact/abort cleanup and reload/shutdown dispose captured ownership; stale cleanup cannot remove a replacement.
-
-Exact acknowledged direct leaves now omit executor async/Fleet rows and collapsed native completion notices. Native notification content/display flags remain unchanged; standard expanded reason/output stays available. Native silent success (`display:false`) remains silent. Workflow wrappers/planned graph/checklist, mixed/unbound notices, controls and restored history remain native. No global renderer override, content/display mutation, managed setting or extra assessment message is used; no all-workflow-rows-hidden claim.
+Jev does not register presentation ownership or hide native async/Fleet rows and collapsed completion notices. Native silent success (`display:false`) remains silent. The current port's native evidence is recorded separately in the ticket 05 evidence; earlier suppression claims above are historical.
 
 Historical native rendering and expanded useful error/result content are preserved. New terminal metadata is session-scoped, not durable replay. Workflow sibling joins, overlap and stale notification guards have deterministic unit coverage; new native workflow proof covers one true foreground child success and exposes the failure limitation above, not simultaneous multi-worker or reload-in-flight behavior. Terminal resize, alternate themes, screen-reader behavior and human visual review were not newly exercised. Full install-heavy suite was not run. No hosted inference, managed installation or push occurred. Independent parent review remains required before installation.

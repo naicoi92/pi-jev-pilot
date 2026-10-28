@@ -145,7 +145,7 @@ export function createWorkerAuthority(options: {
                 `Jev tier ${tier} (${setting}) cannot run: ${options.tiers[tier]} · ${reason}`,
             ),
             cascade.fallbackTier
-              ? `Falling back to tier ${cascade.fallbackTier} (jevPilot.tiers.${cascade.fallbackTier}) at its highest supported effort.`
+              ? `Falling back to tier ${cascade.fallbackTier} (jev-pilot.json tiers.${cascade.fallbackTier}) at its highest supported effort.`
               : "No configured tier can run; keeping the retained worker model.",
           ].join("\n"),
         );
