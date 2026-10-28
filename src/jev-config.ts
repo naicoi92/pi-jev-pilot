@@ -41,6 +41,55 @@ const FLAGS = {
   recordDecisions: true,
 } as const;
 const DESIGN_SKILLS = ["design-taste-frontend", "impeccable", "web-design-guidelines"];
+const LEGACY_ENV = new Set([
+  "JEV_EFFORT_ENABLED",
+  "JEV_WORKER_ROUTING_ENABLED",
+  "JEV_SKILLS_ENABLED",
+  "JEV_SKILL_RERANK",
+  "JEV_STRATEGY_ENABLED",
+  "JEV_QUALITY_ENABLED",
+  "JEV_DESIGN_ENABLED",
+  "JEV_RECORD_DECISIONS",
+  "JEV_DESIGN_SKILLS",
+  "JEV_SYSTEM_ONE_URL",
+  "JEV_SYSTEM_ONE_MODEL",
+  "JEV_TIMEOUT_MS",
+  "JEV_SYSTEM_ONE_API_KEY",
+  "TYPESAFE_API_KEY",
+  "JEV_CREW_CONFIG",
+  "JEV_MAIN_ROUTING_ENABLED",
+]);
+const warnedLegacyNames = new Set<string>();
+let warnedGlobalSettings = false;
+
+function warnLegacyConfig(apiKeyEnv: string): void {
+  for (const name of Object.keys(process.env).sort()) {
+    if (name === apiKeyEnv || (!LEGACY_ENV.has(name) && !name.startsWith("JEV_TIER_"))) continue;
+    // Bound both retained names and output even for arbitrary tier environment names.
+    if (
+      !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name) ||
+      warnedLegacyNames.has(name) ||
+      warnedLegacyNames.size >= 32
+    )
+      continue;
+    warnedLegacyNames.add(name);
+    console.warn(
+      `Jev: ignored legacy environment variable ${name}; configure jev-pilot.json instead.`,
+    );
+  }
+  if (warnedGlobalSettings) return;
+  try {
+    const settings: unknown = JSON.parse(
+      readFileSync(join(getAgentDir(), "settings.json"), "utf8"),
+    );
+    if (settings && typeof settings === "object" && Object.hasOwn(settings, "jevPilot")) {
+      warnedGlobalSettings = true;
+      console.warn("Jev: ignored global settings.json jevPilot; configure jev-pilot.json instead.");
+    }
+  } catch {
+    // Settings are not a configuration source; unreadable or malformed settings do not change validation.
+  }
+}
 const RESERVED_NAMES = new Set(
   "effort raise subagents skills strategy quality design model pet all reset status mode models crew junior reviewer tune remove delete on off help list default set when".split(
     " ",
@@ -183,6 +232,7 @@ export function loadJevConfig(): JevConfig {
   if ("junior" in crew && (typeof crew.junior !== "string" || !names.has(crew.junior)))
     fail("crew.junior", "expected the name of a configured slot");
   const frozenSlots = Object.freeze(slots);
+  warnLegacyConfig(apiKeyEnv);
   return Object.freeze({
     schemaVersion: 1,
     ...flags,

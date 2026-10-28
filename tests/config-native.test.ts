@@ -109,7 +109,14 @@ for (const directory of ["custom", "default"]) {
     expect(f.classifications[0]?.model).toBe("file-model");
     expect(f.sawClassifierBearer).toBe(true);
     expect(f.generations[0]?.reasoning_effort).toBe("high");
-    expect(JSON.stringify(f.records) + f.stderr).not.toContain("named-test-credential");
+    const output = JSON.stringify(f.records) + f.stderr;
+    expect(output).not.toContain("named-test-credential");
+    expect(output).not.toContain("wrong-env");
+    expect(output).toContain("JEV_EFFORT_ENABLED");
+    expect(output).toContain("JEV_SYSTEM_ONE_MODEL");
+    expect(output).toContain("settings.json jevPilot");
+    expect(output.match(/JEV_EFFORT_ENABLED/g)).toHaveLength(1);
+    expect(output.match(/settings\.json jevPilot/g)).toHaveLength(1);
   }, 20000);
 }
 
