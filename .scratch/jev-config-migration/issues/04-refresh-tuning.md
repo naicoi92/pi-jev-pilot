@@ -25,6 +25,10 @@ Before implementation, map each criterion to an observable test and record the R
 
 ## Comments
 
+### MVP disabled native launch amendment
+
+Operator accepted that, when worker routing is disabled, native workflow inner leaves and RPC launches outside Jev authority do not read Jev configuration and are not blocked by Jev for malformed files. Startup, commands and assessments that read configuration still validate it strictly, including disabled fields. No executor interception seam is added.
+
 ### MVP worker registration amendment
 
 Operator accepted a full Pi process restart after existing work has ended for worker routing and effective timeout changes. Main timeout remains next-boundary; non-timeout worker settings retain their per-leaf snapshot. This supersedes only those original worker next-boundary requirements; all other acceptance remains open. Do not restart the operator's Pi automatically.

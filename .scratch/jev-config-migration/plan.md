@@ -77,6 +77,10 @@ Legacy option env never changes behavior. Emit bounded deduplicated diagnostics 
 
 Operator accepted a full Pi process restart after existing work ends to apply `workerRoutingEnabled` and the effective worker classifier timeout, including tuning overlay changes. Same-process `/reload` is insufficient for enabled-to-disabled transition. Do not restart automatically or claim active work survives shutdown. Main assessment timeout remains next-boundary; non-timeout worker options retain their per-leaf snapshot behavior. This amendment supersedes only the original next-boundary requirements for those two worker registration settings in the lifecycle section and CFG-07. Other validation and safety requirements remain unchanged. Verify the restart behavior with isolated processes; do not mark a gap covered without evidence.
 
+## MVP amendment — disabled native launches
+
+When worker routing is disabled, native workflow inner leaves and RPC launches outside Jev authority do not read Jev configuration and are not blocked by Jev for malformed files. Strict validation remains required whenever startup, a command or an assessment reads the file, including validation of disabled fields. This exception supersedes universal worker-launch interception only; it does not waive validation at actual Jev boundaries.
+
 ## Snapshot, refresh and lifecycle
 
 At each eligible main assessment or worker logical launch, read and validate one immutable configuration snapshot before effects. Capture base options, credential reference/resolved credential for that request, tiers, crew and effective tuning consistently. Share it across skill batches/rerank, preflight, assessment, policy/clamp and related status; no mid-assessment rereads. Do not persist the resolved secret, secret-derived fingerprints, prompts or authored task bodies.
