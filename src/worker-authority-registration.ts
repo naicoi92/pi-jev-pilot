@@ -5,9 +5,8 @@ import {
   type WorkerDecisionAuthorityRegistration,
 } from "pi-subagents/worker-decision-authority";
 import { createWorkerAuthority } from "./worker-authority.ts";
-import { effectiveTunables } from "./tuning.ts";
 import { assertRegisteredJunior } from "./crew-junior.ts";
-import { captureEffortAssessment } from "./effort-assessment.ts";
+import { captureEffortAssessment, type EffortAssessment } from "./effort-assessment.ts";
 import type { WorkerStatus } from "./worker-status.ts";
 
 const sessionKey = (ctx: ExtensionContext) =>
@@ -16,7 +15,7 @@ const sessionKey = (ctx: ExtensionContext) =>
 /** Registration belongs to this extension instance; never invalidate a cleanup-time current owner. */
 export function registerWorkerAuthorityLifecycle(
   pi: ExtensionAPI,
-  enabled: () => boolean,
+  registered: () => EffortAssessment | undefined,
   assess?: () => () => void,
   status?: WorkerStatus,
 ) {
@@ -38,7 +37,8 @@ export function registerWorkerAuthorityLifecycle(
   pi.on("session_start", (_event, ctx) => {
     dispose();
     failed = true;
-    if (!enabled()) {
+    const snapshot = registered();
+    if (!snapshot?.config.workerRoutingEnabled) {
       failed = false;
       return;
     }
@@ -47,12 +47,12 @@ export function registerWorkerAuthorityLifecycle(
       sessionId,
       // Public host exposes no session expiry. Launch timeout remains independently executor-owned.
       lifetimeDeadline: Number.MAX_SAFE_INTEGER,
-      assessmentTimeoutMs: effectiveTunables().timeoutMs,
+      assessmentTimeoutMs: snapshot.tuning.timeoutMs,
       authority: {
         async decide(request, context) {
           const assessment = (() => {
             try {
-              return captureEffortAssessment();
+              return captureEffortAssessment(snapshot.tuning.timeoutMs);
             } catch (error) {
               ctx.ui.notify(
                 error instanceof Error ? error.message : "Invalid Jev worker configuration.",

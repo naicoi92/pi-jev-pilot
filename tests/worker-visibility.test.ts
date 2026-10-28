@@ -20,7 +20,7 @@ afterEach(async () => {
   for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
   Object.assign(process.env, saved);
 });
-async function fixture(defaultContext = "fresh", withLive = true) {
+async function fixture(defaultContext = "fresh", withLive = true, timeoutMs = 1500) {
   const directory = await mkdtemp(join(tmpdir(), "pi-jev-worker-unit-"));
   const agent = join(directory, "agent");
   await mkdir(join(agent, "agents"), { recursive: true });
@@ -142,7 +142,14 @@ async function fixture(defaultContext = "fresh", withLive = true) {
       return Response.json(response);
     },
   });
-  process.env.JEV_SYSTEM_ONE_URL = server.url.toString();
+  await writeFile(
+    join(agent, "jev-pilot.json"),
+    JSON.stringify({
+      tiers: { fast: "local/fast", balanced: "local/balanced", deep: "local/deep" },
+      classifier: { url: server.url.toString(), apiKeyEnv: "JEV_SYSTEM_ONE_API_KEY", timeoutMs },
+    }),
+  );
+  await fire("session_start");
   return {
     call,
     settings: (value: unknown) => {
@@ -223,8 +230,7 @@ for (const transition of [
   "session_before_compact",
 ]) {
   test(`STATUS-5 worker ${transition} leaves no pending assessment`, async () => {
-    if (transition === "timeout") process.env.JEV_TIMEOUT_MS = "30";
-    const f = await fixture();
+    const f = await fixture("fresh", true, transition === "timeout" ? 30 : 1500);
     f.delay(100);
     if (transition === "error") f.response({ answers: {} } as never);
     const preparation = prepareFixtureWorker(f.ctx, { agent: "worker", task: brief });

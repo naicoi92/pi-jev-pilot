@@ -8,11 +8,14 @@ export interface EffortAssessment {
 }
 
 /** Capture file base and learned overlay before asynchronous assessment work. */
-export function captureEffortAssessment(): EffortAssessment {
+export function captureEffortAssessment(workerTimeoutMs?: number): EffortAssessment {
   const config = loadJevConfig();
   const tuning = effectiveTunables({
     ...DEFAULT_EFFORT_THRESHOLDS,
     timeoutMs: config.classifier.timeoutMs,
   });
-  return Object.freeze({ config, tuning: Object.freeze(tuning) });
+  return Object.freeze({
+    config,
+    tuning: Object.freeze({ ...tuning, timeoutMs: workerTimeoutMs ?? tuning.timeoutMs }),
+  });
 }

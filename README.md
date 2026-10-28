@@ -25,46 +25,25 @@ pi --model provider/model-id
 
 Resolving the pinned executor dependency needs the Bun package cache or network access to public GitHub; no credential is involved. Nothing has been published: no npm release or GitHub Release exists, and this repository has no remote.
 
-Do not commit credentials. Backend keys and feature switches remain in the Pi process environment. Worker physical tiers use JSON-only public effective Pi settings, described below:
-
-| Variable                 | Default / meaning                                                                                     |
-| ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `JEV_EFFORT_ENABLED`     | `true`; only `true`/`false` accepted; false disables effort questions and writes                      |
-| `JEV_SKILLS_ENABLED`     | `true`; only `true`/`false` accepted; false disables new skill matching                               |
-| `JEV_SKILL_RERANK`       | `false`; optional upstream shortlist recheck; only `true`/`false`                                     |
-| `JEV_STRATEGY_ENABLED`   | `true`; only `true`/`false`; strategy advice, never worker dispatch                                   |
-| `JEV_QUALITY_ENABLED`    | `true`; only `true`/`false`; request quality reads and loop observation advice                        |
-| `JEV_DESIGN_ENABLED`     | `true`; only `true`/`false`; upstream design-pack context advice                                      |
-| `JEV_RECORD_DECISIONS`   | `true`; only `true`/`false`; false stops new decision-ledger entries and correction marks             |
-| `JEV_DESIGN_SKILLS`      | `design-taste-frontend, impeccable, web-design-guidelines`; comma-separated configured resource names |
-| `JEV_SYSTEM_ONE_URL`     | `https://api.typesafe.ai/v1/systemone`; complete TypeSafe-compatible endpoint                         |
-| `JEV_SYSTEM_ONE_API_KEY` | Bearer key; falls back to `TYPESAFE_API_KEY` when unset                                               |
-| `JEV_SYSTEM_ONE_MODEL`   | `jev-latest`                                                                                          |
-| `JEV_TIMEOUT_MS`         | `1500`; positive integer milliseconds                                                                 |
-
-An empty/malformed boolean or backend setting is a configuration error, not permission to choose another service or model. An explicitly empty `JEV_DESIGN_SKILLS` list names no skills; comma-separated names are trimmed, deduplicated and empty entries ignored, as upstream. The endpoint must use HTTP(S), without embedded username/password. Use HTTPS for hosted services; HTTP is supported for local fixtures. No automatic classifier-backend fallback is performed.
+Do not commit credentials. Configure Jev in `<Pi agent dir>/jev-pilot.json` (`PI_CODING_AGENT_DIR` selects the directory). Classifier credentials remain in the environment variable named by `classifier.apiKeyEnv` (default `TYPESAFE_API_KEY`); never put the secret in JSON. Legacy option environment variables and Pi settings are ignored. Classifier URLs must be HTTP(S), without embedded credentials; remote HTTP sends requests and credentials in plaintext. Redirects are rejected.
 
 ## Configure worker model tiers
 
-The main model stays the physical model selected by the user. Jev never registers `jev/auto`, automatically changes the main model or writes model defaults. Start with `pi --model provider/model-id`; old `jev/auto` startup/default selections must be replaced with a physical model. Auto-effort, skill matching and eligible advice still operate on that physical session.
-
-Ordinary direct/async worker routing uses these mappings in Pi's `settings.json` (agent-directory global settings, or trusted project settings):
+The main model remains the user-selected physical model. Example `jev-pilot.json`:
 
 ```json
 {
-  "jevPilot": {
-    "tiers": {
-      "fast": "provider/fast-model-id",
-      "balanced": "provider/balanced-model-id",
-      "deep": "other-provider/deep-model-id"
-    }
+  "workerRoutingEnabled": true,
+  "classifier": { "timeoutMs": 1500, "apiKeyEnv": "TYPESAFE_API_KEY" },
+  "tiers": {
+    "fast": "provider/fast-model-id",
+    "balanced": "provider/balanced-model-id",
+    "deep": "other-provider/deep-model-id"
   }
 }
 ```
 
-Keep unrelated settings/package declarations intact. No credentials belong in `jevPilot`; System One keys remain environment variables and model authentication uses Pi's normal configuration. The worker adapter consumes public `pi.getSettings()` at session start/reload; host recursive global/project merge, project trust, `PI_CODING_AGENT_DIR` and SDK settings overrides remain authoritative. It does not independently read project settings. Reload/restart after editing mappings.
-
-Worker mappings are **JSON-only**. Legacy `JEV_MAIN_ROUTING_ENABLED` and `JEV_TIER_FAST/BALANCED/DEEP` are ignored. Obsolete `jevPilot.mainRoutingEnabled` is ignored like an unknown key, regardless of value: **remove it from settings**. It cannot register a router or change main selection. No replacement main-enable switch exists. Authentication keys (including `TYPESAFE_API_KEY`) and unrelated environment settings are unchanged.
+Worker routing and effective worker classifier timeout (JSON base plus applied tuning overlay) are captured at registration. To apply changes, stop new dispatches, wait for all known workers and assessments to finish, close Pi, then start a new Pi process. Same-process `/reload` is insufficient for disabling previously enabled routing. Shutdown can cancel active work; it does not preserve active assessments or workers. Main assessments use the current timeout at their next boundary; other worker settings use fresh per-leaf snapshots. Edit config atomically; malformed config rejects new eligible boundaries.
 
 Every tier is optional. An absent, empty or whitespace-only value leaves the tier unconfigured, and an unconfigured tier is never offered to the classifier; with no tier and no custom slot configured, no tier question is sent and the worker keeps its own model. A high-risk decision (risky above .7) selects `deep`, else the highest configured non-expert tier, else changes nothing; it never selects `expert`. `null`, non-string or malformed mappings fail with the field name, never select a substitute. Main-only operation and inapplicable workers do not validate unused tiers. Custom slot and baseline targets must resolve exactly to an authenticated physical Pi registry model; virtual/unknown/unauthenticated targets fail actionably. A configured tier model that cannot run is handled by the fallback below, not by failing the launch. Mappings may be identical; the first slash separates provider from model ID, which may itself contain slashes. Worker tier policy and custom slots remain independent of main selection.
 
@@ -152,7 +131,7 @@ Run **`/jev report`** for a summary of real observations: turns, how often Jev a
 
 Valid effort assessments are authoritative: effort confidence is diagnostic, and a short approval or option selection does not veto a fresh assessment. Valid explicit classifier choices precede legacy score/distribution normalization; malformed or inconsistent responses still fail closed. Main max lock, xhigh selection ceiling, risk treatment and model-supported effort adaptation remain. Worker model/tier confidence and expert admission are unchanged. See [decision and regression matrix](docs/testing/authoritative-effort-regression.md).
 
-From at least **20 fresh turns** (ledger entries newer than the last applied change or tuning reset) Jev can propose small, bounded changes to four upstream settings: `timeoutMs` (300–5000), `minDowngradeConfidence` (0–0.95), `effortCloseMargin` (0–0.5) and `minHighConfidence` (0–0.95). Proposal rules are the upstream ones: a timeout raise when more than 10% of asked turns went unanswered; higher downgrade bar and margin when more than 20% of at least 10 low/medium starts were corrected by you (upstream's mid-turn raise signal does not exist here); a higher high-confidence bar when more than 60% of at least 10 high starts were short and clean; a lower margin for xhigh/max starts under the same rule when nothing points the other way. After every 20th fresh turn Jev only announces a proposal. **`/jev tune`** shows each value against its base and any proposal, **`/jev tune apply`** takes the proposals and **`/jev tune reset`** returns to the base values; nothing changes without apply. Applying or resetting starts a new evidence window, so repeated evidence cannot push a threshold twice. Learned values overlay the base configuration (upstream defaults, with `JEV_TIMEOUT_MS` as the base timeout) in `<Pi agent dir>/jev-pilot/tuning.json`, are read at each decision by the main session and its worker-plan decisions (so they apply on the next eligible prompt and survive reload and new sessions), and are never touched by `/jev report reset`; tuning reset does not delete the ledger. An unreadable tuning file is reported and never blocks a turn, which uses base values until `/jev tune reset` rewrites it. None of these commands makes a classifier or model request. For stored-format compatibility, confidence-bar proposals and values remain readable and writable, but `minDowngradeConfidence` and `minHighConfidence` no longer veto valid effort assessments. `effortCloseMargin` affects only legacy decisions without an explicit choice; timeout tuning remains active.
+From at least **20 fresh turns** (ledger entries newer than the last applied change or tuning reset) Jev can propose small, bounded changes to four upstream settings: `timeoutMs` (300–5000), `minDowngradeConfidence` (0–0.95), `effortCloseMargin` (0–0.5) and `minHighConfidence` (0–0.95). Proposal rules are the upstream ones: a timeout raise when more than 10% of asked turns went unanswered; higher downgrade bar and margin when more than 20% of at least 10 low/medium starts were corrected by you (upstream's mid-turn raise signal does not exist here); a higher high-confidence bar when more than 60% of at least 10 high starts were short and clean; a lower margin for xhigh/max starts under the same rule when nothing points the other way. After every 20th fresh turn Jev only announces a proposal. **`/jev tune`** shows each value against its base and any proposal, **`/jev tune apply`** takes the proposals and **`/jev tune reset`** returns to the base values; nothing changes without apply. Applying or resetting starts a new evidence window, so repeated evidence cannot push a threshold twice. Learned values overlay the base configuration (upstream defaults, with `classifier.timeoutMs` as the base timeout) in `<Pi agent dir>/jev-pilot/tuning.json`, are read at each main decision; worker timeout changes require a full process restart after work ends, and are never touched by `/jev report reset`; tuning reset does not delete the ledger. An unreadable tuning file is reported and never blocks a turn, which uses base values until `/jev tune reset` rewrites it. None of these commands makes a classifier or model request. For stored-format compatibility, confidence-bar proposals and values remain readable and writable, but `minDowngradeConfidence` and `minHighConfidence` no longer veto valid effort assessments. `effortCloseMargin` affects only legacy decisions without an explicit choice; timeout tuning remains active.
 
 ## Know what leaves the device
 
@@ -251,7 +230,7 @@ Tested stack, all local and deterministic:
 
 Upgrading Pi or the executor requires revalidating the version-tested seams named in this document: originating-input identity on user messages, required-child-extension ownership and the executor's public model/effort contract. Owner-registration regression has local Pi-Bolt 0.9.7 native RPC reload/foreground-child evidence, not interactive TUI coverage or general Pi-Bolt compatibility. See [owner-registration coverage](docs/testing/worker-owner-registration.md).
 
-**Qualified mappings.** Worker tiers (`jevPilot.tiers.fast|balanced|deep`) and custom slots take exact `provider/model` identities that must resolve to an authenticated physical Pi registry model; nothing is guessed from similar names and no health probe is made. **System One** is configured only by `JEV_SYSTEM_ONE_URL`, `JEV_SYSTEM_ONE_API_KEY` (or `TYPESAFE_API_KEY`), `JEV_SYSTEM_ONE_MODEL` and `JEV_TIMEOUT_MS`; see [Install and configure](#install-and-configure) and [Know what leaves the device](#know-what-leaves-the-device) for the privacy boundary.
+**Qualified mappings.** Worker tiers (`tiers.fast|balanced|deep`) and custom slots take exact `provider/model` identities that must resolve to an authenticated physical Pi registry model; nothing is guessed from similar names and no health probe is made. **System One** is configured by the `classifier` object in `jev-pilot.json`, with its credential in the named environment variable; see [Install and configure](#install-and-configure) and [Know what leaves the device](#know-what-leaves-the-device) for the privacy boundary.
 
 **Commands.** The package registers one command, `/jev`: `status`, `report`, `report reset`, `tune`, `tune apply`, `tune reset`. Anything else prints usage. None makes a classifier or model request.
 

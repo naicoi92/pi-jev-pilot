@@ -1,9 +1,19 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { getWorkerDecisionAuthoritySnapshot } from "pi-subagents/worker-decision-authority";
 
 /** Disposable test barrier before Jev outer admission, not a configuration transport. */
 export default function (pi: ExtensionAPI) {
+  pi.registerCommand("worker-owner-snapshot", {
+    handler: async (_args, ctx) => {
+      const session = ctx.sessionManager.getSessionFile() ?? ctx.sessionManager.getSessionId();
+      writeFileSync(
+        join(ctx.cwd, "worker-owner.json"),
+        JSON.stringify(getWorkerDecisionAuthoritySnapshot(session)),
+      );
+    },
+  });
   pi.registerCommand("worker-config-reload", {
     handler: async (_args, ctx) => {
       await ctx.reload();

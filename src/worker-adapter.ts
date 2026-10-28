@@ -9,6 +9,7 @@ import {
 } from "pi-subagents/worker-presentation";
 import { fileURLToPath } from "node:url";
 import { loadJevConfig } from "./jev-config.ts";
+import { captureEffortAssessment, type EffortAssessment } from "./effort-assessment.ts";
 import { registerWorkerAuthorityLifecycle } from "./worker-authority-registration.ts";
 import { WorkerVisibility } from "./worker-visibility.ts";
 import { appendDecisionRow } from "./decision-visibility.ts";
@@ -26,9 +27,8 @@ export function registerWorkerAdapter(
   onWorkersRunning?: (count: number) => void,
   live?: LiveStatusLine,
 ): void {
-  // Registration eligibility is refreshed by reload; ticket 04 owns live admission refresh.
-  let admission: ReturnType<typeof loadJevConfig> | undefined;
-  const enabled = () => admission?.workerRoutingEnabled ?? false;
+  let registered: EffortAssessment | undefined;
+  const enabled = () => registered?.config.workerRoutingEnabled ?? false;
   const status = new WorkerStatus((summary) => {
     live?.setWorkerSummary(summary);
     onWorkersRunning?.(summary?.running ?? 0);
@@ -55,7 +55,7 @@ export function registerWorkerAdapter(
     });
   };
   pi.on("session_start", (_event, ctx) => {
-    admission = loadJevConfig();
+    registered = captureEffortAssessment();
     visibility.clear();
     visibility.restore(ctx.sessionManager.getBranch());
     childExtension?.dispose();
@@ -73,7 +73,7 @@ export function registerWorkerAdapter(
   });
   const authority = registerWorkerAuthorityLifecycle(
     pi,
-    enabled,
+    () => registered,
     () => live?.assessWorker() ?? (() => {}),
     status,
   );
@@ -173,7 +173,7 @@ export function registerWorkerAdapter(
     const finish = (message: string) => visibility.finish(owner, message, false);
     try {
       const routing = enabled();
-      const helperOptions = admission;
+      const helperOptions = routing ? registered?.config : loadJevConfig();
       const automaticMain =
         helperOptions &&
         (helperOptions.effortEnabled ||

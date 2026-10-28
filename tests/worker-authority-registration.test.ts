@@ -6,6 +6,7 @@ import {
   registerWorkerDecisionAuthority,
 } from "pi-subagents/worker-decision-authority";
 import { registerWorkerAuthorityLifecycle } from "../src/worker-authority-registration.ts";
+import { captureEffortAssessment } from "../src/effort-assessment.ts";
 
 const cleanup: (() => void)[] = [];
 afterEach(() => {
@@ -20,7 +21,7 @@ function fixture(sessionId = `/fixture/${crypto.randomUUID()}.jsonl`) {
   const ctx = {
     sessionManager: { getSessionFile: () => sessionId, getSessionId: () => "not-file-uuid" },
   } as unknown as ExtensionContext;
-  registerWorkerAuthorityLifecycle(pi as unknown as ExtensionAPI, () => true);
+  registerWorkerAuthorityLifecycle(pi as unknown as ExtensionAPI, captureEffortAssessment);
   const fire = (name: string) => {
     for (const handler of hooks.get(name) ?? []) handler({}, ctx);
   };

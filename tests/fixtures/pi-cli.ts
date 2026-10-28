@@ -63,6 +63,9 @@ export class PiFixture {
   classifierHeaders: Record<string, string> = {};
   sawClassifierBearer = false;
   classifierHeaderChecks = 0;
+  private launchCommand:
+    | { executable: string; args: string[]; env: Record<string, string | undefined> }
+    | undefined;
   private sequence = 0;
   private processError: Error | undefined;
   private didExit = false;
@@ -363,10 +366,23 @@ export default function (pi: ExtensionAPI) {
       `${this.startupProvider}/${this.startupModel}`,
       ...(thinkingOverride ? ["--thinking", thinkingOverride] : []),
     ];
+    this.launchCommand = { executable: executable!, args, env: childEnv };
+    return this.launch();
+  }
+
+  /** Restart only after caller has proved all test-owned workers terminal. */
+  async restartAfterTerminal(): Promise<void> {
+    await this.stop();
+    await this.launch();
+  }
+
+  private async launch(): Promise<this> {
+    if (!this.launchCommand) throw new Error("Fixture launch command unavailable");
+    const { executable, args, env } = this.launchCommand;
     this.processError = undefined;
     this.didExit = false;
     this.closed = false;
-    this.process = spawn(executable!, args, { cwd: this.directory, env: childEnv });
+    this.process = spawn(executable, args, { cwd: this.directory, env });
     this.exited = new Promise((resolve) => {
       this.process.once("close", () => {
         this.closed = true;

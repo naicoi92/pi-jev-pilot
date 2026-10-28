@@ -169,7 +169,7 @@ export function statusLines(
   const rows = latestDecisionRows(ctx.sessionManager.getBranch());
   const capabilities = [
     ["effort", config.effortEnabled],
-    ["workers", config.workerRoutingEnabled],
+    ["workers (file; restart required)", config.workerRoutingEnabled],
     ["skills", config.skillsEnabled],
     ["rerank", config.skillRerank],
     ["strategy", config.strategyEnabled],
@@ -182,7 +182,7 @@ export function statusLines(
   return [
     "Jev loaded · durable decision UI",
     `Capabilities: ${capabilities}`,
-    "Configuration: latest validated file for the next assessment; active work retains its captured options.",
+    "Configuration: latest validated file; active work retains its captured options. Worker routing and timeout changes require a full Pi restart after work ends; /reload is insufficient.",
     `Main model (Pi-selected): ${safeIdentity(ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined)}`,
     `Current effort: ${safeEffort(pi.getThinkingLevel())}`,
     ...(rows.length ? rows.flatMap((row) => decisionLines(row, true)) : ["No selection yet"]),

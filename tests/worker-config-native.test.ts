@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { PiFixture, root } from "./fixtures/pi-cli.ts";
 
 let fixture: PiFixture | undefined;
+let restartPending: Promise<void> | undefined;
 afterEach(async () => {
+  if (restartPending) {
+    await restartPending;
+    restartPending = undefined;
+  }
   if (fixture && process.env.JEV_WORKER_CONFIG_EVIDENCE_DIR) {
     const directory = process.env.JEV_WORKER_CONFIG_EVIDENCE_DIR;
     await mkdir(directory, { recursive: true });
@@ -415,3 +420,119 @@ test("WCFG-concurrent native parallel workers keep captured policy after edit", 
   expect(terminal?.isError).toBe(false);
   expect(JSON.stringify(terminal).match(/launchContractDigest/g)?.length).toBeGreaterThanOrEqual(2);
 }, 45000);
+
+async function ownerSnapshot(f: PiFixture) {
+  await rm(join(f.directory, "worker-owner.json"), { force: true });
+  await f.command("prompt", { message: "/worker-owner-snapshot" });
+  await f.wait(() => Bun.file(join(f.directory, "worker-owner.json")).size > 0);
+  return JSON.parse(await Bun.file(join(f.directory, "worker-owner.json")).text());
+}
+
+async function terminalWorker(f: PiFixture) {
+  const offset = f.records.length;
+  const calls = f.classifications.length;
+  const generations = f.generations.length;
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "config-worker",
+      task: "Return local result.",
+      async: false,
+      options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+    },
+  });
+  await f.prompt("Run local worker.");
+  const terminal = f.records
+    .slice(offset)
+    .find((row) => row.type === "tool_execution_end" && row.toolName === "subagent");
+  expect(terminal).toBeDefined();
+  return {
+    calls: f.classifications.length - calls,
+    models: f.generations.slice(generations).map((row) => row.model),
+    terminal,
+  };
+}
+
+for (const initial of [true, false]) {
+  test(`WCFG-restart routing ${initial} to ${!initial} keeps registered admission until process restart`, async () => {
+    const f = await nativeWorker({ workerRoutingEnabled: initial });
+    const path = join(f.directory, "agent/jev-pilot.json");
+    const config = JSON.parse(await Bun.file(path).text());
+    expect((await ownerSnapshot(f)).kind).toBe(initial ? "active" : "never-owned");
+    expect((await terminalWorker(f)).calls).toBe(initial ? 1 : 0);
+    await writeFile(path, JSON.stringify({ ...config, workerRoutingEnabled: !initial }));
+    expect((await terminalWorker(f)).calls).toBe(initial ? 1 : 0);
+    await f.restartAfterTerminal();
+    expect((await ownerSnapshot(f)).kind).toBe(initial ? "never-owned" : "active");
+    expect((await terminalWorker(f)).calls).toBe(initial ? 0 : 1);
+  }, 90000);
+}
+
+for (const [lowFirst, overlayEdit] of [
+  [true, false],
+  [false, true],
+] as const) {
+  test(`WCFG-restart ${lowFirst ? "raise base" : "lower overlay"} retains registered worker deadline`, async () => {
+    const oldTimeout = lowFirst ? 450 : 2400;
+    const newTimeout = lowFirst ? 2400 : 450;
+    const f = await nativeWorker({});
+    const path = join(f.directory, "agent/jev-pilot.json");
+    const config = JSON.parse(await Bun.file(path).text());
+    await writeFile(
+      path,
+      JSON.stringify({ ...config, classifier: { ...config.classifier, timeoutMs: oldTimeout } }),
+    );
+    // Start process A with desired initial budget; no worker has been dispatched yet.
+    await f.restartAfterTerminal();
+    expect((await ownerSnapshot(f)).assessmentTimeoutMs).toBe(oldTimeout);
+    f.classifierDelay = 1000;
+    let active: Promise<void> | undefined;
+    let activeOffset = 0;
+    if (overlayEdit) {
+      activeOffset = f.records.length;
+      f.toolCalls.push({
+        name: "subagent",
+        input: {
+          agent: "config-worker",
+          task: "Return local result.",
+          async: false,
+          options: { context: "fresh", acceptance: false, artifacts: false, timeoutMs: 10000 },
+        },
+      });
+      active = f.prompt("Run held worker.");
+      restartPending = active;
+      await f.wait(() => f.classifications.length === 1);
+    }
+    if (overlayEdit) {
+      await mkdir(join(f.directory, "agent/jev-pilot"), { recursive: true });
+      await writeFile(
+        join(f.directory, "agent/jev-pilot/tuning.json"),
+        JSON.stringify({ version: 1, values: { timeoutMs: newTimeout }, since: 0 }),
+      );
+    } else {
+      await writeFile(
+        path,
+        JSON.stringify({ ...config, classifier: { ...config.classifier, timeoutMs: newTimeout } }),
+      );
+    }
+    if (active) {
+      await active;
+      restartPending = undefined;
+      expect(
+        f.records
+          .slice(activeOffset)
+          .some((row) => row.type === "tool_execution_end" && row.toolName === "subagent"),
+      ).toBe(true);
+      expect(f.generations.some((row) => row.model === "judgment")).toBe(true);
+    }
+    const before = await terminalWorker(f);
+    expect(before.calls).toBe(1);
+    expect(before.models.includes("judgment")).toBe(!lowFirst);
+    expect((await ownerSnapshot(f)).assessmentTimeoutMs).toBe(oldTimeout);
+    await f.restartAfterTerminal();
+    expect((await ownerSnapshot(f)).assessmentTimeoutMs).toBe(newTimeout);
+    const after = await terminalWorker(f);
+    expect(after.calls).toBe(1);
+    expect(after.models.includes("judgment")).toBe(lowFirst);
+  }, 90000);
+}

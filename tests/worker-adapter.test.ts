@@ -1001,3 +1001,12 @@ test("WCFG-concurrent logical launches retain their own captured tiers", async (
   expect(f.selected(first)).toBe("local/balanced:medium");
   expect(f.selected(second)).toBe("local/deep:medium");
 });
+
+test("disabled worker direct boundary rejects malformed configuration", async () => {
+  const f = await fixture();
+  await f.config({ workerRoutingEnabled: false });
+  await f.fire("session_start");
+  await writeFile(join(process.env.PI_CODING_AGENT_DIR!, "jev-pilot.json"), "{");
+  await expect(f.call({ agent: "worker", task: "work" })).rejects.toThrow("expected valid JSON");
+  expect(f.requests()).toBe(0);
+});
