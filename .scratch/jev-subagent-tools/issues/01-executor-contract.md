@@ -1,7 +1,7 @@
 # 01 — Native child tool decision contract
 
 Status: ready-for-agent  
-Implementation: pending  
+Implementation: in-progress  
 Blocked by: none
 
 ## Mục tiêu
@@ -22,6 +22,10 @@ Mở rộng public worker decision và native child launch tại executor để 
 
 1. Contract và provenance: caller tools được hợp nhất tối thiểu ở launch plan; JEV selection giữ riêng, không thành required tool. Commit checkpoint chưa phải hoàn thành ticket.
 2. Runtime: đối chiếu registry sau load, cảnh báo và xử lý optional tools qua transport hiện có. Hoàn thành ticket sau review và integration verification cả hai lát cắt.
+
+## Comments
+
+- Contract checkpoint đã merge fast-forward vào executor integration: `34fba452edd1f298bad431fd42a9258f0aef2a28`; review recovery PASS. Trên integration worktree: `npm run typecheck`, 2 public delegated async recovery tests và 15 descriptor tests đạt. Chưa xác minh detached revival E2E. Assertion package manifest lỗi cũng tái hiện trên base `944128f`; full suite chưa đạt. Runtime slice và integration verification toàn ticket còn pending.
 
 ## Ranh giới
 
