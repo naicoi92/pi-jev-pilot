@@ -1,7 +1,7 @@
 # 05: Legacy cutover and packaged acceptance
 
 Status: ready-for-agent
-Implementation: pending
+Implementation: completed
 
 **Parent:** [Single-file Jev configuration](../spec.md)
 
@@ -18,6 +18,10 @@ Implementation: pending
 - [ ] Manual mapping/default examples cover every inventory row, including tiers and inline crew; no automatic settings rewrite or paid model seeding.
 - [ ] Native Pi-Bolt acceptance and real disposable packaged install exercise the same schema/path, ordinary/specialized dispatch, cancellation, status/Ctrl+O and spinner.
 - [ ] Lint/type/format and focused/full relevant gates reported honestly; independent Standards + Spec/security review completed; no unexplained failing gate waived.
+
+## Comments
+
+Merged as `e30983d20ade9c1540d318cbe2dfe348a2092f0d`; source and test tree matches `0359731171ac69fd5e000454ffff087d30e2009c`, which passed 980/980 tests. Exact merge checkout passed isolated install, lint, typecheck, formatting and focused smoke 11/11. Final installed config and native foreground visual proof passed; async visual diagnostic passed after an earlier failed attempt whose cause remains unresolved, not claimed fixed. Evidence: `/Users/naicoi/Projects/jev-config-migration-evidence/ticket05/public-final/`.
 
 ## Operator amendment: verified profile context
 
