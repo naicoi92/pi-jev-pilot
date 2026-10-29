@@ -1,7 +1,7 @@
 # 12 — Simplified pet-style live status above the editor
 
 Status: ready-for-agent
-Implementation: in-progress
+Implementation: completed
 Type: task
 Blocked by: none
 
@@ -75,4 +75,4 @@ User confirmed right-aligned placement and proposed minimal pet-derived content 
 
 ## Implementation checkpoint
 
-Implementation `6b95850` was merged via `bcf2a5e` and is present on `main`. [Live-status validation](../../../docs/testing/live-status-validation.md) is superseded in part by [shared-status validation](../../../docs/testing/jev-shared-status.md) and subsequent worker-summary work. Independent review found that worker summary suppressed main effort and skill. An unmerged correction restores main priority; 130 focused tests and lint/format/typecheck passed. Independent correction review returned OK with no findings. A local-provider Pi-Bolt 1.0.4 foreground user-path fixture passed with main `high` and worker `low`: main effort remained in the live line while worker effort appeared in expanded details, and reload retained main effort. Skill and strategy priority are covered by focused tests, not this native fixture. An earlier async baseline failed before child start and remains recorded. See [the reconciliation](../../jev-remaining-tasks-reconciliation.md). Merge remains outstanding.
+Implementation `6b95850` was merged via `bcf2a5e` and is present on `main`. [Live-status validation](../../../docs/testing/live-status-validation.md) is superseded in part by [shared-status validation](../../../docs/testing/jev-shared-status.md) and subsequent worker-summary work. Independent review found that worker summary suppressed main effort and skill. An unmerged correction restores main priority; 130 focused tests and lint/format/typecheck passed. Independent correction review returned OK with no findings. A local-provider Pi-Bolt 1.0.4 foreground user-path fixture passed with main `high` and worker `low`: main effort remained in the live line while worker effort appeared in expanded details, and reload retained main effort. Skill and strategy priority are covered by focused tests, not this native fixture. An earlier async baseline failed before child start and remains recorded. The correction was merged locally at `583627e35e622fa50cfbd87f0be8ef24189dcb18`; the merged source/test files match the verified fixture bytes. See [the reconciliation](../../jev-remaining-tasks-reconciliation.md). No installation or deployment is claimed.

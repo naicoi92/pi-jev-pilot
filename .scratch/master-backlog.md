@@ -5,7 +5,7 @@ summary: Ordered list of all remaining work across jev-pilot-port and expert-tie
 
 ## Current reconciliation
 
-The ordering and status below are historical and have drifted. Current evidence, unresolved gates, security inventory and branch preservation notes: [remaining tasks reconciliation](jev-remaining-tasks-reconciliation.md). E1–E3 and P9/P10 are completed; P12 has a reviewed, unmerged correction; focused tests and native foreground main-priority verification passed. P11 acceptance is historical rather than proof for the current tree. Do not use this table alone to repeat or close work.
+The ordering and status below are historical and have drifted. Current evidence, unresolved gates, security inventory and branch preservation notes: [remaining tasks reconciliation](jev-remaining-tasks-reconciliation.md). E1–E3 and P9/P10/P12 are completed; P12's reviewed correction is merged locally and its focused tests and native foreground main-priority verification passed. P11 acceptance is historical rather than proof for the current tree. Do not use this table alone to repeat or close work.
 
 ## Scope
 
