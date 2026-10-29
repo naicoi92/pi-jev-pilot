@@ -11,6 +11,7 @@ Mở rộng public worker decision và native child launch tại executor để 
 ## Acceptance
 
 - Trace spec `../spec.md` AC1–AC5; metadata và lựa chọn đi qua immutable snapshot, validation, receipt và launch nhất quán.
+- Thêm `tools?: string[]` cho native per-launch delegation nếu cần: nghĩa bổ sung vào agent tools, không replace; bỏ trống hoặc `[]` không xóa mặc định. Propagate qua các native launch paths.
 - Không biến agent allowlist thành ceiling ngăn lựa chọn bổ sung; hard ceiling/exclusion vẫn được thực thi.
 - Tool contract bắt buộc bị chặn báo lỗi; tập rỗng hợp lệ; thiếu metadata/tool cảnh báo.
 - Giữ generic authority fail-closed khi owner reject, mất owner, cancellation hoặc hết deadline. Fallback classifier do owner adapter ở ticket 02 trả thành decision hợp lệ trong authority deadline; không bypass authority.
