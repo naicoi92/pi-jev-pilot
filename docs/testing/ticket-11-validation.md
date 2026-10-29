@@ -1,6 +1,6 @@
 # Ticket 11 — acceptance validation record
 
-Scope: final acceptance gate for the faithful port on branch `ticket/11-acceptance`, based on integration `8462915` (tickets 01–06, 08, 09, 10, 12). Matrix: [ticket-11-matrix.md](ticket-11-matrix.md). No release, remote repository, hosted request or paid model call was made, and **no live-provider E2E is claimed**.
+Scope: historical acceptance gate for the faithful port on branch `ticket/11-acceptance`, based on integration `8462915` (tickets 01–06, 08, 09, 10, 12). Its environment and results below describe that historical tree, not the current executor pin or a current-tree full-suite pass. See the current verification scope in [ticket-11-matrix.md](ticket-11-matrix.md). No release, remote repository, hosted request or paid model call was made in this historical gate, and **no live-provider E2E is claimed**.
 
 ## Environment
 

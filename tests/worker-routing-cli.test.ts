@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { WorkerEvidence, reapWorkerCli } from "./fixtures/worker-evidence.ts";
 
 const root = resolve(import.meta.dir, "..");
+const executorCommit = "944128f754d1bd7ce17cfd5c325f0018bebe2a67";
 let process: ChildProcessWithoutNullStreams | undefined;
 let closed: Promise<void> | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
@@ -120,8 +121,7 @@ for (const scenario of cases)
         dependencies: {
           "@earendil-works/pi-coding-agent": "1.4.0",
           "@earendil-works/pi-ai": "1.4.0",
-          "pi-subagents":
-            "git+https://github.com/naicoi92/pi-subagents.git#ec706c84bb26573c7d3f478b2bf6da0269caac33",
+          "pi-subagents": `git+https://github.com/naicoi92/pi-subagents.git#${executorCommit}`,
         },
       }),
     );
@@ -1210,7 +1210,7 @@ export default function(pi) {
             name,
             versions: {
               pi: "1.4.0",
-              subagents: "naicoi92/pi-subagents@ec706c84bb26573c7d3f478b2bf6da0269caac33",
+              subagents: `naicoi92/pi-subagents@${executorCommit}`,
               bun: Bun.version,
             },
             original,

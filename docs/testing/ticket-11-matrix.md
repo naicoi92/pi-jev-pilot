@@ -1,6 +1,12 @@
 # Ticket 11 — packaged artifact acceptance and coverage summary
 
-Baseline: integration `8462915` (tickets 01–06, 08, 09, 10 and 12 merged). Authority: the parent spec AC-01 … AC-28, `PORT-SCOPE.md` (automatic main-model routing removed by operator decision) and ticket 11. This matrix precedes the acceptance tests in `tests/package-acceptance.test.ts`. Per-ticket evidence is reused, not repeated: ticket 11 adds only what a per-ticket test cannot show, namely behavior of the **packed tarball installed into a consumer project** and the final cross-feature audit.
+Baseline: integration `8462915` (tickets 01–06, 08, 09, 10 and 12 merged). Authority: the parent spec AC-01 … AC-28, `PORT-SCOPE.md` (automatic main-model routing removed by operator decision) and ticket 11. The matrix below and its per-AC observations are historical, not proof that every scenario was rerun on the current tree. Its executor references describe the original validation, not the current pin.
+
+## Current verification scope
+
+Config cutover candidate `0359731171ac69fd5e000454ffff087d30e2009c` passed 980/980 source tests; its merge tree matched that candidate. On later local main `a4cd84677af593e9349a3c01a7d13613192cf51f`, packed package tests passed 19/19, a packed direct worker passed 1/1, and the P12 delta passed 130 focused tests plus an offline native foreground main/worker priority check. These focused results do not constitute a current-tree full-suite pass. Logs and scoped review are recorded in `.scratch/jev-remaining-tasks-reconciliation.md` (not included in the distributable artifact).
+
+The candidate executor pin is `944128f754d1bd7ce17cfd5c325f0018bebe2a67`; its direct `undici` is 8.12.3. Frozen install, lint, format and typecheck passed for the candidate. One full-suite attempt exceeded its 35-minute deadline before a final result; 753 pass lines were recorded, without a completed summary or exit code. This is not a full-suite pass. The independently installed Pi host may still contain 8.10.2, including bundled code; no host remediation or live-provider E2E is claimed. Final package acceptance remains open. Per-ticket evidence is reused, not repeated.
 
 ## Evidence classes
 
