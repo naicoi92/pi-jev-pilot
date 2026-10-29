@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Implementation:** completed
+
 **Parent:** Jev Pilot for Pi — Faithful Port (local feature spec).
 
 **Spec acceptance criteria:** AC-24, AC-25, AC-26. The current parent spec and the operator-approved faithful-port scope are authoritative.
@@ -23,3 +25,5 @@ Drive report/tuning commands and subsequent Pi decisions from independently defi
 Before writing tests, map each test to exactly one parent acceptance criterion and an independent expected-value source. Tests and verification belong to this slice, not a later horizontal testing ticket.
 
 ## Comments
+
+Implementation merged at `8462915f2db879d3217397511cd4216711aeb6c9`; focused tuning and CLI integration tests passed in an isolated frozen-lockfile checkout. Independent review returned OK with notes, including no dedicated Pi worker tuning test. The authoritative-effort decision in [decision-gating.md](../decision-gating.md) supersedes the original confidence-bar example: stored confidence tuning cannot veto a valid effort selection; timeout tuning still changes the effective decision timeout. See [the reconciliation](../../jev-remaining-tasks-reconciliation.md) and completed config migration ticket 04 for evidence and limits.

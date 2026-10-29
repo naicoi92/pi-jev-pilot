@@ -2,7 +2,7 @@
 
 ## Presentation contract
 
-Default Jev widget is one concise live row, for example `Jev · 1 worker running · low`. Pi's standard tool-output expansion action (`app.tools.expand`, default Ctrl+O) reveals selected worker role, tier when known, committed reason, physical target, effort and lifecycle status in the Jev widget. Native calls, results, notifications and Fleet remain executor-owned; Jev does not suppress or replace them.
+Default Jev widget is one concise live row: main activity, effective effort, skill and strategy take priority, with the observed running-worker count when available. Worker effort and lifecycle details do not replace main state. Pi's standard tool-output expansion action (`app.tools.expand`, default Ctrl+O) reveals selected worker role, tier when known, committed reason, physical target, effort and lifecycle status in the Jev widget. Native calls, results, notifications and Fleet remain executor-owned; Jev does not suppress or replace them.
 
 Only pending main/worker assessments animate. Acceptance is not running. The public authority request's resolved-agent role and actual Jev tier-selection metadata stay keyed by logical launch identity; `onApplied` records immutable committed target/effort. No task, description, private policy context, guessed default tier or internal ID formula enters presentation. Metadata joins a genuine tool row only after executor acceptance supplies the exact consumed receipt and originating public tool call. Acceptance itself remains logical commitment, never spawn/provider proof.
 

@@ -435,10 +435,10 @@ test("worker-status adapter joins applied assessment immediately and waits actua
     logicalLaunchId: result.receipt.logicalLaunchId,
     receipt: result.receipt,
   });
-  expect(f.visible().trim()).toBe("Jev · 1 worker accepted · medium");
+  expect(f.visible().trim()).toBe("Jev · ready");
   expect(f.running.at(-1)).toBe(0);
   f.pi.events.emit("subagent:async-started", { id: "actual-run", pid: 999, agent: "worker" });
-  expect(f.visible().trim()).toBe("Jev · 1 worker accepted · medium");
+  expect(f.visible().trim()).toBe("Jev · ready");
   f.pi.events.emit("subagent:child-status", {
     type: "subagent.child-status",
     version: 1,
@@ -447,14 +447,14 @@ test("worker-status adapter joins applied assessment immediately and waits actua
     status: "started",
     ts: 1,
   });
-  expect(f.visible().trim()).toBe("Jev · 1 worker running · medium");
+  expect(f.visible().trim()).toBe("Jev · 1 worker running");
   expect(f.running.at(-1)).toBe(1);
   f.pi.events.emit("subagent:async-complete", {
     sessionId: f.ctx.sessionManager.getSessionFile(),
     runId: "actual-run",
     state: "complete",
   });
-  expect(f.visible().trim()).toBe("Jev · 1 worker completed · medium");
+  expect(f.visible().trim()).toBe("Jev · ready");
   expect(f.running.at(-1)).toBe(0);
   expect(f.visible().split("\n")).toHaveLength(1);
 });
@@ -477,7 +477,7 @@ test("worker presentation passively observes acceptance without delegating nativ
   });
   issueWorkerPresentationBinding(event);
   f.pi.events.emit("subagent:worker-decision-accepted", event);
-  expect(f.visible()).toContain("1 worker accepted");
+  expect(f.visible().trim()).toBe("Jev · ready");
   expect(isWorkerPresentationDelegated(sessionId, "leaf")).toBe(false);
   const { registerWorkerPresentation } = await import("pi-subagents/worker-presentation");
   const other = registerWorkerPresentation({ sessionId });

@@ -292,18 +292,30 @@ test("STATUS-5 main completion cannot clear concurrent worker assessments", () =
   expect(text()).toBe("Jev · medium");
 });
 
-test("worker-status summary stays single concise row at every width, not main effort", () => {
+// P12 main-priority: worker activity must not replace the main effort or skill.
+test("P12 main effort and skill remain visible while a worker runs", () => {
   const { h, line, text } = mounted();
-  line.settle(line.choose(), { kind: "decided", effort: "high", requested: "high", skill: "tdd" });
+  line.settle(line.choose(), {
+    kind: "decided",
+    effort: "high",
+    requested: "high",
+    skill: "tdd",
+    strategy: "delegate",
+  });
   line.agentRunning(true);
   line.setWorkerSummary({ activity: "1 worker running", effort: "low", running: 1 });
-  expect(text()).toBe("Jev · 1 worker running · low");
+  expect(text()).toBe("Jev · working · high · /tdd · strategy delegate · 1 worker");
+  const finishAssessment = line.assessWorker();
+  expect(text()).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Jev · working · high · \/tdd/);
+  finishAssessment();
   expect(h.widgets).toHaveLength(1);
   expect(h.plain(160)).toHaveLength(1);
   for (let width = 1; width <= 160; width++)
     for (const row of h.plain(width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+  line.agentRunning(false);
+  expect(text()).toBe("Jev · 1 worker running · high · /tdd · strategy delegate");
   line.setWorkerSummary({ activity: "2 workers accepted", effort: "mixed", running: 0 });
-  expect(text()).toBe("Jev · 2 workers accepted · mixed");
+  expect(text()).toBe("Jev · high · /tdd · strategy delegate");
 });
 
 const user = (inputId: string | undefined, id: string) =>
@@ -404,7 +416,7 @@ test("worker widget follows public tool expansion state at render time", () => {
   expect(widget.render(120)).toHaveLength(1);
   expanded = true;
   expect(widget.render(120).map((row) => row.replace(ANSI, "").trim())).toEqual([
-    "Jev · 1 worker completed · low",
+    "Jev · ready",
     "worker · balanced · assessed · local/model · low · completed",
   ]);
   expanded = false;
