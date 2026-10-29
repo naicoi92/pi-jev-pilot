@@ -10,7 +10,7 @@ Trong pilot, gửi metadata tool, task và role qua cùng request JEV chọn tie
 
 ## Acceptance
 
-- Trace `../spec.md` AC1, AC2, AC4, AC7, AC8; fallback toàn bộ khi timeout/lỗi; kết quả một phần giữ các phần hợp lệ, thiếu score không tự bổ sung tool; cảnh báo theo spec.
+- Trace `../spec.md` AC1, AC2, AC4, AC7, AC8; khi classifier timeout/lỗi, owner adapter trả decision baseline hợp lệ trong authority deadline; không bypass generic authority fail-closed. Kết quả một phần giữ các phần hợp lệ, thiếu score không tự bổ sung tool; cảnh báo theo spec.
 - Benchmark role/task/tool đại diện, ghi evidence và chọn ngưỡng theo kết quả, không giả định confidence là xác suất. Không gửi dữ liệu không cần thiết.
 - Integration tests qua worker decision request/response, TDD từng lát cắt; chạy `bun run typecheck`, `bun run lint` và test liên quan.
 

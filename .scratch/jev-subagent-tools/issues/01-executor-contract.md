@@ -13,6 +13,8 @@ Mở rộng public worker decision và native child launch tại executor để 
 - Trace spec `../spec.md` AC1–AC5; metadata và lựa chọn đi qua immutable snapshot, validation, receipt và launch nhất quán.
 - Không biến agent allowlist thành ceiling ngăn lựa chọn bổ sung; hard ceiling/exclusion vẫn được thực thi.
 - Tool contract bắt buộc bị chặn báo lỗi; tập rỗng hợp lệ; thiếu metadata/tool cảnh báo.
+- Giữ generic authority fail-closed khi owner reject, mất owner, cancellation hoặc hết deadline. Fallback classifier do owner adapter ở ticket 02 trả thành decision hợp lệ trong authority deadline; không bypass authority.
+- Chỉ dùng metadata và provider binding host thực có; không suy đoán provider/path. Mapping thiếu hoặc mơ hồ thì bỏ tool bổ sung và cảnh báo; không tạo discovery subsystem.
 - Integration tests qua public worker decision/child launch seam; TDD từng lát cắt.
 
 ## Ranh giới
