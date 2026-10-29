@@ -235,11 +235,11 @@ export class LiveStatusLine {
 
   private activity(): string | undefined {
     if (this.choosing) return "choosing effort";
-    if (this.workerAssessments.size) return "assessing worker";
-    if (this.workerSummary) return this.workerSummary.activity;
     if (this.running)
       return [...this.tools.values()].at(-1) ?? (this.observedThinking ? "thinking" : "working");
-    if (this.workers) return `${this.workers} ${this.workers === 1 ? "worker" : "workers"} running`;
+    if (this.workerAssessments.size) return "assessing worker";
+    const workers = this.workerSummary?.running ?? this.workers;
+    if (workers) return `${workers} ${workers === 1 ? "worker" : "workers"} running`;
   }
 
   private parts(options: { strategy: boolean; workers: boolean; skill?: string }): Part[] {
@@ -251,9 +251,6 @@ export class LiveStatusLine {
       parts.push({ text: this.warning.label, color });
       if (this.warning.effort) parts.push({ text: this.warning.effort, color: "accent" });
       parts.push({ text: this.warning.reason, color });
-    } else if (this.workerSummary && !this.busy()) {
-      if (this.workerSummary.effort)
-        parts.push({ text: this.workerSummary.effort, color: "accent" });
     } else if (this.effort)
       parts.push({
         text:
@@ -262,12 +259,13 @@ export class LiveStatusLine {
             : this.effort,
         color: "accent",
       });
-    if (options.skill && !this.workerSummary) parts.push({ text: options.skill, color: "muted" });
-    if (options.strategy && this.strategy && !this.workerSummary)
+    if (options.skill) parts.push({ text: options.skill, color: "muted" });
+    if (options.strategy && this.strategy)
       parts.push({ text: `strategy ${this.strategy}`, color: "dim" });
-    if (options.workers && !this.workerSummary && (this.busy() || this.running) && this.workers)
+    const workers = this.workerSummary?.running ?? this.workers;
+    if (options.workers && (this.busy() || this.running) && workers)
       parts.push({
-        text: `${this.workers} ${this.workers === 1 ? "worker" : "workers"}`,
+        text: `${workers} ${workers === 1 ? "worker" : "workers"}`,
         color: "dim",
       });
     if (parts.length === 1) parts.push({ text: "ready", color: "muted" });

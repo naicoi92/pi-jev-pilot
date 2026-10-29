@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Implementation:** in-progress
+
 **Parent:** Jev Pilot for Pi — Faithful Port (local feature spec).
 
 **Spec acceptance criteria:** AC-01, AC-07, AC-12, AC-21, AC-26, AC-27, AC-28. The current parent spec and the operator-approved faithful-port scope are authoritative.
@@ -25,3 +27,5 @@ In an isolated environment install the tarball and run the full test/typecheck/p
 Before writing tests, map each test to exactly one parent acceptance criterion and an independent expected-value source. Tests and verification belong to this slice, not a later horizontal testing ticket.
 
 ## Comments
+
+Historical acceptance is recorded in [ticket-11-validation.md](../../../docs/testing/ticket-11-validation.md); it does not establish acceptance for the current tree. Current frozen-checkout package tests passed 19/19, but independent current-tree review, the unresolved historical async lifecycle failure, and dependency advisories remain distinct open gates. See [the reconciliation](../../jev-remaining-tasks-reconciliation.md). No live-provider E2E or release is claimed.

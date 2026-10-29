@@ -3,6 +3,10 @@ title: Master backlog
 summary: Ordered list of all remaining work across jev-pilot-port and expert-tier, for implement-spec.
 ---
 
+## Current reconciliation
+
+The ordering and status below are historical and have drifted. Current evidence, unresolved gates, security inventory and branch preservation notes: [remaining tasks reconciliation](jev-remaining-tasks-reconciliation.md). E1–E3 and P9/P10 are completed; P12 has a reviewed, unmerged correction; focused tests and native foreground main-priority verification passed. P11 acceptance is historical rather than proof for the current tree. Do not use this table alone to repeat or close work.
+
 ## Scope
 
 Covers every open item in `jev-pilot-port` and `expert-tier`. Ticket files stay in their own spec directories; this file is the single ordering and gate list. Checked against repo files only; no tests were rerun when this was written.

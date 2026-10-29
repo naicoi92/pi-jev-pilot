@@ -6,6 +6,8 @@
 
 **Status:** ready-for-agent
 
+**Implementation:** completed
+
 **Parent:** Jev Pilot for Pi — Faithful Port (local feature spec).
 
 **Spec acceptance criteria:** AC-22, AC-23, AC-24, AC-26. The current parent spec and the operator-approved faithful-port scope are authoritative.
@@ -24,3 +26,5 @@ Run completed/failing/corrected Pi turns with local fixtures, inspect persisted 
 Before writing tests, map each test to exactly one parent acceptance criterion and an independent expected-value source. Tests and verification belong to this slice, not a later horizontal testing ticket.
 
 ## Comments
+
+Implementation merged at `2a399676c0699e76e269c9cc99fdfff350c23ce1` (short merge reference `2a39967`); current-tree focused ledger and CLI integration tests passed in an isolated frozen-lockfile checkout. Independent review returned OK with notes; see [the reconciliation](../../jev-remaining-tasks-reconciliation.md) for evidence and limits. The original checkboxes are retained as historical acceptance criteria.
