@@ -11,6 +11,10 @@ Operator accepted a full Pi process restart, after existing work has ended, to a
 
 When worker routing is disabled, native workflow inner leaves and RPC launches that do not enter Jev authority do not read Jev configuration and are not blocked by Jev if the file is malformed. Configuration remains strictly validated whenever startup, a command or an assessment actually reads it; disabled fields are not exempt from validation. This limitation preserves native disabled behavior without a new executor interception seam.
 
+## MVP amendment: verified profile context
+
+The operator approved allowing an enabled worker `profile` launch that the pinned executor verifies and resolves to `fresh` to use ordinary worker routing. Unknown or unverified context or target remains fail-closed. This narrowly supersedes the earlier AC-13 blanket profile rejection; it does not waive other safety or acceptance requirements. Historical failing receipts remain evidence.
+
 ## Problem Statement
 
 Jev options still span environment variables, merged Pi settings, a separately selected crew file and learned state. Operators cannot manage one global options file or predict whether an edit takes effect at the next assessment. Multiple readers can observe inconsistent state; legacy sources obscure effective values.

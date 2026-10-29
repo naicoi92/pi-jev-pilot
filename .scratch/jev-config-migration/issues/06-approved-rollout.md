@@ -19,6 +19,10 @@ Implementation: pending
 - [ ] No paid inference without separate budget; reload requirements and current-session verification limits are explicit.
 - [ ] Rollback instructions preserve config/runtime state and identify old versions that cannot read the new file.
 
+## Comments
+
+Operator explicitly approved candidate installation with the async visual acceptance gap still open and approved preserving the four existing tier mappings. Installed Jev `0359731171ac69fd5e000454ffff087d30e2009c` and executor `ec706c84bb26573c7d3f478b2bf6da0269caac33`; private backup and verification receipt: `/Users/naicoi/Projects/jev-config-migration-evidence/ticket05/public-final/user-install-receipt.md`. This approval does not waive acceptance or complete tickets 05/06. No active Pi restart or paid inference was performed.
+
 ## Verification and handoff
 
 Before implementation, map each criterion to an observable test and record the RED command. Use the highest approved native/local-provider seam; parser tests alone are insufficient. Record GREEN commands, source SHA, artifacts and limits. Keep intermediate changes on the integration branch; do not deploy or alter personal settings. Each ticket needs independent review before completion.

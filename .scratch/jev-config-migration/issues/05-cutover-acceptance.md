@@ -19,6 +19,10 @@ Implementation: pending
 - [ ] Native Pi-Bolt acceptance and real disposable packaged install exercise the same schema/path, ordinary/specialized dispatch, cancellation, status/Ctrl+O and spinner.
 - [ ] Lint/type/format and focused/full relevant gates reported honestly; independent Standards + Spec/security review completed; no unexplained failing gate waived.
 
+## Operator amendment: verified profile context
+
+Enabled `profile` launches verified and resolved to `fresh` by the pinned executor use ordinary routing. Unknown or unverified context or target remains fail-closed. Verify the actual profile dispatch and relevant negative controls; retain the historical AC-13 failure receipt. This is not a waiver of full or packaged acceptance.
+
 ## Verification and handoff
 
 Before implementation, map each criterion to an observable test and record the RED command. Use the highest approved native/local-provider seam; parser tests alone are insufficient. Record GREEN commands, source SHA, artifacts and limits. Keep intermediate changes on the integration branch; do not deploy or alter personal settings. Each ticket needs independent review before completion.

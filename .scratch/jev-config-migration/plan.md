@@ -81,6 +81,10 @@ Operator accepted a full Pi process restart after existing work ends to apply `w
 
 When worker routing is disabled, native workflow inner leaves and RPC launches outside Jev authority do not read Jev configuration and are not blocked by Jev for malformed files. Strict validation remains required whenever startup, a command or an assessment reads the file, including validation of disabled fields. This exception supersedes universal worker-launch interception only; it does not waive validation at actual Jev boundaries.
 
+## MVP amendment — verified profile context
+
+Operator approved enabled worker `profile` launches verified and resolved to `fresh` by the pinned executor to use ordinary worker routing. Unknown or unverified context or target remains fail-closed. This supersedes the historical AC-13 blanket profile rejection only; retain the original failure evidence and all other gates.
+
 ## Snapshot, refresh and lifecycle
 
 At each eligible main assessment or worker logical launch, read and validate one immutable configuration snapshot before effects. Capture base options, credential reference/resolved credential for that request, tiers, crew and effective tuning consistently. Share it across skill batches/rerank, preflight, assessment, policy/clamp and related status; no mid-assessment rereads. Do not persist the resolved secret, secret-derived fingerprints, prompts or authored task bodies.
