@@ -33,6 +33,12 @@ Remaining gate: after existing work ends, the operator must close and reopen the
 
 Rollback: preserve `jev-pilot.json` and the `jev-pilot/` ledger and tuning state; use the private backup to identify previous package refs and restore them through Pi's package manager. Older versions may not read `jev-pilot.json` and can require their prior configuration sources; inspect the backup and prior version documentation before changing settings. Do not overwrite unrelated settings or expose secret values.
 
+### Post-restart local verification checkpoint
+
+Operator reported a Pi restart. Disposable native package-discovery smoke loaded installed Jev `0359731`, read isolated JSON configuration and produced `/jev status` using localhost services: 1 pass / 7 assertions. A separate native foreground workflow smoke explicitly loaded that Jev package and executor `ec706c8`; the localhost worker was assessed, started and completed, and the foreground result settled. Workflow expanded output bytes were not asserted; harness teardown terminates the Pi process, so its exit is not natural process-close proof. Earlier harness REDs and their limits are retained. Evidence and commands: `/Users/naicoi/Projects/jev-config-migration-evidence/ticket06-restart/checkpoint.md`.
+
+These disposable processes do not prove the operator's current session loaded the package. Current-session `/jev status` and independent review remain open; no paid inference was used. Historical async root cause remains unknown.
+
 ## Verification and handoff
 
 Before implementation, map each criterion to an observable test and record the RED command. Use the highest approved native/local-provider seam; parser tests alone are insufficient. Record GREEN commands, source SHA, artifacts and limits. Keep intermediate changes on the integration branch; do not deploy or alter personal settings. Each ticket needs independent review before completion.
