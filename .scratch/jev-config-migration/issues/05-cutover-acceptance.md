@@ -13,11 +13,11 @@ Implementation: completed
 
 ## Acceptance criteria
 
-- [ ] Audit every production config/status reader: only official directory env and explicitly named credential env remain permitted inputs.
-- [ ] Conflicting legacy option env and global/project Pi settings never change new-file behavior; bounded deduplicated diagnostics contain names only.
-- [ ] Manual mapping/default examples cover every inventory row, including tiers and inline crew; no automatic settings rewrite or paid model seeding.
-- [ ] Native Pi-Bolt acceptance and real disposable packaged install exercise the same schema/path, ordinary/specialized dispatch, cancellation, status/Ctrl+O and spinner.
-- [ ] Lint/type/format and focused/full relevant gates reported honestly; independent Standards + Spec/security review completed; no unexplained failing gate waived.
+- [x] Audit every production config/status reader: only official directory env and explicitly named credential env remain permitted inputs.
+- [x] Conflicting legacy option env and global/project Pi settings never change new-file behavior; bounded deduplicated diagnostics contain names only.
+- [x] Manual mapping/default examples cover every inventory row, including tiers and inline crew; no automatic settings rewrite or paid model seeding.
+- [x] Native Pi-Bolt acceptance and real disposable packaged install exercise the same schema/path, ordinary/specialized dispatch, cancellation, status/Ctrl+O and spinner.
+- [x] Lint/type/format and focused/full relevant gates reported honestly; independent Standards + Spec/security review completed; no unexplained failing gate waived.
 
 ## Comments
 
