@@ -1,5 +1,6 @@
 import { expect } from "bun:test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -12,6 +13,8 @@ interface RpcRecord {
     role: string;
     content?: { type: string; text?: string }[];
     customType?: string;
+    stopReason?: string;
+    errorMessage?: string;
     details?: { runs?: { runId: string }[] };
   };
   toolName?: string;
@@ -68,30 +71,38 @@ for (const scenario of [
           "@earendil-works/pi-coding-agent": "1.4.0",
           "@earendil-works/pi-ai": "1.4.0",
           "pi-subagents":
-            "git+https://github.com/naicoi92/pi-subagents.git#9f0dcee736e64db6ecc1cfcd87bb0eecac5fbf51",
+            "git+https://github.com/naicoi92/pi-subagents.git#ec706c84bb26573c7d3f478b2bf6da0269caac33",
         },
       }),
     );
+    const home = join(directory, "home");
+    const cache = join(directory, ".bun/install/cache");
+    await mkdir(home, { recursive: true });
     const env = {
       PATH: Bun.env.PATH,
-      HOME: directory,
+      HOME: home,
       TMPDIR: directory,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_ASKPASS: "/usr/bin/false",
       PI_CODING_AGENT_DIR: agentDir,
       PI_OFFLINE: "1",
       PI_TELEMETRY: "0",
       PI_SUBAGENTS_TEMP_ROOT: join(directory, "runtime"),
-      JEV_EFFORT_ENABLED: "false",
-      JEV_MAIN_ROUTING_ENABLED: "false",
-      JEV_SKILLS_ENABLED: "false",
-      JEV_STRATEGY_ENABLED: "false",
-      JEV_QUALITY_ENABLED: "false",
-      JEV_DESIGN_ENABLED: "false",
-      JEV_WORKER_ROUTING_ENABLED: "false",
-      JEV_CREW_CONFIG: join(directory, "crew.json"),
     };
     await writeFile(
-      env.JEV_CREW_CONFIG,
-      JSON.stringify({ mode: "junior-lead", slots: [{ name: "alpha", model: "local/junior" }] }),
+      join(agentDir, "jev-pilot.json"),
+      JSON.stringify({
+        effortEnabled: false,
+        skillsEnabled: false,
+        strategyEnabled: false,
+        qualityEnabled: false,
+        designEnabled: false,
+        workerRoutingEnabled: false,
+        recordDecisions: false,
+        crew: { mode: "junior-lead", slots: [{ name: "alpha", model: "local/junior" }] },
+      }),
     );
     const run = async (args: string[], cwd = directory) => {
       const p = Bun.spawn(args, { cwd, env, stdout: "pipe", stderr: "pipe" });
@@ -100,7 +111,7 @@ for (const scenario of [
       evidence.commands.push({ command: args, exitCode, output });
       expect(exitCode, output).toBe(0);
     };
-    await run([Bun.which("bun")!, "install"]);
+    await run([Bun.which("bun")!, "install", "--ignore-scripts", "--cache-dir", cache]);
     const packed = join(directory, "pi-jev-pilot.tgz");
     await run(
       [Bun.which("bun")!, "pm", "pack", "--filename", packed],
@@ -111,6 +122,23 @@ for (const scenario of [
     const installed = join(directory, "packed/package");
     const cli = join(directory, "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js");
     const executor = join(directory, "node_modules/pi-subagents/index.ts");
+    const executorPackage = await readFile(
+      join(directory, "node_modules/pi-subagents/package.json"),
+      "utf8",
+    );
+    const executorBytes = await readFile(executor);
+    await writeFile(
+      join(directory, "installed-identity.json"),
+      JSON.stringify(
+        {
+          executor,
+          executorSha256: createHash("sha256").update(executorBytes).digest("hex"),
+          executorPackage: JSON.parse(executorPackage),
+        },
+        null,
+        2,
+      ),
+    );
     const observer = join(directory, "observer.ts");
     await writeFile(
       observer,
@@ -330,11 +358,31 @@ export default function(pi) {
     };
     const settled = (offset: number) =>
       wait(() => records.slice(offset).some((r) => r.type === "agent_settled"));
-    const results = async (): Promise<ToolReceipt[]> =>
-      (await readFile(join(directory, "results.jsonl"), "utf8"))
+    const results = async (): Promise<ToolReceipt[]> => {
+      await writeFile(
+        join(directory, "parent-terminal-diagnostic.json"),
+        JSON.stringify(
+          {
+            events: records
+              .filter((r) => r.message?.role === "assistant" && r.message.stopReason === "error")
+              .map((r) => ({
+                type: r.type,
+                stopReason: r.message?.stopReason,
+                errorMessage: r.message?.errorMessage?.replaceAll(directory, "<fixture>"),
+              })),
+            stderrBytes: Buffer.byteLength(stderr),
+            exitCode: child.exitCode,
+            signalCode: child.signalCode,
+          },
+          null,
+          2,
+        ),
+      );
+      return (await readFile(join(directory, "results.jsonl"), "utf8"))
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line));
+    };
     const status = async (id: string) => {
       const file = join(directory, "runtime/async-subagent-runs", id, "status.json");
       let value: ChildStatus | undefined;

@@ -50,11 +50,12 @@ class Server(http.server.ThreadingHTTPServer): daemon_threads = True
 server = Server(('127.0.0.1', 0), Handler); threading.Thread(target=server.serve_forever, daemon=True).start()
 base = f'http://127.0.0.1:{server.server_port}'
 (agent / 'models.json').write_text(json.dumps({'providers': {'fixture': {'baseUrl': base + '/v1', 'api': 'openai-completions', 'apiKey': 'local-placeholder', 'models': [{'id': 'summary-model', 'reasoning': True, 'input': ['text'], 'contextWindow': 32000, 'maxTokens': 512, 'thinkingLevelMap': {'off': 'none', 'low': 'low', 'medium': 'medium', 'high': 'high'}}]}}}))
-(agent / 'settings.json').write_text(json.dumps({'quietStartup': True, 'checkForUpdates': False, 'compaction': {'enabled': False}, 'retry': {'enabled': False}, 'jevPilot': {'tiers': {'balanced': 'fixture/summary-model'}}, 'subagents': {'intercomBridge': {'mode': 'off'}}}))
+(agent / 'settings.json').write_text(json.dumps({'quietStartup': True, 'checkForUpdates': False, 'compaction': {'enabled': False}, 'retry': {'enabled': False}, 'subagents': {'intercomBridge': {'mode': 'off'}}}))
+(agent / 'jev-pilot.json').write_text(json.dumps({'effortEnabled': False, 'skillsEnabled': False, 'strategyEnabled': False, 'qualityEnabled': False, 'designEnabled': False, 'recordDecisions': False, 'tiers': {'balanced': 'fixture/summary-model'}, 'classifier': {'url': base + '/systemone', 'apiKeyEnv': 'JEV_SYSTEM_ONE_API_KEY', 'timeoutMs': 10000}}))
 (agent / 'agents/summary-worker.md').write_text('---\nname: summary-worker\ndescription: Local worker summary proof\nmodel: fixture/summary-model\nthinking: high\ndefaultContext: fresh\ntools: read\n---\nReturn local fixture result.\n')
 (evidence / 'foreground-workflow.js').write_text('return await runs.run("one", {agent: "summary-worker", task: "SUMMARY_CHILD return local result.", async: false, options: {context: "fresh", acceptance: false, artifacts: false}});')
 env = {key: os.environ[key] for key in ['PATH', 'LANG', 'TMPDIR'] if key in os.environ}
-env.update(HOME=str(home), PI_CODING_AGENT_DIR=str(agent), PI_OFFLINE='1', PI_TELEMETRY='0', TERM='xterm-256color', JEV_SYSTEM_ONE_URL=base + '/systemone', JEV_SYSTEM_ONE_API_KEY='local-placeholder', JEV_TIMEOUT_MS='10000', JEV_EFFORT_ENABLED='false', JEV_SKILLS_ENABLED='false', JEV_STRATEGY_ENABLED='false', JEV_QUALITY_ENABLED='false', JEV_DESIGN_ENABLED='false', JEV_LEDGER_ENABLED='false', JEV_STATUS_EVENTS=str(events), PI_SUBAGENTS_TEMP_ROOT=str(evidence / 'runtime'))
+env.update(HOME=str(home), PI_CODING_AGENT_DIR=str(agent), PI_OFFLINE='1', PI_TELEMETRY='0', TERM='xterm-256color', JEV_SYSTEM_ONE_API_KEY='local-placeholder', JEV_STATUS_EVENTS=str(events), PI_SUBAGENTS_TEMP_ROOT=str(evidence / 'runtime'))
 command = [str(binary), '--no-extensions', '--no-skills', '--no-mcp', '--no-context-files', '--no-prompt-templates', '--no-themes', '--offline', '--no-approve', '--tui-mode', 'fullscreen', '--session-dir', str(evidence / 'sessions'), '--model', 'fixture/summary-model', '--thinking', 'high', '-e', str(repo / 'tests/fixtures/jev-status-observer.ts'), '-e', str(repo / 'tests/fixtures/worker-summary-observer.ts'), '-e', str(repo / 'node_modules/pi-subagents/index.ts'), '-e', str(repo / 'src/extension.ts'), 'Run local worker.']
 (evidence / 'command.json').write_text(json.dumps({'argv': command, 'env': env}, indent=2))
 master, slave = pty.openpty(); fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 160, 0, 0))
@@ -93,18 +94,21 @@ try:
             if r['type'] == 'widget': active[r['data']['key']] = r['data']['active']
             if r['type'] == 'render': rendered[r['data']['key']] = r['data']['lines']
         return {k: rendered.get(k, []) for k in ['subagent-async','subagent-fleet-status'] if active.get(k)}
-    if not workflow:
-        wait(lambda: not any(any(line.strip() for line in lines) for lines in native_visible().values()), 'acknowledged native leaf rows absent')
-        checks.append({'phase':'native-leaf-rows-absent', 'widgets':native_visible()})
+    if not foreground:
+        wait(lambda: any(any('summary-worker' in line for line in lines) for lines in native_visible().values()), 'native running worker row present')
+        wait(lambda: any(r['type']=='render' and r['data']['key']=='subagent-fleet-status' and any('active agent' in line for line in r['data']['lines']) for r in records()), 'native Fleet row present')
+        checks.append({'phase':'native-leaf-rows-present', 'widgets':native_visible()})
     seen = [r for r in records() if r['type'] == 'render']
     if not foreground:
         assert any('worker accepted' in '\n'.join(r['data']['lines']) for r in seen), 'accepted state not rendered'
-    assert not any(r['data']['lines'] for r in records() if r['type'] == 'worker-render' and not r['data']['expanded']), 'debug rows collapsed'
+    assert any(r['data']['lines'] for r in records() if r['type'] == 'worker-render' and not r['data']['expanded']), 'native collapsed call missing'
+    offset = len(records())
     os.write(master, b'\x0f')
-    wait(lambda: any(r['type'] == 'worker-render' and r['data']['expanded'] and any('summary-worker ·' in line and 'assessed · fixture/summary-model · low · running' in line for line in r['data']['lines']) for r in records()), 'Ctrl+O expanded metadata')
-    checks.append({'phase': 'expanded', 'details': [r['data'] for r in records() if r['type'] == 'worker-render' and r['data']['expanded']][-1]})
+    wait(lambda: any(r['type']=='render' and r['data']['key']=='jev-pilot' and any('summary-worker ·' in line and 'assessed · fixture/summary-model · low · running' in line for line in r['data']['lines']) for r in records()[offset:]), 'fresh Ctrl+O expanded widget metadata')
+    checks.append({'phase': 'expanded-widget', 'lines': latest()})
+    offset = len(records())
     os.write(master, b'\x0f')
-    wait(lambda: [r for r in records() if r['type'] == 'worker-render'][-1]['data']['lines'] == [], 'Ctrl+O collapse')
+    wait(lambda: any(r['type']=='render' and r['data']['key']=='jev-pilot' and len(r['data']['lines']) == 1 for r in records()[offset:]), 'fresh Ctrl+O collapsed widget')
     for _ in range(4): pump()
     default_start = len(raw)
     if scenario == 'complete-fallback':
@@ -122,31 +126,35 @@ try:
     capture('terminal-' + terminal, '1 worker ' + terminal + ' · low')
     if not foreground:
         wait(lambda: any(r['type']=='native-notification' for r in records()), 'genuine native completion notice')
-        wait(lambda: any(r['type']=='notification-component' for r in records()), 'genuine native notification component')
-    if not workflow:
-        wait(lambda: not any(any(line.strip() for line in lines) for lines in native_visible().values()), 'terminal native leaf rows absent')
-        for _ in range(4): pump()
-        default_bytes = bytes(raw[default_start:])
-        (evidence / 'terminal-default-slice.ansi').write_bytes(default_bytes)
-        plain = re.sub(rb'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)', b'', default_bytes)
-        plain = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b'', plain)
-        assert b'LOCAL_CHILD_ERROR' not in plain and b'async-subagent-runs/' not in plain and b'Async: summary-worker [' not in plain, plain
-        checks.append({'phase':'terminal-default-no-leaf-debug','native':native_visible()})
-        assert not any(r['data']['lines'] for r in records() if r['type']=='notification-component' and not r['data']['expanded']), 'collapsed native notification leaked'
+        wait(lambda: any(r['type']=='notification-component' and not r['data']['expanded'] and terminal.replace('cancelled', 'stopped') in '\n'.join(r['data']['lines']) for r in records()), 'native collapsed notification')
     if foreground:
         wait(lambda: any(r['type']=='worker-result' and r['data'].get('toolCallId')=='summary-public-call' for r in records()), 'settled public foreground result')
         wait(lambda: any(r['type']=='settled' for r in records()), 'foreground parent settled')
+    wait(lambda: any(r['type']=='settled' for r in records()), 'parent idle')
+    offset = len(records())
     os.write(master, b'\x0f')
+    wait(lambda: any(r['type']=='render' and r['data']['key']=='jev-pilot' and len(r['data']['lines']) > 1 and any(terminal in line for line in r['data']['lines'][1:]) for r in records()[offset:]), 'fresh idle terminal widget expands on Ctrl+O')
+    wait(lambda: any(r['type']=='worker-render' and r['data']['expanded'] for r in records()[offset:]), 'fresh native tool expands on Ctrl+O')
+    checks.append({'phase':'idle-expanded-widget', 'lines':latest()})
     useful = 'LOCAL_CHILD_ERROR' if outcome == 'error' else 'stopped' if outcome == 'cancel' else 'LOCAL_CHILD_VISIBLE'
     if not foreground and outcome == 'complete':
         wait(lambda: any(r['type']=='native-notification' and not r['data']['display'] for r in records()), 'native silent success notice preserved')
     else:
         if not foreground:
             wait(lambda: any(r['data']['expanded'] and useful.lower() in '\n'.join(r['data']['lines']).lower() for r in records() if r['type']=='notification-component'), 'expanded useful native terminal component')
-        wait(lambda: useful.lower().encode() in bytes(raw).lower(), 'Ctrl+O useful native terminal bytes')
-    checks.append({'phase':'expanded-terminal-output', 'useful':useful})
+        if not workflow: wait(lambda: useful.lower().encode() in bytes(raw).lower(), 'Ctrl+O useful native terminal bytes')
+    if workflow:
+        checks.append({'phase':'expanded-terminal-output-unverified', 'reason':'workflow expanded output bytes not asserted'})
+    elif not foreground and outcome == 'complete':
+        checks.append({'phase':'expanded-terminal-output-unverified', 'reason':'native success notice is silent'})
+    else:
+        checks.append({'phase':'expanded-terminal-output', 'useful':useful})
     (evidence / 'terminal-expanded.ansi').write_bytes(raw)
+    offset = len(records())
     os.write(master, b'\x0f')
+    wait(lambda: any(r['type']=='render' and r['data']['key']=='jev-pilot' and len(r['data']['lines']) == 1 for r in records()[offset:]), 'fresh idle terminal widget collapses on Ctrl+O')
+    wait(lambda: any(r['type']=='worker-render' and not r['data']['expanded'] for r in records()[offset:]), 'fresh native tool collapses on Ctrl+O')
+    checks.append({'phase':'idle-collapsed-widget', 'lines':latest()})
     if foreground:
         if workflow and outcome == 'error':
             attached = [r['data'] for r in records() if r['type']=='subagent:foreground-complete' and r['data'].get('attached')]

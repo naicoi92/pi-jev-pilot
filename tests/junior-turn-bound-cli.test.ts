@@ -71,7 +71,7 @@ for (const scenario of [
           "@earendil-works/pi-coding-agent": "1.4.0",
           "@earendil-works/pi-ai": "1.4.0",
           "pi-subagents":
-            "git+https://github.com/naicoi92/pi-subagents.git#9f0dcee736e64db6ecc1cfcd87bb0eecac5fbf51",
+            "git+https://github.com/naicoi92/pi-subagents.git#ec706c84bb26573c7d3f478b2bf6da0269caac33",
         },
       }),
     );
@@ -83,18 +83,18 @@ for (const scenario of [
       PI_OFFLINE: "1",
       PI_TELEMETRY: "0",
       PI_SUBAGENTS_TEMP_ROOT: join(directory, "runtime"),
-      JEV_EFFORT_ENABLED: "false",
-      JEV_MAIN_ROUTING_ENABLED: "false",
-      JEV_SKILLS_ENABLED: "false",
-      JEV_STRATEGY_ENABLED: "false",
-      JEV_QUALITY_ENABLED: "false",
-      JEV_DESIGN_ENABLED: "false",
-      JEV_WORKER_ROUTING_ENABLED: "false",
-      JEV_CREW_CONFIG: join(directory, "crew.json"),
     };
     await writeFile(
-      env.JEV_CREW_CONFIG,
-      JSON.stringify({ mode: "junior-lead", slots: [{ name: "alpha", model: "local/junior" }] }),
+      join(agentDir, "jev-pilot.json"),
+      JSON.stringify({
+        effortEnabled: false,
+        skillsEnabled: false,
+        strategyEnabled: false,
+        qualityEnabled: false,
+        designEnabled: false,
+        workerRoutingEnabled: false,
+        crew: { mode: "junior-lead", slots: [{ name: "alpha", model: "local/junior" }] },
+      }),
     );
     const run = async (args: string[], cwd = directory) => {
       const p = Bun.spawn(args, { cwd, env, stdout: "pipe", stderr: "pipe" });
@@ -103,7 +103,7 @@ for (const scenario of [
       evidence.commands.push({ command: args, exitCode, output });
       expect(exitCode, output).toBe(0);
     };
-    await run([Bun.which("bun")!, "install"]);
+    await run([Bun.which("bun")!, "install", "--ignore-scripts"]);
     const packed = join(directory, "pi-jev-pilot.tgz");
     await run(
       [Bun.which("bun")!, "pm", "pack", "--filename", packed],

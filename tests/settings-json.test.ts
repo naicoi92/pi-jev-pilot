@@ -72,6 +72,7 @@ test("settings-json obsolete router startup rejected by official Pi, never resto
 
 test("settings-json absent worker tiers do not affect physical effort-disabled main", async () => {
   fixture = new PiFixture();
+  fixture.jevConfig = { effortEnabled: false };
   const f = await fixture.start({
     JEV_EFFORT_ENABLED: "false",
     JEV_SYSTEM_ONE_URL: "invalid",

@@ -85,7 +85,7 @@ export class LiveStatusLine {
       this.tui = tui;
       this.syncTimer();
       return {
-        render: (width) => this.render(width, theme),
+        render: (width) => this.render(width, theme, ui.getToolsExpanded()),
         invalidate() {},
         dispose: () => {
           if (this.tui === tui) {
@@ -274,7 +274,7 @@ export class LiveStatusLine {
     return parts;
   }
 
-  private render(width: number, theme: Theme): string[] {
+  private render(width: number, theme: Theme, expanded: boolean): string[] {
     const budget = Math.max(0, width - RIGHT_PADDING);
     const skill = this.skill ? `/${this.skill}` : undefined;
     const plainWidth = (parts: Part[]) =>
@@ -309,7 +309,11 @@ export class LiveStatusLine {
     const styled = parts.map((part) => theme.fg(part.color, part.text)).join(separator);
     const line = truncateToWidth(`${theme.fg("accent", frame)} ${styled}`, budget, "…");
     const align = (text: string) => " ".repeat(Math.max(0, budget - visibleWidth(text))) + text;
-    return [align(line)];
+    const details = expanded ? (this.workerSummary?.details ?? []) : [];
+    return [
+      align(line),
+      ...details.map((detail) => align(truncateToWidth(theme.fg("muted", detail), budget, "…"))),
+    ];
   }
 }
 

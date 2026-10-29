@@ -75,8 +75,19 @@ const exists = (path: string) =>
 /** AE-2: valid high at confidence .55 applies regardless of stored confidence bars. */
 const BORDERLINE = () => answer("high", 0.55);
 
+function tuningFixture(): PiFixture {
+  const f = new PiFixture();
+  f.jevConfig = {
+    skillsEnabled: false,
+    strategyEnabled: false,
+    qualityEnabled: false,
+    designEnabled: false,
+  };
+  return f;
+}
+
 test("AC-25 TUNE-CLI-25-propose-only: 20 fresh turns produce a proposal, never a change", async () => {
-  const f = await (fixture = new PiFixture()).start();
+  const f = await (fixture = tuningFixture()).start();
   await seedLedger(f, 20);
   const text = await say(f, "/jev tune");
   expect(text).toContain("From your last 20 turns, it suggests:");
@@ -90,7 +101,7 @@ test("AC-25 TUNE-CLI-25-propose-only: 20 fresh turns produce a proposal, never a
 }, 20000);
 
 test("AC-25 TUNE-CLI-25-too-few: 19 fresh turns suggest nothing and apply changes nothing", async () => {
-  const f = await (fixture = new PiFixture()).start();
+  const f = await (fixture = tuningFixture()).start();
   await seedLedger(f, 19);
   expect(await say(f, "/jev tune")).toContain("No suggestion yet: 19 of the 20 turns");
   expect(await say(f, "/jev tune apply")).toContain("Nothing to apply.");
@@ -100,7 +111,7 @@ test("AC-25 TUNE-CLI-25-too-few: 19 fresh turns suggest nothing and apply change
 });
 
 test("AC-25 TUNE-CLI-25-apply-reset: stored confidence tuning cannot veto effort, ledger untouched", async () => {
-  const f = await (fixture = new PiFixture()).start();
+  const f = await (fixture = tuningFixture()).start();
   await seedLedger(f, 20);
   const task = "Please review the complete patch with particular care for failure modes";
   f.response = BORDERLINE();
@@ -135,7 +146,7 @@ test("AC-25 TUNE-CLI-25-apply-reset: stored confidence tuning cannot veto effort
 }, 40000);
 
 test("AC-24 TUNE-CLI-24-ledger-reset: ledger reset preserves stored tuning without an effort veto", async () => {
-  const f = await (fixture = new PiFixture()).start();
+  const f = await (fixture = tuningFixture()).start();
   await seedLedger(f, 20);
   await say(f, "/jev tune apply");
   const tuningBefore = await readFile(tuningFile(f), "utf8");
@@ -151,7 +162,7 @@ test("AC-24 TUNE-CLI-24-ledger-reset: ledger reset preserves stored tuning witho
 }, 20000);
 
 test("AC-26 TUNE-CLI-26-reload-and-session: learned tuning survives reload and a new session", async () => {
-  const f = await (fixture = new PiFixture()).start();
+  const f = await (fixture = tuningFixture()).start();
   await seedLedger(f, 20);
   await say(f, "/jev tune apply");
   await f.command("prompt", { message: "/fixture-reload" });
@@ -171,7 +182,7 @@ test("AC-26 TUNE-CLI-26-reload-and-session: learned tuning survives reload and a
 }, 30000);
 
 test("AC-25 TUNE-CLI-25-announce: the 20th fresh turn announces a proposal once and applies nothing", async () => {
-  const f = await (fixture = new PiFixture()).start();
+  const f = await (fixture = tuningFixture()).start();
   await seedLedger(f, 18);
   const task = "Please review the complete patch with particular care for failure modes";
   const announcements = () => notifications(f).filter((text) => text.includes("Jev learned"));
@@ -187,7 +198,7 @@ test("AC-25 TUNE-CLI-25-announce: the 20th fresh turn announces a proposal once 
 }, 40000);
 
 test("AC-25 TUNE-CLI-25-timeout: a learned timeout overlays the JSON base for the next decision", async () => {
-  const f = new PiFixture();
+  const f = tuningFixture();
   fixture = f;
   f.classifierConfig = { timeoutMs: 100 };
   await f.start({ JEV_TIMEOUT_MS: "invalid" });
@@ -206,7 +217,7 @@ test("AC-25 TUNE-CLI-25-timeout: a learned timeout overlays the JSON base for th
 }, 20000);
 
 test("AC-26 TUNE-CLI-26-unreadable: an unreadable tuning file leaves decisions on base values and is not rewritten by show/apply", async () => {
-  const f = await (fixture = new PiFixture()).start();
+  const f = await (fixture = tuningFixture()).start();
   await seedLedger(f, 20);
   await mkdir(jevDirectory(f), { recursive: true });
   await writeFile(tuningFile(f), "{ PRIVATE not json");
@@ -221,7 +232,7 @@ test("AC-26 TUNE-CLI-26-unreadable: an unreadable tuning file leaves decisions o
 }, 20000);
 
 test("AC-25 TUNE-CLI-25-usage: unknown tune arguments show usage without inference or writes", async () => {
-  const f = await (fixture = new PiFixture()).start();
+  const f = await (fixture = tuningFixture()).start();
   await seedLedger(f, 20);
   expect(await say(f, "/jev tune bogus")).toBe(
     "Usage: /jev status | report | report reset | tune | tune apply | tune reset",

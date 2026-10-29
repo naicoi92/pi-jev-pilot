@@ -116,8 +116,22 @@ for (const name of ["direct", "async", "clamp", "error", "timeout", "schema", "d
       JSON.stringify({
         retry: { enabled: false },
         compaction: { enabled: false },
-        jevPilot: {
-          tiers: { fast: "local/parent", balanced: "local/selected", deep: "local/configured" },
+      }),
+    );
+    await writeFile(
+      join(agent, "jev-pilot.json"),
+      JSON.stringify({
+        effortEnabled: false,
+        skillsEnabled: false,
+        strategyEnabled: false,
+        qualityEnabled: false,
+        designEnabled: false,
+        workerRoutingEnabled: name !== "disabled",
+        tiers: { fast: "local/parent", balanced: "local/selected", deep: "local/configured" },
+        classifier: {
+          url: `${server.url}classify`,
+          apiKeyEnv: "CFG_TEST_KEY",
+          timeoutMs: name === "timeout" ? 100 : 5000,
         },
       }),
     );
@@ -155,15 +169,7 @@ for (const name of ["direct", "async", "clamp", "error", "timeout", "schema", "d
       PI_OFFLINE: "1",
       PI_TELEMETRY: "0",
       PI_SUBAGENTS_TEMP_ROOT: join(directory, "runtime"),
-      JEV_EFFORT_ENABLED: "false",
-      JEV_SKILLS_ENABLED: "false",
-      JEV_STRATEGY_ENABLED: "false",
-      JEV_QUALITY_ENABLED: "false",
-      JEV_DESIGN_ENABLED: "false",
-      JEV_WORKER_ROUTING_ENABLED: name === "disabled" ? "false" : "true",
-      JEV_SYSTEM_ONE_URL: `${server.url}classify`,
-      JEV_SYSTEM_ONE_API_KEY: "fixture-not-a-credential",
-      JEV_TIMEOUT_MS: name === "timeout" ? "100" : "5000",
+      CFG_TEST_KEY: "fixture-not-a-credential",
     };
     const child = spawn(Bun.which("node")!, args, { cwd: directory, env });
     const command = {
@@ -267,28 +273,9 @@ for (const name of ["direct", "async", "clamp", "error", "timeout", "schema", "d
         ...(thinking !== "off" ? { reasoning_effort: thinking } : {}),
       });
       expect(classifications).toHaveLength(name === "disabled" ? 0 : 1);
-      const widgets = records.filter(
-        (r) => r.method === "setWidget" && r.widgetKey === "jev-pilot-workers",
-      );
-      const ui = JSON.stringify(
-        records.filter(
-          (r) =>
-            ["setWidget", "setStatus"].includes(String(r.method)) &&
-            (r.widgetKey ?? r.statusKey) === "jev-pilot-workers",
-        ),
-      );
-      expect(widgets.length).toBeGreaterThan(0);
-      if (name !== "disabled") expect(ui).toContain("choosing model + effort");
-      if (background) {
-        expect(ui).toContain("executor accepted async · launch unconfirmed");
-        expect(ui).toContain("executor complete · model/effort unconfirmed");
-      } else expect(ui).toContain("executor receipt · target");
-      expect(ui).not.toContain("running");
-      if (name === "disabled") expect(ui).toContain("unchanged · routing disabled");
-      else expect(ui).toContain("executor authority · decision pending · launch unconfirmed");
-      // Selection and fallback are proven by committed native receipts/provider requests above,
-      // never by obsolete tool-envelope plan text.
-      expect(ui).not.toContain("Jev plan · selected");
+      // Native calls and results remain executor-owned. The expanded Jev widget is a custom TUI
+      // component, so its rendered content is verified by worker-summary-terminal.py, not RPC.
+      const ui = JSON.stringify(records.filter((r) => r.type === "extension_ui_request"));
       expect(ui).not.toContain("PRIVATE_");
       expect(ui).not.toContain("fixture-not-a-credential");
     } finally {

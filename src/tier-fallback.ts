@@ -33,7 +33,7 @@ export async function cascadeTiers(
   };
   const failures: TierFailure[] = [];
   const fail = (tier: Tier, reason: string) =>
-    failures.push({ tier, setting: `jevPilot.tiers.${tier}`, reason });
+    failures.push({ tier, setting: `jev-pilot.json tiers.${tier}`, reason });
   const running = TIER_ORDER.filter((tier) => tiers[tier] === selected);
   // A model no tier runs (a custom slot) was already validated and is not judged here.
   if (running.length === 0) return { model: selected, failures };

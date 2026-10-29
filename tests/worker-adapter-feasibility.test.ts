@@ -56,7 +56,7 @@ for (const mode of [
             "@earendil-works/pi-coding-agent": "1.4.0",
             "@earendil-works/pi-ai": "1.4.0",
             "pi-subagents":
-              "git+https://github.com/naicoi92/pi-subagents.git#9f0dcee736e64db6ecc1cfcd87bb0eecac5fbf51",
+              "git+https://github.com/naicoi92/pi-subagents.git#ec706c84bb26573c7d3f478b2bf6da0269caac33",
           },
         }),
       );
@@ -211,6 +211,17 @@ export default function(pi) {
         directory,
         "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
       );
+      await writeFile(
+        join(agentDir, "jev-pilot.json"),
+        JSON.stringify({
+          workerRoutingEnabled: false,
+          effortEnabled: false,
+          skillsEnabled: false,
+          strategyEnabled: false,
+          qualityEnabled: false,
+          designEnabled: false,
+        }),
+      );
       const env = {
         PATH: Bun.env.PATH,
         HOME: directory,
@@ -218,12 +229,6 @@ export default function(pi) {
         PI_OFFLINE: "1",
         PI_TELEMETRY: "0",
         PI_SUBAGENTS_TEMP_ROOT: join(directory, "runtime"),
-        JEV_WORKER_ROUTING_ENABLED: "false",
-        JEV_EFFORT_ENABLED: "false",
-        JEV_SKILLS_ENABLED: "false",
-        JEV_STRATEGY_ENABLED: "false",
-        JEV_QUALITY_ENABLED: "false",
-        JEV_DESIGN_ENABLED: "false",
       };
       const commands: string[][] = [];
       const installReceipts: { command: string[]; output: string; exitCode: number }[] = [];
@@ -293,9 +298,9 @@ export default function(pi) {
           }
         }
       });
-      const wait = async (predicate: () => boolean) => {
+      const wait = async (predicate: () => boolean | Promise<boolean>) => {
         const deadline = Date.now() + 30000;
-        while (!predicate()) {
+        while (!(await predicate())) {
           if (process!.exitCode !== null || Date.now() > deadline)
             throw new Error(
               `directory=${directory}; stderr=${stderr}; records=${JSON.stringify(records.slice(-5))}`,
@@ -378,7 +383,9 @@ export default function(pi) {
             ),
           );
           const launched = JSON.parse(result.trim());
-          const status = await Bun.file(join(launched.details.asyncDir, "status.json")).json();
+          const statusFile = Bun.file(join(launched.details.asyncDir, "status.json"));
+          await wait(async () => (await statusFile.json()).processTerminal?.state === "observed");
+          const status = await statusFile.json();
           expect(status).toMatchObject({
             state: "complete",
             processTerminal: { state: "observed" },
@@ -406,8 +413,8 @@ export default function(pi) {
               mode,
               versions: {
                 pi: "1.4.0",
-                executionPackage: "naicoi92/pi-subagents@9f0dcee736e64db6ecc1cfcd87bb0eecac5fbf51",
-                preflight: "naicoi92/pi-subagents@9f0dcee736e64db6ecc1cfcd87bb0eecac5fbf51",
+                executionPackage: "naicoi92/pi-subagents@ec706c84bb26573c7d3f478b2bf6da0269caac33",
+                preflight: "naicoi92/pi-subagents@ec706c84bb26573c7d3f478b2bf6da0269caac33",
                 node: Bun.spawnSync([Bun.which("node")!, "--version"])
                   .stdout.toString()
                   .trim(),

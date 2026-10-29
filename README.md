@@ -19,13 +19,31 @@ pi install /tmp/consumer/node_modules/pi-jev-pilot
 bun install --frozen-lockfile
 pi install /absolute/path/to/pi-jev-pilot
 
-export JEV_SYSTEM_ONE_API_KEY='your-key'
+# Set TYPESAFE_API_KEY in your environment using your usual secret-management method.
 pi --model provider/model-id
 ```
 
 Resolving the pinned executor dependency needs the Bun package cache or network access to public GitHub; no credential is involved. Nothing has been published: no npm release or GitHub Release exists, and this repository has no remote.
 
 Do not commit credentials. Configure Jev in `<Pi agent dir>/jev-pilot.json` (`PI_CODING_AGENT_DIR` selects the directory). Classifier credentials remain in the environment variable named by `classifier.apiKeyEnv` (default `TYPESAFE_API_KEY`); never put the secret in JSON. Legacy option environment variables and Pi settings are ignored. Classifier URLs must be HTTP(S), without embedded credentials; remote HTTP sends requests and credentials in plaintext. Redirects are rejected.
+
+## Manual migration and defaults
+
+Create `jev-pilot.json` manually; no settings or credentials are copied automatically. Missing file uses defaults: `schemaVersion: 1`, `effortEnabled`, `workerRoutingEnabled`, `skillsEnabled`, `strategyEnabled`, `qualityEnabled`, `designEnabled`, and `recordDecisions` are true; `skillRerank` is false; `designSkills` defaults to `design-taste-frontend`, `impeccable`, and `web-design-guidelines`. Classifier defaults: URL `https://api.typesafe.ai/v1/systemone`, model `jev-latest`, `apiKeyEnv` `TYPESAFE_API_KEY`, timeout 1500 ms. Tiers default empty; crew defaults to standard mode with no slots. No model mappings are seeded.
+
+| Old input                                                                                   | Manual destination                                                                                                                     |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `JEV_EFFORT_ENABLED`, `JEV_WORKER_ROUTING_ENABLED`                                          | `effortEnabled`, `workerRoutingEnabled`                                                                                                |
+| `JEV_SKILLS_ENABLED`, `JEV_SKILL_RERANK`                                                    | `skillsEnabled`, `skillRerank`                                                                                                         |
+| `JEV_STRATEGY_ENABLED`, `JEV_QUALITY_ENABLED`, `JEV_DESIGN_ENABLED`, `JEV_RECORD_DECISIONS` | `strategyEnabled`, `qualityEnabled`, `designEnabled`, `recordDecisions`                                                                |
+| `JEV_DESIGN_SKILLS`                                                                         | `designSkills` string array                                                                                                            |
+| `JEV_SYSTEM_ONE_URL`, `JEV_SYSTEM_ONE_MODEL`, `JEV_TIMEOUT_MS`                              | `classifier.url`, `classifier.model`, `classifier.timeoutMs` base; applied tuning overlays timeout                                     |
+| `JEV_SYSTEM_ONE_API_KEY` / `TYPESAFE_API_KEY` fallback                                      | Set only the environment variable named by `classifier.apiKeyEnv`; no implicit fallback. Explicitly naming either variable is allowed. |
+| `JEV_CREW_CONFIG` and external crew file                                                    | Copy desired crew object manually to inline `crew`.                                                                                    |
+| Global `settings.json` `jevPilot.tiers`                                                     | Copy desired mappings manually to `tiers.fast`, `tiers.balanced`, `tiers.deep`, `tiers.expert`.                                        |
+| `JEV_TIER_*`, `JEV_MAIN_ROUTING_ENABLED`, `mainRoutingEnabled`                              | Obsolete; no replacement main router.                                                                                                  |
+
+Global/project Pi settings and legacy option environment variables do not configure Jev. Project settings are not inspected for migration warnings. Missing tier mappings disable those routing choices. Use operator-selected physical models and credentials, never paste secrets into configuration.
 
 ## Configure worker model tiers
 
@@ -47,9 +65,9 @@ Worker routing and effective worker classifier timeout (JSON base plus applied t
 
 Every tier is optional. An absent, empty or whitespace-only value leaves the tier unconfigured, and an unconfigured tier is never offered to the classifier; with no tier and no custom slot configured, no tier question is sent and the worker keeps its own model. A high-risk decision (risky above .7) selects `deep`, else the highest configured non-expert tier, else changes nothing; it never selects `expert`. `null`, non-string or malformed mappings fail with the field name, never select a substitute. Schema validation applies to supplied tiers whenever Jev reads configuration, even for main-only operation or inapplicable workers. Model and authentication resolution occurs only when a consumer needs the target. Custom slot and baseline targets must resolve exactly to an authenticated physical Pi registry model; virtual/unknown/unauthenticated targets fail actionably. A configured tier model that cannot run is handled by the fallback below, not by failing the launch. Mappings may be identical; the first slash separates provider from model ID, which may itself contain slashes. Worker tier policy and custom slots remain independent of main selection.
 
-An optional fourth tier, `expert` (order: fast, balanced, deep, expert), is for rare, exceptionally difficult architectural or advisory reasoning. When `jevPilot.tiers.expert` is absent or empty the request contains no expert choice, no `expert_needed` question and the unchanged `deep` rubric, and no expert answer is required. When it is configured, the same single request adds the `expert` choice, a fixed `expert_needed` question and narrowed `deep`/`expert` rubrics. A valid `expert` choice runs only when `expert_needed` is **strictly above .9**; exactly .9, a missing or an invalid answer runs the work on `deep`, or keeps the retained baseline model when `deep` is not configured. Expert is never a silent fallback. An admitted expert choice is not overridden by high risk, which never selects expert on its own. The gate governs only Jev's automatic tier choice; custom slots, explicit models and forks may still reach the same model. The .9 threshold is a conservative starting policy, not a calibrated value.
+An optional fourth tier, `expert` (order: fast, balanced, deep, expert), is for rare, exceptionally difficult architectural or advisory reasoning. When `tiers.expert` is absent or empty the request contains no expert choice, no `expert_needed` question and the unchanged `deep` rubric, and no expert answer is required. When it is configured, the same single request adds the `expert` choice, a fixed `expert_needed` question and narrowed `deep`/`expert` rubrics. A valid `expert` choice runs only when `expert_needed` is **strictly above .9**; exactly .9, a missing or an invalid answer runs the work on `deep`, or keeps the retained baseline model when `deep` is not configured. Expert is never a silent fallback. An admitted expert choice is not overridden by high risk, which never selects expert on its own. The gate governs only Jev's automatic tier choice; custom slots, explicit models and forks may still reach the same model. The .9 threshold is a conservative starting policy, not a calibrated value.
 
-**Fallback when the selected tier cannot run.** When Jev's selected tier model is unresolvable, virtual, unauthenticated or rejected by launch preflight (for example a provider that has dropped out of Pi's available models), Jev reports the failure with a Pi warning naming the tier and its setting (`jevPilot.tiers.<tier>`), then tries the next lower configured tier until one can run. Each fallback tier runs at the highest effort its model supports, obtained with Pi's `clampThinkingLevel` rather than a fixed level, since support varies per model. Only lower tiers are candidates, so `expert` is never a fallback. When no configured tier can run, the retained baseline model is kept. Only the selected tier and the tiers below it are checked; an unselected unusable tier is not reported. Malformed tier settings values remain configuration errors that name the setting. **Limitation:** only signals known before launch trigger the cascade (registry resolution, authentication, launch preflight). A rate limit, timeout or provider error raised while the child runs stays executor-surfaced and is not retried on another tier, because the adapter has no idempotent way to relaunch work that may already have made changes.
+**Fallback when the selected tier cannot run.** When Jev's selected tier model is unresolvable, virtual, unauthenticated or rejected by launch preflight (for example a provider that has dropped out of Pi's available models), Jev reports the failure with a Pi warning naming the tier and its setting (`jev-pilot.json` field `tiers.<tier>`), then tries the next lower configured tier until one can run. Each fallback tier runs at the highest effort its model supports, obtained with Pi's `clampThinkingLevel` rather than a fixed level, since support varies per model. Only lower tiers are candidates, so `expert` is never a fallback. When no configured tier can run, the retained baseline model is kept. Only the selected tier and the tiers below it are checked; an unselected unusable tier is not reported. Malformed tier settings values remain configuration errors that name the setting. **Limitation:** only signals known before launch trigger the cascade (registry resolution, authentication, launch preflight). A rate limit, timeout or provider error raised while the child runs stays executor-surfaced and is not retried on another tier, because the adapter has no idempotent way to relaunch work that may already have made changes.
 
 The [removal matrix](docs/testing/main-routing-removal-matrix.md) distinguishes retired virtual-dispatch acceptance from retained physical ownership/lifecycle behavior. Historical ticket02/ticket08 and unfinished JSON main-router checkpoint reports are not current installation guidance or evidence that removed capabilities still exist.
 
@@ -59,7 +77,7 @@ Matching is **on by default**, independently of effort and worker routing. The e
 
 The ordinary unbatched path combines the skill `which` choice and three gate nouls with applicable effort/risk/tier questions in **one System One request**. Criteria include each eligible description and the first **300 body characters**, never the whole resource. `(none)` is an explicit ordinary choice. A probability of at least **.5** selects a batch leader regardless of the action gate; otherwise both fit **.3** and the oriented gate mean **.3** are required. Missing confidence cannot make an ordinary pick. These are pinned upstream rules, not a new ranking heuristic.
 
-A choice supports at most **255 options**. Catalogs use near-equal batches of at most **254 skills**, reserving the none slot; only the first batch carries effort/advice and gate questions. No candidate is dropped. Ordinary no-rerank selection compares qualifying batch leaders. With `JEV_SKILL_RERANK=true`, the first pass sends descriptions only (no none choice), then rereads the top **three per batch**, capped at 255, with 300-character excerpts. The first gate can skip rerank; the chosen rerank candidate must itself fit at least **.3**. Every candidate can be rejected. A failed/malformed batch or failed rerank yields no skill, not an older selection or another backend.
+A choice supports at most **255 options**. Catalogs use near-equal batches of at most **254 skills**, reserving the none slot; only the first batch carries effort/advice and gate questions. No candidate is dropped. Ordinary no-rerank selection compares qualifying batch leaders. With `skillRerank: true`, the first pass sends descriptions only (no none choice), then rereads the top **three per batch**, capped at 255, with 300-character excerpts. The first gate can skip rerank; the chosen rerank candidate must itself fit at least **.3**. Every candidate can be rejected. A failed/malformed batch or failed rerank yields no skill, not an older selection or another backend.
 
 A selected skill's full body is attached to its originating user **only in the supported `context` projection**. Its directory is supplied for relative references. The persisted user's content, role and timestamp remain unchanged; a branch-owned `jev-pilot:skill` custom entry stores the selected resource snapshot and originating UUID for reload/resume. This entry contains skill text, not a decision ledger or captured user prompt. Repeated identical visible instructions get a short already-loaded reference rather than duplicate bodies, including a preceding native `/skill:name` load whose complete resource name, path, directory and body match exactly. A changed body or a different resource still loads in full. If compaction removes them, a fresh selection can load them again. None/rejected selections do not attach an older skill to a new user; earlier visible instructions remain historical context.
 
@@ -87,7 +105,7 @@ Public Pi `tool_result` outcomes observe top-level built-in `edit`/`write` by pa
 
 Design advice is **on by default**, independently of ordinary skill matching, effort and worker routing. Eligible input adds the original `ui_design` noul to the same initial System One request, only in the first skill batch and never the optional rerank. A finite probability **at least .8** attaches `<jev_design>`; missing/malformed answers, non-design work and purely wiring UI bugs do not. This is the classifier's read, not a local keyword detector or a guarantee of design quality.
 
-The pack names only configured design skills present in Pi's effective public resource catalog and readable with model invocation enabled. Names match exactly first, then the upstream `:name` suffix using catalog order; no Pi aliases or separate filesystem discovery are invented. Defaults are the upstream `design-taste-frontend`, `impeccable` and `web-design-guidelines`, not similarly named local alternatives. `JEV_SKILLS_ENABLED=false` disables ordinary matching, not design advice. The design pack can reference several resources independently of the **one ordinary selected skill**; it does not inject their full bodies.
+The pack names only configured design skills present in Pi's effective public resource catalog and readable with model invocation enabled. Names match exactly first, then the upstream `:name` suffix using catalog order; no Pi aliases or separate filesystem discovery are invented. Defaults are the upstream `design-taste-frontend`, `impeccable` and `web-design-guidelines`, not similarly named local alternatives. `skillsEnabled: false` disables ordinary matching, not design advice. The design pack can reference several resources independently of the **one ordinary selected skill**; it does not inject their full bodies.
 
 The project's existing design system/tokens take priority. Only if absent does the pack suggest the original [awesome-design-md references](https://github.com/VoltAgent/awesome-design-md/tree/main/design-md) or connected reference libraries. The port does not fetch a DESIGN.md, create assets, call tools, write models/settings or launch workers automatically. User/project instructions remain authoritative.
 
@@ -111,7 +129,7 @@ Service errors, malformed answers and deadline expiry retain the current valid m
 
 ### See Jev decisions without the footer
 
-During and after selection, Jev shows one persistent right-aligned status line above the editor. Workers use a concise live summary such as `Jev · 1 worker running · low`; accepted launches are not described as running. Only pending assessments animate. Pi's standard tool-output expansion action (default **Ctrl+O**, respecting remapped keys) reveals worker role, actual tier when known, committed decision reason, model, effort and lifecycle status. Expanded native result/error content remains available. Exact acknowledged leaves also delegate executor-owned async/Fleet rows and collapsed completion notices to Jev; absent, conflicting or disposed ownership retains native fallback. Workflow wrappers/graphs, mixed/unbound notices and restored history remain native. Jev never replaces this shortcut or switches the main model. Main warnings remain expandable; worker debug rows and raw receipts are hidden by default. Empty input and slash commands create no decision rows.
+During and after selection, Jev shows one persistent right-aligned status line above the editor. Workers use a concise live summary such as `Jev · 1 worker running · low`; accepted launches are not described as running. Only pending assessments animate. Pi's standard tool-output expansion action (default **Ctrl+O**, respecting remapped keys) reveals worker role, actual tier when known, committed decision reason, model, effort and lifecycle status. Native tool calls, results, notifications and Fleet remain owned by the executor; Jev does not suppress or replace them. The Jev widget adds selected worker details when expanded. Jev never replaces this shortcut or switches the main model. Main warnings remain expandable. Empty input and slash commands create no decision rows.
 
 Run **`/jev status`**, including before the first task, for loaded capabilities, enabled/disabled flags, current main identity/effort, latest main decision and up to 12 recent worker snapshots. This read-only command uses a public notification: no classifier request, provider call or model-facing message.
 
@@ -121,7 +139,7 @@ Requires public `appendEntry` and `registerEntryRenderer` APIs, verified visuall
 
 ## Review decisions: ledger, report and corrections
 
-Each completed main turn adds one entry to a bounded decision ledger: `<Pi agent dir>/jev-pilot/ledger.json` (`~/.pi/agent/jev-pilot/ledger.json` by default), the latest **500** valid entries, shared by sessions of that Pi agent directory. An entry holds labels, numbers and outcomes only: start time, whether the decision model answered and its latency, effort confidence and rubric level, the Pi effort before Jev decided, the **requested** and **started (effective)** effort, tool-call and longest failed-call counts, strategy label/confidence and whether strategy advice was attached, how the turn ended (`answer`, `length`, `aborted`, `error`), duration, and input/output tokens when the model reported usage. **Prompt text, tool inputs and model output are never stored in the ledger.** Entries are validated on read and anything else is dropped; the file is written atomically with owner-only permissions. Turns without a classifier question (for example effort disabled) are still recorded, with no decision latency. Mid-turn escalation is not implemented, so no escalation fields exist. Set `JEV_RECORD_DECISIONS=false` to stop recording.
+Each completed main turn adds one entry to a bounded decision ledger: `<Pi agent dir>/jev-pilot/ledger.json` (`~/.pi/agent/jev-pilot/ledger.json` by default), the latest **500** valid entries, shared by sessions of that Pi agent directory. An entry holds labels, numbers and outcomes only: start time, whether the decision model answered and its latency, effort confidence and rubric level, the Pi effort before Jev decided, the **requested** and **started (effective)** effort, tool-call and longest failed-call counts, strategy label/confidence and whether strategy advice was attached, how the turn ended (`answer`, `length`, `aborted`, `error`), duration, and input/output tokens when the model reported usage. **Prompt text, tool inputs and model output are never stored in the ledger.** Entries are validated on read and anything else is dropped; the file is written atomically with owner-only permissions. Turns without a classifier question (for example effort disabled) are still recorded, with no decision latency. Mid-turn escalation is not implemented, so no escalation fields exist. Set `recordDecisions` to `false` in `jev-pilot.json` to stop recording.
 
 A turn is identified by `<session id>:<user message entry id>`, assigned by Pi when it persists the user message. When the next classified message reads as a correction (`corrects` at least **.7**, which requires quality guidance), Jev marks the latest user message on the **current branch** if, and only if, a completed turn with that identity is in the ledger. After resume, reload or compaction that is the session's own last turn; after navigating back in the tree, it is the turn on the retained branch, never the abandoned one; a new session, a turn that never completed, or a turn recorded by another session is never marked. Plain continuations reuse a decision and do not mark.
 
@@ -153,13 +171,13 @@ New sessions do not inherit another session's decisions; resume/reload, forks/tr
 
 ## Ordinary workers
 
-`JEV_WORKER_ROUTING_ENABLED` defaults to `true` and accepts only `true`/`false`. Ordinary direct/async `subagent` calls require configured authenticated `jevPilot.tiers` tiers. Enable the exact tested fork executor separately with official Pi:
+`workerRoutingEnabled` defaults to `true` and accepts only JSON booleans. Ordinary direct/async `subagent` calls use configured authenticated `tiers` mappings. Enable the exact tested fork executor separately with official Pi:
 
 ```bash
-pi install git:github.com/naicoi92/pi-subagents@9f0dcee736e64db6ecc1cfcd87bb0eecac5fbf51
+pi install git:github.com/naicoi92/pi-subagents@ec706c84bb26573c7d3f478b2bf6da0269caac33
 ```
 
-The runtime dependency uses the same immutable Git commit; importing its public adapter exports does not enable its tools. Keep **one physical executor owner**: do not also enable an upstream npm executor or another checkout. The fork tree is `468f698a119ca0b868cfaf939d778ca9238058c9`; its manifest version `0.81.0` is only a source label (installed from this commit and read from its `package.json`), not upstream npm identity. This pairing uses official Pi 1.4.0, not a universal host guarantee. No npm publication or GitHub Release is required for this verified Git installation route.
+The runtime dependency uses the same immutable Git commit; importing its public adapter exports does not enable its tools. Keep **one physical executor owner**: do not also enable an upstream npm executor or another checkout. The fork tree is `e3509515354dad4c0c7c71072544108184a184c9`; its manifest version `0.81.0` is only a source label (installed from this commit and read from its `package.json`), not upstream npm identity. This pairing uses official Pi 1.4.0, not a universal host guarantee. No npm publication or GitHub Release is required for this verified Git installation route.
 
 Originating native foreground/direct-async workers use the executor's public decision-authority API. Jev registers the actual file-first host session at startup/reload and owns its disposer; missing, stale or mismatched authority fails closed. One worker decision sends only a bounded factual projection to the classifier: task 2000 characters, resolved agent type 128 and description 512, without parent history or private policy context. The executor retains complete facts for logical identity and validates an explicit physical model and supported thinking pair before launch. A valid decision may overwrite a supplied model and configured agent thinking (max/low→medium). Service/schema/timeout failures retain only a verified original pair; invalid classifier configuration refuses actionably. Disabled routing leaves never-owned executor behavior unchanged; parent cancellation stops applicable work. Fork calls retain only their verified executor pair. Workflow inner launches remain advice-based. Tier comparisons use the executor's trusted explicit-caller or parent physical identity, separately from its original execution-retention pair. Unknown comparison identity is not replaced with an agent default. The reviewed API supports assessed complete pairs even when original thinking is unresolved; unknown effort never becomes a guessed SDK default.
 
@@ -190,20 +208,22 @@ See the [design-pack matrix](docs/testing/ticket-05-matrix.md), [design-pack evi
 
 ## Configure custom slots and junior-lead
 
-Set `JEV_CREW_CONFIG` to a persistent JSON file. Relative paths resolve against the current Pi working directory; the package never writes this file. Absence means `standard` with no slots. Each eligible main decision or worker launch reads one snapshot. Reload/restart after changing crew membership so the installed executor can refresh its registered junior.
+Put crew inline in `jev-pilot.json`. Absence means `standard` with no slots. Each eligible main decision or worker launch reads one snapshot. Reload after changing registered junior definitions; mismatched definitions refuse launches until refreshed.
 
 ```json
 {
-  "mode": "junior-lead",
-  "slots": [
-    { "name": "alpha", "model": "provider/bulk-model" },
-    {
-      "name": "coder",
-      "model": "other-provider/coding-model",
-      "when": "Well-specified work with an exact check."
-    }
-  ],
-  "junior": "coder"
+  "crew": {
+    "mode": "junior-lead",
+    "slots": [
+      { "name": "alpha", "model": "provider/bulk-model" },
+      {
+        "name": "coder",
+        "model": "other-provider/coding-model",
+        "when": "Well-specified work with an exact check."
+      }
+    ],
+    "junior": "coder"
+  }
 }
 ```
 
@@ -224,7 +244,7 @@ Tested stack, all local and deterministic:
 | Component                                       | Tested version                                                                                                     |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Official Pi (`@earendil-works/pi-coding-agent`) | 1.4.0 (`@earendil-works/pi-ai` 1.4.0); wildcard peer ranges are not a compatibility promise                        |
-| Execution package (`pi-subagents` fork)         | commit `9f0dcee736e64db6ecc1cfcd87bb0eecac5fbf51`, tree `468f698a119ca0b868cfaf939d778ca9238058c9`, label `0.81.0` |
+| Execution package (`pi-subagents` fork)         | commit `ec706c84bb26573c7d3f478b2bf6da0269caac33`, tree `e3509515354dad4c0c7c71072544108184a184c9`, label `0.81.0` |
 | Bun                                             | >=1.4.3; verified 1.4.4 for the acceptance run                                                                     |
 | Upstream behavior                               | Jev Pilot 0.12.1 at `5d27135b34edf81b40c0bf1df01ae401f6b72ea7`                                                     |
 
