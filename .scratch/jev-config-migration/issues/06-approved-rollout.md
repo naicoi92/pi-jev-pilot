@@ -37,7 +37,9 @@ Rollback: preserve `jev-pilot.json` and the `jev-pilot/` ledger and tuning state
 
 Operator reported a Pi restart. Disposable native package-discovery smoke loaded installed Jev `0359731`, read isolated JSON configuration and produced `/jev status` using localhost services: 1 pass / 7 assertions. A separate native foreground workflow smoke explicitly loaded that Jev package and executor `ec706c8`; the localhost worker was assessed, started and completed, and the foreground result settled. Workflow expanded output bytes were not asserted; harness teardown terminates the Pi process, so its exit is not natural process-close proof. Earlier harness REDs and their limits are retained. Evidence and commands: `/Users/naicoi/Projects/jev-config-migration-evidence/ticket06-restart/checkpoint.md`.
 
-These disposable processes do not prove the operator's current session loaded the package. Current-session `/jev status` and independent review remain open; no paid inference was used. Historical async root cause remains unknown.
+The operator subsequently supplied current-session `/jev status` after restart: Jev loaded, configuration validated and main effort classified; no worker decision yet. This is not a current-session worker proof. No paid inference was used. Historical async root cause remains unknown.
+
+Independent read-only review returned BLOCKED: installation was explicitly approved while an acceptance gate was open, so later verification does not retroactively satisfy the pre-install sequencing criterion; the evidence supplied to review did not establish the pre-edit migration preview or whether an existing config needed backup; and the specified current-session local-provider worker proof remains open. Review: `/Users/naicoi/.pi/agent/sessions/--Users-naicoi-Projects-pi-jev-pilot--/subagent-artifacts/9c70a47b-c51b-45ea-a922-65cb527f277c_reviewer_0_output.md`. Preserve the audit advisories and unexplained historical async timeout as unresolved disclosures.
 
 ## Verification and handoff
 
