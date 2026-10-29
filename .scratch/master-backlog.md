@@ -5,7 +5,7 @@ summary: Ordered list of all remaining work across jev-pilot-port and expert-tie
 
 ## Current reconciliation
 
-The ordering and status below are historical and have drifted. Current evidence, unresolved gates, security inventory and branch preservation notes: [remaining tasks reconciliation](jev-remaining-tasks-reconciliation.md). E1–E3 and P9/P10/P12 are completed; P12's reviewed correction is merged locally and its focused tests and native foreground main-priority verification passed. W1 diagnosis is deferred at operator request, not fixed. P11 current-tree focused package and worker verification passed; full-suite/review gates and W2 security remain open. Do not use this table alone to repeat or close work.
+The ordering and status below are historical and have drifted. Current evidence, unresolved gates, security inventory and branch preservation notes: [remaining tasks reconciliation](jev-remaining-tasks-reconciliation.md). E1–E3 and P9/P10/P12 are completed; P12's reviewed correction is merged locally and its focused tests and native foreground main-priority verification passed. W1 diagnosis is deferred at operator request, not fixed. P11 focused package and worker verification passed, but the candidate full-suite attempt timed out without a result. W2 executor pin is updated; the independent host security issue remains open. Do not use this table alone to repeat or close work.
 
 ## Scope
 
