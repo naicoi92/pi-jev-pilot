@@ -1,7 +1,7 @@
 # 06: Explicitly approved rollout and rollback receipt
 
 Status: ready-for-agent
-Implementation: pending
+Implementation: completed
 
 **Parent:** [Single-file Jev configuration](../spec.md)
 
@@ -13,11 +13,11 @@ Implementation: pending
 
 ## Acceptance criteria
 
-- [ ] Do not deploy without explicit rollout approval and completed verification/review gates.
-- [ ] Private backup and manual migration preview preserve unrelated settings, secret values and operator-selected model mappings.
-- [ ] Official immutable installs, exact paired pins if needed, duplicate-entry checks and disposable installed-runtime proof are recorded.
-- [ ] No paid inference without separate budget; reload requirements and current-session verification limits are explicit.
-- [ ] Rollback instructions preserve config/runtime state and identify old versions that cannot read the new file.
+- [x] Explicit rollout approval and completed verification/review gates, **with the operator-approved early-install sequencing exception** recorded below; gates completed subsequently, not before installation.
+- [x] Private backup and manual migration preview preserve unrelated settings, secret values and operator-selected model mappings; preview and conditional config backup are supported by operator confirmation.
+- [x] Official immutable installs, exact paired pins if needed, duplicate-entry checks and disposable installed-runtime proof are recorded.
+- [x] No paid inference without separate budget; reload requirements and current-session verification limits are explicit.
+- [x] Rollback instructions preserve config/runtime state and identify old versions that cannot read the new file; rollback was not executed.
 
 ## Comments
 
@@ -41,8 +41,12 @@ The operator subsequently supplied current-session `/jev status` after restart: 
 
 Independent read-only review initially returned BLOCKED; reconciliation corrected two findings. The original criteria require disposable installed-runtime proof, not a worker in the user session. Installation before gate completion was an explicitly operator-approved sequencing exception, not a retroactive gate pass. The operator subsequently confirmed that the pre-edit manual migration preview showed effective source/base/overlay and the credential variable name, and that a pre-existing `jev-pilot.json` was backed up if present. This is operator confirmation, not a contemporaneous artifact or a claim that a prior config existed. Review and reconciliation: `/Users/naicoi/.pi/agent/sessions/--Users-naicoi-Projects-pi-jev-pilot--/subagent-artifacts/9c70a47b-c51b-45ea-a922-65cb527f277c_reviewer_0_output.md` and `81c7eb5c-a9c2-47e9-b97b-5764d4f2087e_reviewer_0_output.md`. Preserve audit advisories and unexplained historical async timeout as unresolved disclosures.
 
-Final independent review attempt `396c68fa-642e-4a0d-84a1-5e506f0fab2a` ended with `Request was aborted` before producing a verdict. Cause is not established. Ticket remains pending until a valid final review.
+Final independent review attempts `396c68fa-642e-4a0d-84a1-5e506f0fab2a` and `779c5ab4-7e77-4d31-9f54-30d2f170b278` ended with `Request was aborted` before producing a verdict. Cause is not established. Earlier reviews and reconciliation remain recorded above.
+
+### Operator acceptance — final-review exception
+
+After reviewing the five-criterion evidence and disclosed limitations, the operator explicitly accepted C06 and authorized replacing its final independent reviewer verdict with operator acceptance for this ticket only. This is a process exception, **not** a reviewer PASS. The separately approved early-install sequencing exception remains historical; later passing gates do not retroactively satisfy pre-install sequencing. Ticket 05 was merged at `e30983d20ade9c1540d318cbe2dfe348a2092f0d`; installed candidate and pinned executor are recorded above. The post-restart evidence is scoped to disposable localhost worker verification and operator-provided current-session status, not a worker in that session. Preview/conditional backup is operator confirmation; rollback was not executed. Historical async cause and dependency advisories remain unresolved. Evidence: `/Users/naicoi/Projects/jev-config-migration-evidence/ticket06-restart/checkpoint.md` and `review-execution-diagnosis.md`.
 
 ## Verification and handoff
 
-Before implementation, map each criterion to an observable test and record the RED command. Use the highest approved native/local-provider seam; parser tests alone are insufficient. Record GREEN commands, source SHA, artifacts and limits. Keep intermediate changes on the integration branch; do not deploy or alter personal settings. Each ticket needs independent review before completion.
+Before implementation, map each criterion to an observable test and record the RED command. Use the highest approved native/local-provider seam; parser tests alone are insufficient. Record GREEN commands, source SHA, artifacts and limits. Keep intermediate changes on the integration branch; do not deploy or alter personal settings. Each ticket needs independent review before completion, except the explicitly approved C06 final-review exception recorded above.

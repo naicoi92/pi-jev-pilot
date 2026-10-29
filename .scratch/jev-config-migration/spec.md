@@ -1,7 +1,9 @@
 # Single-file Jev configuration
 
 Status: ready-for-agent
-Implementation: pending
+Implementation: completed
+
+Completion: tickets 01–05 were reviewed and integrated; ticket 06 was accepted by the operator with the explicitly documented final-independent-review exception and early-install sequencing exception. See [rollout receipt](issues/06-approved-rollout.md) for evidence and limitations. This does not assert release-branch merge or publication.
 
 ## MVP amendment: worker registration settings
 
