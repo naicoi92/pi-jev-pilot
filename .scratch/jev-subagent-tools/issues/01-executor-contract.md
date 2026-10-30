@@ -33,6 +33,9 @@ Không sửa Pi SDK. Ưu tiên file-backed plugin có host binding xác thực v
 
 - Blocker runtime: Pi 1.4.0 `dist/core/sdk.js:148–160` và `dist/core/agent-session.js:1138–1166,2928–2934` không tách registry ceiling khỏi active loadout. Snapshot một session không thể đặt lại registry allowlist qua public SDK. Thử nghiệm disposable với `noTools: "all"`, `tools: ["+read"]` và custom deferred `mcp__demo__extra` trả callable `["read", "mcp__demo__extra"]`: tool ngoài snapshot vẫn callable. Không gọi model; không coi thử nghiệm là E2E. Runtime candidate `3f93f30fcbd1122877561edc134ae93512f56aff` chưa merge; cần quyết định SDK boundary.
 
+- Foreground explicit/file-backed checkpoint đã merge và review: `4e0b46b982636d66eba5ff7a091333ae1450a0a1`. Integration worktree: Pi 1.4.0 host tests 101/101 và typecheck đạt. Background, remote, implicit/MCP selection và `codemode.models` chưa hỗ trợ; ticket vẫn in-progress. Full suite có assertion manifest lỗi trên base.
+- Review P2 còn theo dõi: admission trả `scope-denied` thay vì diagnostic cụ thể; warning first-prompt có thể bị tiêu thụ nếu prompt lỗi; cần bổ sung test baseline/selection `codemode` và `models`.
+
 ## Ranh giới
 
 Repo executor `pi-subagents`, base `944128f754d1bd7ce17cfd5c325f0018bebe2a67`; không sửa installed release/cache. Chỉ thay contract cần thiết; không xây discovery subsystem. Đọc `AGENTS.md`, `VISION.md`, skill `tdd` và repo test commands. Không tự delegate. Merge integration branch tip vào branch trước khi báo, commit kết quả; báo SHA, tests và blockers. Dừng hỏi parent nếu contract không thể thực hiện mà mở rộng kiến trúc.

@@ -2,11 +2,11 @@
 
 Status: ready-for-agent  
 Implementation: pending  
-Blocked by: 01
+Blocked by: executor foreground checkpoint `4e0b46b982636d66eba5ff7a091333ae1450a0a1` (đã merge); phần còn lại của ticket 01 vẫn pending.
 
 ## Mục tiêu
 
-Trong pilot, gửi metadata tool, task và role qua cùng request JEV chọn tier/effort; chấm độ phù hợp và bổ sung tool đạt ngưỡng qua executor contract. Luôn đánh giá native launch kể cả caller override; không thêm request riêng. Tính năng bật mặc định, có thể tắt riêng.
+Trong pilot, gửi metadata tool, task và role qua cùng request JEV chọn tier/effort; chấm độ phù hợp và bổ sung tool đạt ngưỡng qua executor contract. Luôn đánh giá native launch kể cả caller override; không thêm request riêng. Tính năng bật mặc định, có thể tắt riêng. Chỉ đề xuất grant ở foreground explicit/file-backed path được hỗ trợ; background và path chưa hỗ trợ giữ baseline và cảnh báo, không biến launch thành scope-denied vì grant JEV.
 
 ## Acceptance
 
