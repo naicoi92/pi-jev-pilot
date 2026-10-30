@@ -14,6 +14,10 @@ Trong pilot, gửi metadata tool, task và role qua cùng request JEV chọn tie
 - Benchmark role/task/tool đại diện, ghi evidence và chọn ngưỡng theo kết quả, không giả định confidence là xác suất. Không gửi dữ liệu không cần thiết.
 - Integration tests qua worker decision request/response, TDD từng lát cắt; chạy `bun run typecheck`, `bun run lint` và test liên quan.
 
+## Comments
+
+- Lane scoring bị chặn do upstream: `Incomplete Claude Code upstream response (status 200, capture incomplete, relay failure Error, native retries denied 1)`; resume cùng protocol thất bại lần nữa. Run `29652fa6-685d-4a01-b6db-b9e9c341c45f`, retry `fc12bab4-0b4a-4c49-8e6d-baee24bc3b51`. Worktree `/tmp/jev-subagent-tools-scoring` sạch tại `f1ae15cdde488e4f0f17f91ed4b33cb34c85b97c`; chưa có implementation hoặc benchmark. Không retry tiếp khi chưa có quyết định.
+
 ## Ranh giới
 
 Repo pilot; dùng executor contract đã tích hợp từ ticket 01. Không chỉnh installed release, cache hoặc ngoài scope. Đọc skill `tdd`, spec và project instructions; không tự delegate. Merge integration tip trước khi báo; commit kết quả, báo SHA, tests và benchmark. Nếu không có điều kiện benchmark thực tế, dừng và báo blocker, không tự đặt ngưỡng.
