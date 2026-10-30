@@ -13,12 +13,12 @@ for (const fixture of [
     expected: tiers.deep,
   },
   {
-    name: "upgrade below .3",
+    name: "upgrade below .3 still follows Jev",
     current: tiers.fast,
     tier: "deep",
     confidence: 0.29,
     risky: 0,
-    expected: null,
+    expected: tiers.deep,
   },
   {
     name: "downgrade at .6",
@@ -29,12 +29,12 @@ for (const fixture of [
     expected: tiers.fast,
   },
   {
-    name: "downgrade below .6",
+    name: "downgrade below .6 still follows Jev",
     current: tiers.deep,
     tier: "fast",
     confidence: 0.59,
     risky: 0,
-    expected: null,
+    expected: tiers.fast,
   },
   {
     name: "unmeasured upgrade",
@@ -45,12 +45,12 @@ for (const fixture of [
     expected: tiers.balanced,
   },
   {
-    name: "unmeasured downgrade",
+    name: "unmeasured downgrade still follows Jev",
     current: tiers.deep,
     tier: "fast",
     confidence: null,
     risky: 0,
-    expected: null,
+    expected: tiers.fast,
   },
   {
     name: "risk forces deep",
@@ -61,12 +61,12 @@ for (const fixture of [
     expected: tiers.deep,
   },
   {
-    name: "risk boundary is not forced",
+    name: "risk boundary is not forced and Jev's tier wins",
     current: tiers.balanced,
     tier: "fast",
     confidence: 0.01,
     risky: 0.7,
-    expected: null,
+    expected: tiers.fast,
   },
   {
     name: "same tier keeps model",
@@ -105,7 +105,7 @@ test("SPARSE-01 risk override selects the highest configured tier when deep is a
     tiers.balanced,
   );
   expect(selectTier({ tier: "fast", confidence: 0.01, risky: 0.7 }, tiers.balanced, sparse)).toBe(
-    null,
+    tiers.fast,
   );
 });
 test("SPARSE-01 risk override changes nothing when no tier is configured", () => {
@@ -137,7 +137,7 @@ test("EXPERT-02 risk never selects expert but cannot suppress an admitted expert
   expect(selectTier(expert, tiers.fast, all)).toBe(all.expert);
   expect(selectTier(expert, all.expert, all)).toBeNull();
   expect(selectTier({ ...expert, expertNeeded: 0.9 }, tiers.fast, all)).toBe(all.deep);
-  expect(selectTier({ ...expert, confidence: 0.1 }, tiers.fast, all)).toBe(all.deep);
+  expect(selectTier({ ...expert, confidence: 0.1 }, tiers.fast, all)).toBe(all.expert);
 });
 
 test("tier presentation observer reports actual policy selection without inventing retained tier", () => {

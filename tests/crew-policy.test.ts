@@ -38,8 +38,8 @@ test("CREW-03 forced deep remains authoritative when parent baseline is already 
     ),
   ).toBe("local/cheap");
 });
-test("CREW-03 custom choices require original downgrade confidence", () => {
-  for (const confidence of [null, 0.59])
+test("CREW-03 custom choices follow Jev regardless of confidence", () => {
+  for (const confidence of [null, 0, 0.59])
     expect(
       selectWorkerModel(
         { tier: "fast", slot: "deep", confidence, risky: 0 },
@@ -47,7 +47,7 @@ test("CREW-03 custom choices require original downgrade confidence", () => {
         tiers,
         slots,
       ),
-    ).toBeNull();
+    ).toBe("local/cheap");
   expect(
     selectWorkerModel(
       { tier: "fast", slot: "deep", confidence: 0.6, risky: 0 },

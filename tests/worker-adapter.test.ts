@@ -179,8 +179,8 @@ async function fixture(defaultContext = "fresh") {
   };
 }
 
-// AE-2: effort confidence is diagnostic; tier confidence gates and risk remain unchanged.
-test("WORKER-03 effort authority preserves tier confidence gates", async () => {
+// AE-2: confidence is diagnostic for tier and effort; Jev's choice is authoritative and risk still forces deep.
+test("WORKER-03 tier choice is authoritative regardless of confidence", async () => {
   const f = await fixture();
   const input = {
     agent: "worker",
@@ -207,7 +207,7 @@ test("WORKER-03 effort authority preserves tier confidence gates", async () => {
     },
   });
   await f.call(input);
-  expect(f.selected(input)).toBe("local/deep:low");
+  expect(f.selected(input)).toBe("local/fast:low");
 });
 
 test("WORKER-20 explicit and implicit fork bypass worker classification", async () => {
@@ -755,7 +755,7 @@ test("EXPERT-02 a malformed response stays a schema error with expert configured
   expect(f.selected(input)).toBe("local/deep:high");
 });
 
-test("EXPERT-02 existing confidence gates still apply to the admitted expert model", async () => {
+test("EXPERT-02 an admitted expert choice is not vetoed by low tier confidence", async () => {
   const f = await fixture();
   await configure(f, expertModels);
   f.response({
@@ -766,7 +766,7 @@ test("EXPERT-02 existing confidence gates still apply to the admitted expert mod
   });
   const input = { agent: "worker", model: "local/deep", task: "Resolve" };
   await f.call(input);
-  expect(f.selected(input)).toBe("local/deep:medium");
+  expect(f.selected(input)).toBe("local/expert:medium");
 });
 
 test("EXPERT-02 malformed expert identity names the setting and sends nothing", async () => {

@@ -28,9 +28,6 @@ export function selectWorkerModel(
     if (tier && tiers[tier]) selected?.(tier);
     return tier ? (tiers[tier] ?? null) : null;
   }
-  if (decision.slot)
-    return (decision.confidence ?? 0) >= 0.6
-      ? (offered.find((slot) => slot.name === decision.slot)?.model ?? null)
-      : null;
+  if (decision.slot) return offered.find((slot) => slot.name === decision.slot)?.model ?? null;
   return selectTier(decision, current, tiers, selected);
 }

@@ -18,7 +18,7 @@ for (const [name, comparison, selected] of [
   [
     "explicit deep caller",
     { kind: "resolved", model: "local/deep", provenance: "explicit-caller" },
-    "local/deep",
+    "local/balanced",
   ],
   [
     "missing parent stays unresolved",

@@ -30,7 +30,11 @@ export function admitsExpert(decision: TierDecision, tiers: Tiers): boolean {
   );
 }
 
-/** Physical identities are exact; Claude family/substring inference is not a registry contract. */
+/**
+ * Jev's tier choice is authoritative for workers: classifier confidence never vetoes it.
+ * Physical identities are exact; Claude family/substring inference is not a registry contract.
+ * Returns null only when the choice already is the current model or no usable tier is configured.
+ */
 export function selectTier(
   decision: TierDecision,
   current: string,
@@ -38,26 +42,22 @@ export function selectTier(
   selected?: (tier: Tier) => void,
 ): string | null {
   const risky = (decision.risky ?? 0) > 0.7;
-  const move = (tier: Tier | null, forced: boolean): string | null => {
+  const move = (tier: Tier | null): string | null => {
     const wanted = tier && tiers[tier];
     if (!tier || !wanted) return null;
     const from = TIER_ORDER.findIndex((name) => tiers[name] === current);
     const to = TIER_ORDER.indexOf(tier);
     if (wanted === current || from === to) return null;
-    const lowering = from !== -1 && to < from;
-    const allowed =
-      decision.confidence === null ? !lowering : decision.confidence >= (lowering ? 0.6 : 0.3);
-    if (!forced && !allowed) return null;
     selected?.(tier);
     return wanted;
   };
-  // An admitted expert choice is judged on its own confidence; risk only takes over when it fails.
+  // An admitted expert choice stands on the expert_needed gate; risk only takes over when it fails.
   if (admitsExpert(decision, tiers)) {
     if (tiers.expert === current) return null;
-    const expert = move("expert", false);
+    const expert = move("expert");
     if (expert || !risky) return expert;
   }
   // A rejected expert choice is a deep choice; without deep the baseline is kept.
   const choice = decision.tier === "expert" ? "deep" : decision.tier;
-  return risky ? move(riskTier(tiers), true) : move(choice, false);
+  return risky ? move(riskTier(tiers)) : move(choice);
 }
