@@ -65,8 +65,9 @@ export function registerWorkerAuthorityLifecycle(
             slots: [...assessment.config.crew.slots],
             offered: [...assessment.config.crew.offered],
           };
-          assertRegisteredJunior(pi, crew, (message) => ctx.ui.notify(message, "warning"));
-          for (const slot of crew.offered) {
+          if (request.control.context === "fresh")
+            assertRegisteredJunior(pi, crew, (message) => ctx.ui.notify(message, "warning"));
+          for (const slot of request.control.context === "fresh" ? crew.offered : []) {
             const slash = slot.model.indexOf("/");
             const model = ctx.modelRegistry.find(
               slot.model.slice(0, slash),

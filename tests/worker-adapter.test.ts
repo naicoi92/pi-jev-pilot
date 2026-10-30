@@ -219,6 +219,15 @@ test("WORKER-20 explicit and implicit fork bypass worker classification", async 
   expect(f.requests()).toBe(0);
 });
 
+test("fork retains baseline when an unrelated crew slot is unavailable", async () => {
+  const f = await fixture("fork");
+  await f.config({ crew: { mode: "budget", slots: [{ name: "alpha", model: "local/missing" }] } });
+  const input = { agent: "worker", task: "Do work", model: "local/fast" };
+  expect(await f.call(input)).toBeUndefined();
+  expect(f.selected(input)).toBe("local/fast:high");
+  expect(f.requests()).toBe(0);
+});
+
 test("WORKER-20 specialized reviewer and junior retain deterministic slots", async () => {
   const f = await fixture();
   const junior = { agent: "jev-pilot:junior", task: "Do work", model: "local/deep" };
