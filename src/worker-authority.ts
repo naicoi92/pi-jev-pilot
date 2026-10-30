@@ -67,7 +67,7 @@ export function createWorkerAuthority(options: {
       };
       const decide = async (): Promise<WorkerDecision> => {
         const assessment = options.assessment;
-        const { original, modelContract, comparison } = request.policyContext;
+        const { original, modelContract } = request.policyContext;
         const fork = request.control.context !== "fresh";
         const agent =
           request.facts.role?.provenance === "resolved-agent" ? request.facts.role.name : undefined;
@@ -204,15 +204,9 @@ export function createWorkerAuthority(options: {
         const chosen =
           specialized ??
           (tierDecision
-            ? selectWorkerModel(
-                tierDecision,
-                comparison.kind === "resolved" ? comparison.model : "",
-                options.tiers,
-                options.crew.offered,
-                (tier) => {
-                  selectedTier = tier;
-                },
-              )
+            ? selectWorkerModel(tierDecision, options.tiers, options.crew.offered, (tier) => {
+                selectedTier = tier;
+              })
             : null);
         const cascade =
           chosen && !specialized && tierDecision && !selectsSlot(tierDecision, options.tiers)

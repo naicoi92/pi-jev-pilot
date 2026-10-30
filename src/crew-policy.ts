@@ -18,7 +18,6 @@ export const selectsSlot = (decision: SlotDecision, tiers: Tiers): boolean =>
   Boolean(decision.slot) && !riskForcesTier(decision, tiers);
 export function selectWorkerModel(
   decision: SlotDecision,
-  current: string,
   tiers: Tiers,
   offered: Slot[],
   selected?: (tier: Tier) => void,
@@ -29,5 +28,5 @@ export function selectWorkerModel(
     return tier ? (tiers[tier] ?? null) : null;
   }
   if (decision.slot) return offered.find((slot) => slot.name === decision.slot)?.model ?? null;
-  return selectTier(decision, current, tiers, selected);
+  return selectTier(decision, tiers, selected);
 }

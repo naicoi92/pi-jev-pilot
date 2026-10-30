@@ -31,33 +31,29 @@ export function admitsExpert(decision: TierDecision, tiers: Tiers): boolean {
 }
 
 /**
- * Jev's tier choice is authoritative for workers: classifier confidence never vetoes it.
+ * Jev's tier choice is authoritative for workers: classifier confidence never vetoes it, and the
+ * model that would otherwise run (parent, caller or agent default) never decides it either.
  * Physical identities are exact; Claude family/substring inference is not a registry contract.
- * Returns null only when the choice already is the current model or no usable tier is configured.
+ * Returns null only when no usable tier is configured for the choice.
  */
 export function selectTier(
   decision: TierDecision,
-  current: string,
   tiers: Tiers,
   selected?: (tier: Tier) => void,
 ): string | null {
   const risky = (decision.risky ?? 0) > 0.7;
-  const move = (tier: Tier | null): string | null => {
+  const pick = (tier: Tier | null): string | null => {
     const wanted = tier && tiers[tier];
     if (!tier || !wanted) return null;
-    const from = TIER_ORDER.findIndex((name) => tiers[name] === current);
-    const to = TIER_ORDER.indexOf(tier);
-    if (wanted === current || from === to) return null;
     selected?.(tier);
     return wanted;
   };
   // An admitted expert choice stands on the expert_needed gate; risk only takes over when it fails.
   if (admitsExpert(decision, tiers)) {
-    if (tiers.expert === current) return null;
-    const expert = move("expert");
+    const expert = pick("expert");
     if (expert || !risky) return expert;
   }
   // A rejected expert choice is a deep choice; without deep the baseline is kept.
   const choice = decision.tier === "expert" ? "deep" : decision.tier;
-  return risky ? move(riskTier(tiers)) : move(choice);
+  return risky ? pick(riskTier(tiers)) : pick(choice);
 }

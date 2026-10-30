@@ -21,6 +21,11 @@ for (const [name, comparison, selected] of [
     "local/balanced",
   ],
   [
+    "parent already on the chosen balanced tier while the agent default is deep",
+    { kind: "resolved", model: "local/balanced", provenance: "parent" },
+    "local/balanced",
+  ],
+  [
     "missing parent stays unresolved",
     { kind: "unresolved", reason: "model-unresolved" },
     "local/balanced",
