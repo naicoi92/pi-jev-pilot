@@ -31,6 +31,8 @@ test("CFG-02-defaults: missing file and missing fields have identical approved d
     schemaVersion: 1,
     effortEnabled: true,
     workerRoutingEnabled: true,
+    workerToolSelectionEnabled: true,
+    workerToolThreshold: 0.65,
     skillsEnabled: true,
     skillRerank: false,
     strategyEnabled: true,
@@ -64,6 +66,7 @@ const invalid: [unknown, string][] = [
   ...[
     "effortEnabled",
     "workerRoutingEnabled",
+    "workerToolSelectionEnabled",
     "skillsEnabled",
     "skillRerank",
     "strategyEnabled",

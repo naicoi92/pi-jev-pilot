@@ -286,7 +286,7 @@ function readAnswers(value: unknown, enabled: DecisionQuestions): Decision | nul
 
 export type Classification = (
   | { outcome: "classified"; decision: Decision; value?: unknown }
-  | { outcome: "timeout" | "service-error" | "schema-error" }
+  | { outcome: "timeout" | "service-error" | "schema-error"; value?: unknown }
 ) & { adviceDecision?: Decision; designScore?: number | null; diagnostic?: string };
 
 /** Deadline cancels transport; parent cancellation rejects and is never fail-open. */
@@ -419,7 +419,7 @@ export async function classify(
     const designScore = enabled.design ? readDesign(value) : undefined;
     return decision
       ? { outcome: "classified", decision, value, adviceDecision, designScore }
-      : { outcome: "schema-error", adviceDecision, designScore };
+      : { outcome: "schema-error", value, adviceDecision, designScore };
   } catch (error) {
     if (signal.aborted) throw error;
     return { outcome: timedOut ? "timeout" : "service-error" };

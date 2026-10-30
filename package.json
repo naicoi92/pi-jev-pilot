@@ -24,7 +24,7 @@
     "test:e2e": "bun test tests/pi-cli.test.ts tests/main-routing.test.ts tests/skill-matching.test.ts tests/guidance.test.ts tests/design-pack.test.ts"
   },
   "dependencies": {
-    "pi-subagents": "git+https://github.com/naicoi92/pi-subagents.git#944128f754d1bd7ce17cfd5c325f0018bebe2a67"
+    "pi-subagents": "git+https://github.com/naicoi92/pi-subagents.git#47dfba8d4d8d0b5b848682c8c9fec7125ba7910f"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.4.0",

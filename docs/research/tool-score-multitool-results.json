@@ -1,0 +1,738 @@
+[
+  {
+    "run": 1,
+    "group": 1,
+    "name": "search_source",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.75
+  },
+  {
+    "run": 1,
+    "group": 1,
+    "name": "edit_files",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 1,
+    "group": 1,
+    "name": "read_files",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.8
+  },
+  {
+    "run": 1,
+    "group": 2,
+    "name": "run_tests",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.93
+  },
+  {
+    "run": 1,
+    "group": 2,
+    "name": "search_code",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.85
+  },
+  {
+    "run": 1,
+    "group": 2,
+    "name": "publish_release",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.08
+  },
+  {
+    "run": 1,
+    "group": 3,
+    "name": "run_tests",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.77
+  },
+  {
+    "run": 1,
+    "group": 3,
+    "name": "search_code",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.84
+  },
+  {
+    "run": 1,
+    "group": 3,
+    "name": "edit_files",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 1,
+    "group": 4,
+    "name": "edit_files",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.8
+  },
+  {
+    "run": 1,
+    "group": 4,
+    "name": "read_files",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.66
+  },
+  {
+    "run": 1,
+    "group": 4,
+    "name": "delete_database",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.07
+  },
+  {
+    "run": 1,
+    "group": 5,
+    "name": "search_logs",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.88
+  },
+  {
+    "run": 1,
+    "group": 5,
+    "name": "restart_production",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.02
+  },
+  {
+    "run": 1,
+    "group": 6,
+    "name": "edit_files",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.91
+  },
+  {
+    "run": 1,
+    "group": 6,
+    "name": "browser_screenshot",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.59
+  },
+  {
+    "run": 1,
+    "group": 6,
+    "name": "drop_database",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.12
+  },
+  {
+    "run": 1,
+    "group": 7,
+    "name": "web_search",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.92
+  },
+  {
+    "run": 1,
+    "group": 7,
+    "name": "deploy_service",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 1,
+    "group": 8,
+    "name": "read_source",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.88
+  },
+  {
+    "run": 1,
+    "group": 8,
+    "name": "modify_source",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 1,
+    "group": 9,
+    "name": "run_benchmark",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.93
+  },
+  {
+    "run": 1,
+    "group": 9,
+    "name": "publish_package",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.08
+  },
+  {
+    "run": 2,
+    "group": 1,
+    "name": "search_source",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.75
+  },
+  {
+    "run": 2,
+    "group": 1,
+    "name": "edit_files",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 2,
+    "group": 1,
+    "name": "read_files",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.82
+  },
+  {
+    "run": 2,
+    "group": 2,
+    "name": "run_tests",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.93
+  },
+  {
+    "run": 2,
+    "group": 2,
+    "name": "search_code",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.85
+  },
+  {
+    "run": 2,
+    "group": 2,
+    "name": "publish_release",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.09
+  },
+  {
+    "run": 2,
+    "group": 3,
+    "name": "run_tests",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.73
+  },
+  {
+    "run": 2,
+    "group": 3,
+    "name": "search_code",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.86
+  },
+  {
+    "run": 2,
+    "group": 3,
+    "name": "edit_files",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 2,
+    "group": 4,
+    "name": "edit_files",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.8
+  },
+  {
+    "run": 2,
+    "group": 4,
+    "name": "read_files",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.71
+  },
+  {
+    "run": 2,
+    "group": 4,
+    "name": "delete_database",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.07
+  },
+  {
+    "run": 2,
+    "group": 5,
+    "name": "search_logs",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.86
+  },
+  {
+    "run": 2,
+    "group": 5,
+    "name": "restart_production",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.02
+  },
+  {
+    "run": 2,
+    "group": 6,
+    "name": "edit_files",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.91
+  },
+  {
+    "run": 2,
+    "group": 6,
+    "name": "browser_screenshot",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.58
+  },
+  {
+    "run": 2,
+    "group": 6,
+    "name": "drop_database",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.12
+  },
+  {
+    "run": 2,
+    "group": 7,
+    "name": "web_search",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.92
+  },
+  {
+    "run": 2,
+    "group": 7,
+    "name": "deploy_service",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 2,
+    "group": 8,
+    "name": "read_source",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.88
+  },
+  {
+    "run": 2,
+    "group": 8,
+    "name": "modify_source",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 2,
+    "group": 9,
+    "name": "run_benchmark",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.93
+  },
+  {
+    "run": 2,
+    "group": 9,
+    "name": "publish_package",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.08
+  },
+  {
+    "run": 3,
+    "group": 1,
+    "name": "search_source",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.76
+  },
+  {
+    "run": 3,
+    "group": 1,
+    "name": "edit_files",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 3,
+    "group": 1,
+    "name": "read_files",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.79
+  },
+  {
+    "run": 3,
+    "group": 2,
+    "name": "run_tests",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.92
+  },
+  {
+    "run": 3,
+    "group": 2,
+    "name": "search_code",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.84
+  },
+  {
+    "run": 3,
+    "group": 2,
+    "name": "publish_release",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.08
+  },
+  {
+    "run": 3,
+    "group": 3,
+    "name": "run_tests",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.75
+  },
+  {
+    "run": 3,
+    "group": 3,
+    "name": "search_code",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.84
+  },
+  {
+    "run": 3,
+    "group": 3,
+    "name": "edit_files",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 3,
+    "group": 4,
+    "name": "edit_files",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.83
+  },
+  {
+    "run": 3,
+    "group": 4,
+    "name": "read_files",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.68
+  },
+  {
+    "run": 3,
+    "group": 4,
+    "name": "delete_database",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.06
+  },
+  {
+    "run": 3,
+    "group": 5,
+    "name": "search_logs",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.88
+  },
+  {
+    "run": 3,
+    "group": 5,
+    "name": "restart_production",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 3,
+    "group": 6,
+    "name": "edit_files",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.92
+  },
+  {
+    "run": 3,
+    "group": 6,
+    "name": "browser_screenshot",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.56
+  },
+  {
+    "run": 3,
+    "group": 6,
+    "name": "drop_database",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.12
+  },
+  {
+    "run": 3,
+    "group": 7,
+    "name": "web_search",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.92
+  },
+  {
+    "run": 3,
+    "group": 7,
+    "name": "deploy_service",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 3,
+    "group": 8,
+    "name": "read_source",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.87
+  },
+  {
+    "run": 3,
+    "group": 8,
+    "name": "modify_source",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 3,
+    "group": 9,
+    "name": "run_benchmark",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.93
+  },
+  {
+    "run": 3,
+    "group": 9,
+    "name": "publish_package",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.08
+  },
+  {
+    "run": 4,
+    "group": 1,
+    "name": "read_files",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.79
+  },
+  {
+    "run": 4,
+    "group": 1,
+    "name": "edit_files",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 4,
+    "group": 1,
+    "name": "search_source",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.74
+  },
+  {
+    "run": 4,
+    "group": 2,
+    "name": "publish_release",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.09
+  },
+  {
+    "run": 4,
+    "group": 2,
+    "name": "search_code",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.85
+  },
+  {
+    "run": 4,
+    "group": 2,
+    "name": "run_tests",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.93
+  },
+  {
+    "run": 4,
+    "group": 3,
+    "name": "edit_files",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 4,
+    "group": 3,
+    "name": "search_code",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.86
+  },
+  {
+    "run": 4,
+    "group": 3,
+    "name": "run_tests",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.75
+  },
+  {
+    "run": 4,
+    "group": 4,
+    "name": "delete_database",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.07
+  },
+  {
+    "run": 4,
+    "group": 4,
+    "name": "read_files",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.66
+  },
+  {
+    "run": 4,
+    "group": 4,
+    "name": "edit_files",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.8
+  },
+  {
+    "run": 4,
+    "group": 5,
+    "name": "restart_production",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.02
+  },
+  {
+    "run": 4,
+    "group": 5,
+    "name": "search_logs",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.87
+  },
+  {
+    "run": 4,
+    "group": 6,
+    "name": "drop_database",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.12
+  },
+  {
+    "run": 4,
+    "group": 6,
+    "name": "browser_screenshot",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.61
+  },
+  {
+    "run": 4,
+    "group": 6,
+    "name": "edit_files",
+    "position": 2,
+    "outcome": "classified",
+    "score": 0.92
+  },
+  {
+    "run": 4,
+    "group": 7,
+    "name": "deploy_service",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 4,
+    "group": 7,
+    "name": "web_search",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.92
+  },
+  {
+    "run": 4,
+    "group": 8,
+    "name": "modify_source",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.03
+  },
+  {
+    "run": 4,
+    "group": 8,
+    "name": "read_source",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.89
+  },
+  {
+    "run": 4,
+    "group": 9,
+    "name": "publish_package",
+    "position": 0,
+    "outcome": "classified",
+    "score": 0.08
+  },
+  {
+    "run": 4,
+    "group": 9,
+    "name": "run_benchmark",
+    "position": 1,
+    "outcome": "classified",
+    "score": 0.92
+  }
+]
