@@ -14,6 +14,19 @@ Trong pilot, gửi metadata tool, task và role qua cùng request JEV chọn tie
 - Benchmark role/task/tool đại diện, ghi evidence và chọn ngưỡng theo kết quả, không giả định confidence là xác suất. Không gửi dữ liệu không cần thiết.
 - Integration tests qua worker decision request/response, TDD từng lát cắt; chạy `bun run typecheck`, `bun run lint` và test liên quan.
 
+## Test matrix dự kiến
+
+| AC | Test | Nguồn expected |
+|---|---|---|
+| AC1 | Score vượt ngưỡng chọn đúng identity host | Identity literal trong fixture |
+| AC2 | Inventory thiếu hoặc invalid được cảnh báo | Spec §Hành vi 6 |
+| AC4 | Timeout/service error giữ baseline | Spec §Lỗi và fallback |
+| AC4 | Score lỗi chỉ loại tool tương ứng | Spec §Lỗi và fallback |
+| AC4 | Model/effort lỗi giữ baseline, score hợp lệ vẫn áp dụng | Spec §Lỗi và fallback |
+| AC7 | Một POST chứa effort/tier và tool questions | Spec §Hành vi 2 |
+| AC7 | Tắt chọn tool không đổi request model/effort | Spec §Hành vi 7 |
+| AC7 | Path unsupported không cấp tool, có cảnh báo | Phạm vi ticket 02 |
+
 ## Comments
 
 - Lane scoring bị chặn do upstream: `Incomplete Claude Code upstream response (status 200, capture incomplete, relay failure Error, native retries denied 1)`; resume cùng protocol thất bại lần nữa. Run `29652fa6-685d-4a01-b6db-b9e9c341c45f`, retry `fc12bab4-0b4a-4c49-8e6d-baee24bc3b51`. Worktree `/tmp/jev-subagent-tools-scoring` sạch tại `f1ae15cdde488e4f0f17f91ed4b33cb34c85b97c`; chưa có implementation hoặc benchmark.
