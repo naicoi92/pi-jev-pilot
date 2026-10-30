@@ -17,6 +17,8 @@ async function run(options: {
   status?: number;
   twice?: boolean;
   fork?: boolean;
+  missingRole?: boolean;
+  unresolvedCrew?: boolean;
 }) {
   const warnings: string[] = [];
   let body: any;
@@ -58,7 +60,13 @@ async function run(options: {
         tuning: { ...DEFAULT_EFFORT_THRESHOLDS, timeoutMs: 1000 },
       },
       tiers: {},
-      crew: { mode: "standard", slots: [], offered: [] },
+      crew: {
+        mode: "standard",
+        slots: [],
+        offered: options.unresolvedCrew
+          ? [{ model: "missing/model", role: "worker" } as never]
+          : [],
+      },
       warn(message) {
         warnings.push(message);
       },
@@ -91,7 +99,9 @@ async function run(options: {
         tools: options.tools ?? [
           { name: "search", description: "Search source", sourcePath: "/tmp/plugin.ts" },
         ],
-        role: { name: "worker", description: "Review code", provenance: "resolved-agent" },
+        role: options.missingRole
+          ? undefined
+          : { name: "worker", description: "Review code", provenance: "resolved-agent" },
       },
       policyContext: {
         ...revisions,
@@ -167,6 +177,36 @@ async function run(options: {
 }
 const base = { effort: { choice: "low", confidence: 0.9 }, risky: { noul: 0 } };
 
+test("AC7 fork without a resolved role retains its baseline", async () => {
+  const x = await run({ fork: true, missingRole: true });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  expect(x.result.receipt.thinking).toBe("high");
+  expect(x.body).toBeUndefined();
+});
+
+test("AC7 fork ignores unrelated unresolved crew", async () => {
+  const x = await run({ fork: true, unresolvedCrew: true });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  expect(x.result.receipt.thinking).toBe("high");
+  expect(x.result.receipt.selectedTools).toEqual([
+    { name: "search", sourcePath: "/tmp/plugin.ts" },
+  ]);
+});
+
+test("AC7 fork retains baseline when classifier fails", async () => {
+  const x = await run({ fork: true, status: 500 });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  expect(x.result.receipt.thinking).toBe("high");
+  expect(x.result.receipt.selectedTools).toBeUndefined();
+});
+
+test("AC7 fork with disabled selection skips classifier", async () => {
+  const x = await run({ fork: true, disabled: true });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  expect(x.result.receipt.thinking).toBe("high");
+  expect(x.body).toBeUndefined();
+});
+
 test("AC7 fork without candidates does not call the classifier", async () => {
   const x = await run({ fork: true, tools: [] });
   if (x.result.kind !== "committed") throw Error("not committed");
@@ -188,9 +228,9 @@ test("AC7 unsupported launch does not ask tool questions", async () => {
   expect(x.body.questions.tool_0).toBeUndefined();
   expect(x.warnings.length).toBe(1);
 });
-test("AC7 unsupported warning is emitted once per authority", async () => {
+test("AC7 unsupported warning is emitted for each launch", async () => {
   const x = await run({ unsupported: true, twice: true });
-  expect(x.warnings.length).toBe(1);
+  expect(x.warnings.length).toBe(2);
 });
 
 test("AC7 disabled tool selection keeps original questions", async () => {
@@ -204,6 +244,7 @@ test("AC4 service failure retains baseline and warns once", async () => {
   if (x.result.kind === "committed") {
     expect(x.result.receipt.model).toBe("local/model");
     expect(x.result.receipt.selectedTools).toBeUndefined();
+    expect(x.result.receipt.toolWarnings).toEqual(["Worker tool scores unavailable."]);
   }
   expect(x.warnings.length).toBe(1);
 });
@@ -218,7 +259,22 @@ test("AC4 invalid score omits only that tool", async () => {
   if (x.result.kind !== "committed") throw Error("not committed");
   expect(x.result.receipt.selectedTools).toEqual([{ name: "second", sourcePath: "/tmp/b" }]);
   expect(x.warnings.some((x) => x.includes("first"))).toBe(true);
+  expect(x.result.receipt.toolWarnings).toEqual(["Worker tool score unavailable: first."]);
 });
+test("AC4 Unicode tool warnings are byte-bounded and sanitize control characters", async () => {
+  const name = `tool\n${"界".repeat(200)}`;
+  const x = await run({
+    tools: [{ name, description: "search", sourcePath: "/tmp/plugin.ts" }],
+    answers: { ...base, tool_0: { noul: "invalid" } },
+  });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  const warning = x.result.receipt.toolWarnings?.[0];
+  expect(warning).toBeDefined();
+  expect(Buffer.byteLength(warning!, "utf8")).toBeLessThanOrEqual(512);
+  expect([...warning!].every((char) => char.codePointAt(0)! >= 32)).toBe(true);
+  expect(warning).not.toContain("\ufffd");
+});
+
 test("AC1 threshold is inclusive", async () => {
   const x = await run({
     tools: [
