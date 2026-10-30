@@ -1,7 +1,7 @@
 # 02 — JEV chấm tool cùng worker decision
 
 Status: ready-for-agent  
-Implementation: pending  
+Implementation: in-progress  
 Blocked by: executor foreground checkpoint `4e0b46b982636d66eba5ff7a091333ae1450a0a1` (đã merge); phần còn lại của ticket 01 vẫn pending.
 
 ## Mục tiêu
@@ -32,6 +32,9 @@ Trong pilot, gửi metadata tool, task và role qua cùng request JEV chọn tie
 - Lane scoring bị chặn do upstream: `Incomplete Claude Code upstream response (status 200, capture incomplete, relay failure Error, native retries denied 1)`; resume cùng protocol thất bại lần nữa. Run `29652fa6-685d-4a01-b6db-b9e9c341c45f`, retry `fc12bab4-0b4a-4c49-8e6d-baee24bc3b51`. Worktree `/tmp/jev-subagent-tools-scoring` sạch tại `f1ae15cdde488e4f0f17f91ed4b33cb34c85b97c`; chưa có implementation hoặc benchmark.
 - User cho phép đổi model worker. Run `51211339-e5ed-4cf0-8e15-c180f546d824` yêu cầu `9router/gpt-6.1-terra` nhưng status ghi thực tế `claude-code/claude-sonnet-5-5`; đã stop, worktree sạch. Không giả định model override thắng JEV.
 - User yêu cầu retry model hiện tại; run `78575fb6-2203-40e6-9074-8c0c70584032` lại thất bại: `Incomplete Claude Code upstream response (status 200, capture incomplete, relay failure Error, native retries denied 1)`. Worker chạy `find /` ngoài phạm vi; parent dừng PID `70048` và gửi ràng buộc không quét máy. Kiểm tra sau đó không còn tiến trình `find /`; scoring worktree sạch tại `f1ae15cdde488e4f0f17f91ed4b33cb34c85b97c`.
+
+- Pilot scoring checkpoint `26cb0e0d8fb1c719950aac9ac96fc3b33f100218` đang review; threshold cấu hình được, default 0.65 theo benchmark nhỏ tại branch scoring. 287 test liên quan, lint và format đạt. Full suite timeout 300s và 1200s; typecheck qua local symlink còn lỗi `Theme` baseline. Chưa xác minh E2E pilot → executor → child.
+- `facts` chưa chứa agent baseline tools nên tool trùng agent baseline vẫn có thể được chấm; executor bỏ grant trùng và cảnh báo. Pilot pin `944128f` chưa có contract mới; chưa push executor hoặc đổi pin.
 
 ## Ranh giới
 
