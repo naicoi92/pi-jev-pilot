@@ -27,6 +27,8 @@ Mở rộng public worker decision và native child launch tại executor để 
 
 - Contract checkpoint đã merge fast-forward vào executor integration: `34fba452edd1f298bad431fd42a9258f0aef2a28`; review recovery PASS. Trên integration worktree: `npm run typecheck`, 2 public delegated async recovery tests và 15 descriptor tests đạt. Chưa xác minh detached revival E2E. Assertion package manifest lỗi cũng tái hiện trên base `944128f`; full suite chưa đạt. Runtime slice và integration verification toàn ticket còn pending.
 
+- Blocker runtime: Pi 1.4.0 `dist/core/sdk.js:148–160` dùng modifier với registry không giới hạn; `dist/core/agent-session.js:1138–1166,2928–2934` cho thấy active loadout không tương đương callable registry và explicit allowlist kích hoạt tool trùng tên. Worker chỉ đọc source, chưa chạy test chứng minh phương án snapshot. Runtime candidate `3f93f30fcbd1122877561edc134ae93512f56aff` chưa được merge; cần quyết định boundary trước khi tiếp tục.
+
 ## Ranh giới
 
 Repo executor `pi-subagents`, base `944128f754d1bd7ce17cfd5c325f0018bebe2a67`; không sửa installed release/cache. Chỉ thay contract cần thiết; không xây discovery subsystem. Đọc `AGENTS.md`, `VISION.md`, skill `tdd` và repo test commands. Không tự delegate. Merge integration branch tip vào branch trước khi báo, commit kết quả; báo SHA, tests và blockers. Dừng hỏi parent nếu contract không thể thực hiện mà mở rộng kiến trúc.
