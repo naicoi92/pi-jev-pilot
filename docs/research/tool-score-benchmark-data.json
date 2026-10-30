@@ -1,0 +1,26 @@
+{
+  "labelProvenance": "Labels assigned by the assistant before running the classifier; not user-reviewed.",
+  "role": "Worker carrying out the assigned task without unrelated changes.",
+  "cases": [
+    {"task":"review code","tool":"search_source","description":"Search repository source files for text and identifiers.","include":true},
+    {"task":"review code","tool":"edit_files","description":"Modify files in the working tree.","include":false},
+    {"task":"fix failing tests","tool":"run_tests","description":"Execute the project's automated test suite.","include":true},
+    {"task":"fix failing tests","tool":"search_code","description":"Search repository source files for relevant code.","include":true},
+    {"task":"fix failing tests","tool":"publish_release","description":"Publish a production software release.","include":false},
+    {"task":"write documentation","tool":"edit_files","description":"Modify files in the working tree.","include":true},
+    {"task":"write documentation","tool":"delete_database","description":"Delete a database and its data.","include":false},
+    {"task":"inspect logs","tool":"search_logs","description":"Search application log records.","include":true},
+    {"task":"inspect logs","tool":"restart_production","description":"Restart the production service.","include":false},
+    {"task":"analyze repository","tool":"read_files","description":"Read contents of project files.","include":true},
+    {"task":"analyze repository","tool":"write_files","description":"Create or overwrite project files.","include":false},
+    {"task":"build web UI","tool":"edit_files","description":"Modify application source files.","include":true},
+    {"task":"build web UI","tool":"browser_screenshot","description":"Capture a screenshot of a web page.","include":true},
+    {"task":"build web UI","tool":"drop_database","description":"Drop a database and all tables.","include":false},
+    {"task":"research API","tool":"web_search","description":"Search the web for documentation.","include":true},
+    {"task":"research API","tool":"deploy_service","description":"Deploy a service to production.","include":false},
+    {"task":"review security","tool":"read_source","description":"Read source files for analysis.","include":true},
+    {"task":"review security","tool":"modify_source","description":"Modify source files in the working tree.","include":false},
+    {"task":"compare performance","tool":"run_benchmark","description":"Run performance benchmarks and report measurements.","include":true},
+    {"task":"compare performance","tool":"publish_package","description":"Publish a package to a public registry.","include":false}
+  ]
+}
