@@ -18,6 +18,7 @@ Trong pilot, gửi metadata tool, task và role qua cùng request JEV chọn tie
 
 - Lane scoring bị chặn do upstream: `Incomplete Claude Code upstream response (status 200, capture incomplete, relay failure Error, native retries denied 1)`; resume cùng protocol thất bại lần nữa. Run `29652fa6-685d-4a01-b6db-b9e9c341c45f`, retry `fc12bab4-0b4a-4c49-8e6d-baee24bc3b51`. Worktree `/tmp/jev-subagent-tools-scoring` sạch tại `f1ae15cdde488e4f0f17f91ed4b33cb34c85b97c`; chưa có implementation hoặc benchmark.
 - User cho phép đổi model worker. Run `51211339-e5ed-4cf0-8e15-c180f546d824` yêu cầu `9router/gpt-6.1-terra` nhưng status ghi thực tế `claude-code/claude-sonnet-5-5`; đã stop, worktree sạch. Không giả định model override thắng JEV.
+- User yêu cầu retry model hiện tại; run `78575fb6-2203-40e6-9074-8c0c70584032` lại thất bại: `Incomplete Claude Code upstream response (status 200, capture incomplete, relay failure Error, native retries denied 1)`. Worker chạy `find /` ngoài phạm vi; parent dừng PID `70048` và gửi ràng buộc không quét máy. Kiểm tra sau đó không còn tiến trình `find /`; scoring worktree sạch tại `f1ae15cdde488e4f0f17f91ed4b33cb34c85b97c`.
 
 ## Ranh giới
 
