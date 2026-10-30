@@ -27,7 +27,7 @@ Mở rộng public worker decision và native child launch tại executor để 
 
 - Contract checkpoint đã merge fast-forward vào executor integration: `34fba452edd1f298bad431fd42a9258f0aef2a28`; review recovery PASS. Trên integration worktree: `npm run typecheck`, 2 public delegated async recovery tests và 15 descriptor tests đạt. Chưa xác minh detached revival E2E. Assertion package manifest lỗi cũng tái hiện trên base `944128f`; full suite chưa đạt. Runtime slice và integration verification toàn ticket còn pending.
 
-- Blocker runtime: Pi 1.4.0 `dist/core/sdk.js:148–160` dùng modifier với registry không giới hạn; `dist/core/agent-session.js:1138–1166,2928–2934` cho thấy active loadout không tương đương callable registry và explicit allowlist kích hoạt tool trùng tên. Worker chỉ đọc source, chưa chạy test chứng minh phương án snapshot. Runtime candidate `3f93f30fcbd1122877561edc134ae93512f56aff` chưa được merge; cần quyết định boundary trước khi tiếp tục.
+- Blocker runtime: Pi 1.4.0 `dist/core/sdk.js:148–160` và `dist/core/agent-session.js:1138–1166,2928–2934` không tách registry ceiling khỏi active loadout. Snapshot một session không thể đặt lại registry allowlist qua public SDK. Thử nghiệm disposable với `noTools: "all"`, `tools: ["+read"]` và custom deferred `mcp__demo__extra` trả callable `["read", "mcp__demo__extra"]`: tool ngoài snapshot vẫn callable. Không gọi model; không coi thử nghiệm là E2E. Runtime candidate `3f93f30fcbd1122877561edc134ae93512f56aff` chưa merge; cần quyết định SDK boundary.
 
 ## Ranh giới
 
