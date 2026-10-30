@@ -160,6 +160,45 @@ test("AC1 native worker can invoke the JEV-selected host tool", async () => {
   expect(terminal?.isError).not.toBe(true);
 }, 45000);
 
+test("AC4 native worker retains baseline and warns when classification fails", async () => {
+  const f = await nativeWorker({}, true);
+  f.status = 500;
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "config-worker",
+      task: "Return local result.",
+      async: false,
+      options: {
+        tools: ["grep"],
+        context: "fresh",
+        acceptance: false,
+        artifacts: false,
+        timeoutMs: 20000,
+      },
+    },
+  });
+  await f.prompt("Run the worker.");
+  expect(f.classifications).toHaveLength(1);
+  const childRequest = f.generations.find(
+    (request) =>
+      request.model === "fixture-model" &&
+      JSON.stringify(request.messages).includes("Worker tool scores unavailable"),
+  );
+  expect(childRequest).toBeDefined();
+  const names = ((childRequest?.tools ?? []) as Array<{ function?: { name?: string } }>).map(
+    (tool) => tool.function?.name,
+  );
+  expect(names).toContain("read");
+  expect(names).toContain("grep");
+  expect(names).not.toContain("fixture_score_tool");
+  const terminal = f.records.find(
+    (row) => row.type === "tool_execution_end" && row.toolName === "subagent",
+  );
+  expect(terminal?.isError).not.toBe(true);
+  expect(JSON.stringify(terminal)).toContain("Worker tool scores unavailable");
+}, 45000);
+
 test("AC3 native worker excludes a caller tool matching an exclusion pattern", async () => {
   const f = await nativeWorker();
   await writeFile(
