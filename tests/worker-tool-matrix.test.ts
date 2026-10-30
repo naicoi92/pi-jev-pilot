@@ -167,6 +167,13 @@ async function run(options: {
 }
 const base = { effort: { choice: "low", confidence: 0.9 }, risky: { noul: 0 } };
 
+test("AC7 fork without candidates does not call the classifier", async () => {
+  const x = await run({ fork: true, tools: [] });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  expect(x.result.receipt.thinking).toBe("high");
+  expect(x.body).toBeUndefined();
+});
+
 test("AC7 fork keeps its model and still scores tools", async () => {
   const x = await run({ fork: true });
   if (x.result.kind !== "committed") throw Error("not committed");
