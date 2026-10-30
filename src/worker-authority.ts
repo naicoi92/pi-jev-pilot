@@ -83,13 +83,6 @@ export function createWorkerAuthority(options: {
           : undefined;
       if (fixedBaseline && !assessment.config.workerToolSelectionEnabled)
         return retain(fixedBaseline);
-      let config;
-      try {
-        config = systemOneConfig(assessment);
-      } catch (error) {
-        options.configurationError(error instanceof Error ? error.message : String(error));
-        return fork ? retain(original) : { kind: "reject", reason: "assessment-unavailable" };
-      }
       const enabled = assessment.config.workerToolSelectionEnabled;
       const toolSelectionSupported = request.facts.toolSelection === "supported";
       if (enabled && request.facts.toolsIncomplete)
@@ -119,6 +112,13 @@ export function createWorkerAuthority(options: {
         options.warn("Worker tool inventory exceeds the scoring limit.");
       const offeredTools = candidates.slice(0, MAX_WORKER_TOOL_QUESTIONS);
       if (fixedBaseline && !offeredTools.length) return retain(fixedBaseline);
+      let config;
+      try {
+        config = systemOneConfig(assessment);
+      } catch (error) {
+        options.configurationError(error instanceof Error ? error.message : String(error));
+        return fork ? retain(original) : { kind: "reject", reason: "assessment-unavailable" };
+      }
       const result = await classify(
         { ...config, timeoutMs: Math.min(config.timeoutMs, remaining) },
         {
