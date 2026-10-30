@@ -50,20 +50,22 @@ export function createWorkerAuthority(options: {
       const fork = request.control.context !== "fresh";
       const agent =
         request.facts.role?.provenance === "resolved-agent" ? request.facts.role.name : undefined;
-      if (!agent) return { kind: "reject", reason: "assessment-unavailable" };
+      if (!agent)
+        return fork ? retain(original) : { kind: "reject", reason: "assessment-unavailable" };
       const remaining = context.assessmentCutoff - Date.now();
       if (!context.assessmentAvailable || remaining <= 0) return retain(original);
-      for (const slot of options.crew.offered) {
+      for (const slot of fork ? [] : options.crew.offered) {
         if ((await context.resolveTarget(slot.model)).kind === "unresolved")
           return { kind: "reject", reason: "target-unavailable" };
       }
       const specializedRole =
-        agent === "jev-pilot:junior" ||
-        ["jev-pilot:codex-review", "jev-pilot:opencode-review"].includes(agent);
+        !fork &&
+        (agent === "jev-pilot:junior" ||
+          ["jev-pilot:codex-review", "jev-pilot:opencode-review"].includes(agent));
       const specialized =
-        agent === "jev-pilot:junior"
+        !fork && agent === "jev-pilot:junior"
           ? (options.crew.junior?.model ?? options.tiers.balanced)
-          : ["jev-pilot:codex-review", "jev-pilot:opencode-review"].includes(agent)
+          : !fork && ["jev-pilot:codex-review", "jev-pilot:opencode-review"].includes(agent)
             ? options.tiers.fast
             : undefined;
       if (specializedRole && !specialized) return retain(original);
@@ -86,7 +88,7 @@ export function createWorkerAuthority(options: {
         config = systemOneConfig(assessment);
       } catch (error) {
         options.configurationError(error instanceof Error ? error.message : String(error));
-        return { kind: "reject", reason: "assessment-unavailable" };
+        return fork ? retain(original) : { kind: "reject", reason: "assessment-unavailable" };
       }
       const enabled = assessment.config.workerToolSelectionEnabled;
       const toolSelectionSupported = request.facts.toolSelection === "supported";
@@ -116,6 +118,7 @@ export function createWorkerAuthority(options: {
       if (candidates.length > MAX_WORKER_TOOL_QUESTIONS)
         options.warn("Worker tool inventory exceeds the scoring limit.");
       const offeredTools = candidates.slice(0, MAX_WORKER_TOOL_QUESTIONS);
+      if (fixedBaseline && !offeredTools.length) return retain(fixedBaseline);
       const result = await classify(
         { ...config, timeoutMs: Math.min(config.timeoutMs, remaining) },
         {
