@@ -11,6 +11,8 @@ import { selectsSlot, selectWorkerModel } from "./crew-policy.ts";
 import { cascadeTiers } from "./tier-fallback.ts";
 import { TIER_ORDER, type Tiers, type Tier } from "./tier-policy.ts";
 import type { Crew } from "./crew-config.ts";
+import { isAbsolute } from "node:path";
+import { MAX_WORKER_TOOL_QUESTIONS, workerToolQuestions } from "./worker-tool-questions.ts";
 
 const LEVELS: readonly ThinkingLevel[] = [
   "off",
@@ -40,6 +42,7 @@ export function createWorkerAuthority(options: {
   configurationError(message: string): void;
   selectedTier?(tier: Tier): void;
 }): WorkerDecisionAuthority {
+  let warnedUnsupported = false;
   return {
     async decide(request, context) {
       const assessment = options.assessment;
@@ -82,6 +85,34 @@ export function createWorkerAuthority(options: {
         options.configurationError(error instanceof Error ? error.message : String(error));
         return { kind: "reject", reason: "assessment-unavailable" };
       }
+      const enabled = assessment.config.workerToolSelectionEnabled;
+      const toolSelectionSupported = request.facts.toolSelection === "supported";
+      if (enabled && request.facts.toolsIncomplete)
+        options.warn("Worker tool inventory is incomplete.");
+      if (enabled && !toolSelectionSupported && request.facts.tools?.length && !warnedUnsupported) {
+        warnedUnsupported = true;
+        options.warn("Worker tool selection is unavailable for this launch.");
+      }
+      const candidates =
+        enabled && toolSelectionSupported
+          ? (request.facts.tools ?? []).filter(
+              (tool) =>
+                !!tool.sourcePath &&
+                isAbsolute(tool.sourcePath) &&
+                !request.facts.callerTools?.includes(tool.name) &&
+                !tool.name.startsWith("mcp__") &&
+                ![
+                  "list_mcp_resources",
+                  "list_mcp_resource_templates",
+                  "read_mcp_resource",
+                  "codemode",
+                  "models",
+                ].includes(tool.name),
+            )
+          : [];
+      if (candidates.length > MAX_WORKER_TOOL_QUESTIONS)
+        options.warn("Worker tool inventory exceeds the scoring limit.");
+      const offeredTools = candidates.slice(0, MAX_WORKER_TOOL_QUESTIONS);
       const result = await classify(
         { ...config, timeoutMs: Math.min(config.timeoutMs, remaining) },
         {
@@ -100,12 +131,38 @@ export function createWorkerAuthority(options: {
           tiers: specialized ? [] : TIER_ORDER.filter((tier) => options.tiers[tier]),
           slots: specialized ? [] : options.crew.offered,
         },
-        { effort: WORKER_EFFORT_QUESTION },
+        { effort: WORKER_EFFORT_QUESTION, ...workerToolQuestions(offeredTools) },
       );
-      if (result.outcome !== "classified")
-        return retain(
+      const answers =
+        result.value && typeof result.value === "object" && "answers" in result.value
+          ? (result.value as { answers?: Record<string, { noul?: unknown }> }).answers
+          : undefined;
+      if (!answers && offeredTools.length) options.warn("Worker tool scores unavailable.");
+      const selectedTools = offeredTools.flatMap((tool, index) => {
+        if (!answers) return [];
+        const score = answers?.[`tool_${index}`]?.noul;
+        if (typeof score !== "number" || !Number.isFinite(score) || score < 0 || score > 1) {
+          options.warn(`Worker tool score unavailable: ${tool.name}.`);
+          return [];
+        }
+        return score >= assessment.config.workerToolThreshold
+          ? [
+              {
+                name: tool.name,
+                ...(tool.namespace ? { namespace: tool.namespace } : {}),
+                sourcePath: tool.sourcePath,
+              },
+            ]
+          : [];
+      });
+      if (result.outcome !== "classified") {
+        const baseline = retain(
           specializedTarget?.kind === "resolved" ? specializedTarget.baseline : original,
         );
+        return baseline.kind === "apply" && selectedTools.length
+          ? { ...baseline, selectedTools }
+          : baseline;
+      }
       const decision = result.decision;
       const tierDecision = decision?.tier
         ? {
@@ -165,7 +222,10 @@ export function createWorkerAuthority(options: {
           : undefined;
       if (!requested) {
         const baseline = specialized ? target.baseline : original;
-        return retain(baseline);
+        const retained = retain(baseline);
+        return retained.kind === "apply" && selectedTools.length
+          ? { ...retained, selectedTools }
+          : retained;
       }
       const thinking = supported.includes(requested)
         ? requested
@@ -182,6 +242,7 @@ export function createWorkerAuthority(options: {
         thinking,
         requestedThinking: requested,
         reason: "assessed",
+        ...(selectedTools.length ? { selectedTools } : {}),
       };
     },
   };

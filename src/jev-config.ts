@@ -8,6 +8,8 @@ export interface JevConfig {
   readonly schemaVersion: 1;
   readonly effortEnabled: boolean;
   readonly workerRoutingEnabled: boolean;
+  readonly workerToolSelectionEnabled: boolean;
+  readonly workerToolThreshold: number;
   readonly skillsEnabled: boolean;
   readonly skillRerank: boolean;
   readonly strategyEnabled: boolean;
@@ -33,6 +35,7 @@ export interface JevConfig {
 const FLAGS = {
   effortEnabled: true,
   workerRoutingEnabled: true,
+  workerToolSelectionEnabled: true,
   skillsEnabled: true,
   skillRerank: false,
   strategyEnabled: true,
@@ -146,7 +149,15 @@ export function loadJevConfig(): JevConfig {
   const root = object(raw, "$root");
   known(
     root,
-    ["schemaVersion", ...Object.keys(FLAGS), "designSkills", "classifier", "tiers", "crew"],
+    [
+      "schemaVersion",
+      ...Object.keys(FLAGS),
+      "workerToolThreshold",
+      "designSkills",
+      "classifier",
+      "tiers",
+      "crew",
+    ],
     "$root",
   );
   if ("schemaVersion" in root && root.schemaVersion !== 1)
@@ -158,6 +169,14 @@ export function loadJevConfig(): JevConfig {
       flags[key] = root[key] as boolean;
     }
   }
+  const workerToolThreshold = "workerToolThreshold" in root ? root.workerToolThreshold : 0.65;
+  if (
+    typeof workerToolThreshold !== "number" ||
+    !Number.isFinite(workerToolThreshold) ||
+    workerToolThreshold < 0 ||
+    workerToolThreshold > 1
+  )
+    fail("workerToolThreshold", "expected a number between 0 and 1");
   const design = "designSkills" in root ? root.designSkills : DESIGN_SKILLS;
   if (!Array.isArray(design)) fail("designSkills", "expected an array of strings");
   const designSkills = [
@@ -236,6 +255,7 @@ export function loadJevConfig(): JevConfig {
   return Object.freeze({
     schemaVersion: 1,
     ...flags,
+    workerToolThreshold: workerToolThreshold as number,
     designSkills: Object.freeze(designSkills),
     classifier: Object.freeze({ url, apiKeyEnv, model, timeoutMs: timeoutMs as number }),
     tiers: Object.freeze(tiers),
