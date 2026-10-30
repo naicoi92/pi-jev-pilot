@@ -18,6 +18,10 @@ Mở rộng public worker decision và native child launch tại executor để 
 - Chỉ dùng metadata và provider binding host thực có; không suy đoán provider/path. Mapping thiếu hoặc mơ hồ thì bỏ tool bổ sung và cảnh báo; không tạo discovery subsystem.
 - Integration tests qua public worker decision/child launch seam; TDD từng lát cắt.
 
+## Phạm vi khả thi sau quyết định user
+
+Không sửa Pi SDK. Ưu tiên file-backed plugin có host binding xác thực với explicit agent tool list: tool JEV chọn có thể dùng trong child, hard ceiling/exclusion được giữ. Không thể chứng minh giới hạn cứng cho launch cụ thể → fail closed và diagnostic; không thay ceiling bằng active list. Tool bổ sung không thể cấp đúng policy → bỏ và cảnh báo parent/child. AC3/AC6 trên mọi exposure chưa được cam kết hoàn chỉnh; `codemode` chỉ cấp khi kiểm soát được quyền.
+
 ## Lát cắt triển khai
 
 1. Contract và provenance: caller tools được hợp nhất tối thiểu ở launch plan; JEV selection giữ riêng, không thành required tool. Commit checkpoint chưa phải hoàn thành ticket.

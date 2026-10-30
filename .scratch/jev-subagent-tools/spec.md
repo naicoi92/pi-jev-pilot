@@ -3,6 +3,8 @@
 **Trạng thái:** Bản nháp chờ duyệt; chưa triển khai.  
 **Phạm vi:** Native Pi subagent. External CLI agent giữ contract riêng.
 
+**Điều chỉnh phạm vi:** Không mở rộng Pi SDK. Triển khai lựa chọn tool trên các đường launch có thể thực thi đúng hard ceiling; đường không bảo đảm được quyền phải fail closed và báo rõ. Không tuyên bố AC3/AC6 hoàn chỉnh trên mọi SDK exposure. Tool/provider không thể cấp đúng policy được bỏ khỏi phần lựa chọn bổ sung và cảnh báo. Không dùng discovery hai session hoặc sentinel nội bộ.
+
 ## Mục tiêu
 
 Plugin mới không cần sửa danh sách tool trong từng agent. Khi launch subagent, JEV đánh giá tool phù hợp với task và role, rồi bổ sung vào tool mặc định của agent và tool caller yêu cầu. Subagent cũng có thể sử dụng `codemode` với các tool được cấp.
