@@ -47,8 +47,7 @@ export function createWorkerAuthority(options: {
     async decide(request, context) {
       const assessment = options.assessment;
       const { original, modelContract, comparison } = request.policyContext;
-      // Existing fork policy is executor-owned: retain only its verified effective pair.
-      if (request.control.context !== "fresh") return retain(original);
+      const fork = request.control.context !== "fresh";
       const agent =
         request.facts.role?.provenance === "resolved-agent" ? request.facts.role.name : undefined;
       if (!agent) return { kind: "reject", reason: "assessment-unavailable" };
@@ -75,9 +74,13 @@ export function createWorkerAuthority(options: {
         : undefined;
       if (specializedTarget?.kind === "unresolved")
         return { kind: "reject", reason: specializedTarget.reason };
-      // Resolved specialized effort stays deterministic and never invokes assessment.
-      if (specializedTarget?.kind === "resolved" && specializedTarget.baseline.kind === "verified")
-        return retain(specializedTarget.baseline);
+      const fixedBaseline = fork
+        ? original
+        : specializedTarget?.kind === "resolved" && specializedTarget.baseline.kind === "verified"
+          ? specializedTarget.baseline
+          : undefined;
+      if (fixedBaseline && !assessment.config.workerToolSelectionEnabled)
+        return retain(fixedBaseline);
       let config;
       try {
         config = systemOneConfig(assessment);
@@ -155,9 +158,10 @@ export function createWorkerAuthority(options: {
             ]
           : [];
       });
-      if (result.outcome !== "classified") {
+      if (fixedBaseline || result.outcome !== "classified") {
         const baseline = retain(
-          specializedTarget?.kind === "resolved" ? specializedTarget.baseline : original,
+          fixedBaseline ??
+            (specializedTarget?.kind === "resolved" ? specializedTarget.baseline : original),
         );
         return baseline.kind === "apply" && selectedTools.length
           ? { ...baseline, selectedTools }

@@ -16,6 +16,7 @@ async function run(options: {
   callerTools?: string[];
   status?: number;
   twice?: boolean;
+  fork?: boolean;
 }) {
   const warnings: string[] = [];
   let body: any;
@@ -79,7 +80,7 @@ async function run(options: {
         logicalLaunchId: "leaf",
         runtimeAttemptId: "attempt",
         ownerGeneration: owner.generation,
-        context: "fresh",
+        context: options.fork ? "fork" : "fresh",
         launchDeadline: Date.now() + 5000,
       },
       facts: {
@@ -165,6 +166,15 @@ async function run(options: {
   }
 }
 const base = { effort: { choice: "low", confidence: 0.9 }, risky: { noul: 0 } };
+
+test("AC7 fork keeps its model and still scores tools", async () => {
+  const x = await run({ fork: true });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  expect(x.result.receipt.thinking).toBe("high");
+  expect(x.result.receipt.selectedTools).toEqual([
+    { name: "search", sourcePath: "/tmp/plugin.ts" },
+  ]);
+});
 
 test("AC7 unsupported launch does not ask tool questions", async () => {
   const x = await run({ unsupported: true });
