@@ -35,7 +35,7 @@ Trong pilot, gửi metadata tool, task và role qua cùng request JEV chọn tie
 
 - Pilot scoring checkpoint `26cb0e0d8fb1c719950aac9ac96fc3b33f100218` đang review; threshold cấu hình được, default 0.65 theo benchmark nhỏ tại branch scoring. 287 test liên quan, lint và format đạt. Full suite timeout 300s và 1200s; typecheck qua local symlink còn lỗi `Theme` baseline. Chưa xác minh E2E pilot → executor → child.
 - `facts` chưa chứa agent baseline tools nên tool trùng agent baseline vẫn có thể được chấm; executor bỏ grant trùng và cảnh báo.
-- Pilot integration pin executor fork `5c78c304c7c607993d5ce8b05f6414ddb092c8e2`. Typecheck, lint, format và 282 test liên quan đạt với dependency thực. Review phát hiện warning Unicode quá giới hạn byte; đã sửa và thêm test. Fork registration bỏ preflight crew không liên quan, có regression test đỏ trước/xanh sau. Full suite trước đó timeout; chưa xác minh E2E pilot → executor → child. Cấu hình lỗi vẫn được xử lý bởi registration; async/remote warning đã nối qua transport, chưa xác minh detached/remote E2E. Ticket vẫn in-progress.
+- Pilot integration pin executor fork `c97a95c69d3a7d3b0e7ef7c8b77e767dd31b98a2`. Typecheck, lint, format và 282 test liên quan đạt với dependency thực. Fork registration bỏ preflight crew không liên quan, có regression test đỏ trước/xanh sau. Native Pi E2E với classifier/provider mock xác nhận score → receipt → child tool thực thi và caller tool union; wildcard exclusion được kiểm tra riêng. Full suite trước đó timeout. Cấu hình lỗi vẫn được xử lý bởi registration; async/remote warning đã nối qua transport, chưa xác minh detached/remote E2E. Ticket vẫn in-progress.
 
 ## Ranh giới
 

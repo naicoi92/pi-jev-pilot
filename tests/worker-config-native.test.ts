@@ -41,7 +41,7 @@ afterEach(async () => {
   fixture = undefined;
 });
 
-async function nativeWorker(config: Record<string, unknown> = {}) {
+async function nativeWorker(config: Record<string, unknown> = {}, withScoreTool = false) {
   const f = new PiFixture([
     "/bin/sh",
     "/Users/naicoi/.bun/bin/pi-bolt",
@@ -50,6 +50,7 @@ async function nativeWorker(config: Record<string, unknown> = {}) {
     join(root, "node_modules/pi-subagents/index.ts"),
     "-e",
     join(root, "tests/fixtures/worker-config-boundary.ts"),
+    ...(withScoreTool ? ["-e", join(root, "tests/fixtures/worker-score-tool.ts")] : []),
     "-e",
     join(root, "src/extension.ts"),
     "--mode",
@@ -107,6 +108,91 @@ async function nativeWorker(config: Record<string, unknown> = {}) {
   await f.start({ JEV_EFFORT_ENABLED: "false", JEV_SKILLS_ENABLED: "false" });
   return f;
 }
+
+test("AC1 native worker can invoke the JEV-selected host tool", async () => {
+  const f = await nativeWorker({}, true);
+  f.classifierResponse = (body) => {
+    const questions = body.questions as Record<string, { instructions?: string }>;
+    const answers: Record<string, unknown> = {
+      effort: { choice: "low", confidence: 1 },
+      risky: { noul: 0 },
+      tier: { choice: "balanced", confidence: 1 },
+    };
+    for (const [key, question] of Object.entries(questions))
+      if (key.startsWith("tool_"))
+        answers[key] = { noul: question.instructions?.includes("fixture_score_tool") ? 0.99 : 0 };
+    return { answers };
+  };
+  f.toolCalls.push(
+    {
+      name: "subagent",
+      input: {
+        agent: "config-worker",
+        task: "Use fixture_score_tool to find evidence.",
+        async: false,
+        options: {
+          tools: ["grep"],
+          context: "fresh",
+          acceptance: false,
+          artifacts: false,
+          timeoutMs: 20000,
+        },
+      },
+    },
+    { name: "fixture_score_tool", input: {} },
+  );
+  await f.prompt("Run the worker and use its selected tool.");
+  expect(f.classifications).toHaveLength(1);
+  expect(JSON.stringify(f.classifications[0])).toContain("fixture_score_tool");
+  const childRequest = f.generations.find((request) => request.model === "judgment");
+  const names = ((childRequest?.tools ?? []) as Array<{ function?: { name?: string } }>).map(
+    (tool) => tool.function?.name,
+  );
+  expect(names).toContain("read");
+  expect(names).toContain("grep");
+  expect(names).toContain("fixture_score_tool");
+  expect(await Bun.file(join(f.directory, "fixture-score-tool-invoked")).text()).toContain(
+    "called",
+  );
+  const terminal = f.records.find(
+    (row) => row.type === "tool_execution_end" && row.toolName === "subagent",
+  );
+  expect(terminal?.isError).not.toBe(true);
+}, 45000);
+
+test("AC3 native worker excludes a caller tool matching an exclusion pattern", async () => {
+  const f = await nativeWorker();
+  await writeFile(
+    join(f.directory, "agent/agents/config-worker.md"),
+    "---\nname: config-worker\ndescription: Local worker\nmodel: fixture/fixture-model\nthinking: high\ndefaultContext: fresh\ntools: read\nexcludeTools: gr*\n---\nReturn local result.\n",
+  );
+  f.toolCalls.push({
+    name: "subagent",
+    input: {
+      agent: "config-worker",
+      task: "Return local result.",
+      async: false,
+      options: {
+        tools: ["grep"],
+        context: "fresh",
+        acceptance: false,
+        artifacts: false,
+        timeoutMs: 20000,
+      },
+    },
+  });
+  await f.prompt("Run the worker.");
+  const childRequest = f.generations.find((request) => request.model === "judgment");
+  const names = ((childRequest?.tools ?? []) as Array<{ function?: { name?: string } }>).map(
+    (tool) => tool.function?.name,
+  );
+  expect(names).toContain("read");
+  expect(names).not.toContain("grep");
+  const terminal = f.records.find(
+    (row) => row.type === "tool_execution_end" && row.toolName === "subagent",
+  );
+  expect(terminal?.isError).not.toBe(true);
+}, 45000);
 
 test("WCFG-1 native worker uses JSON tiers rather than merged settings", async () => {
   const f = await nativeWorker();
