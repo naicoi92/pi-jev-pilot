@@ -34,7 +34,8 @@ Trong pilot, gửi metadata tool, task và role qua cùng request JEV chọn tie
 - User yêu cầu retry model hiện tại; run `78575fb6-2203-40e6-9074-8c0c70584032` lại thất bại: `Incomplete Claude Code upstream response (status 200, capture incomplete, relay failure Error, native retries denied 1)`. Worker chạy `find /` ngoài phạm vi; parent dừng PID `70048` và gửi ràng buộc không quét máy. Kiểm tra sau đó không còn tiến trình `find /`; scoring worktree sạch tại `f1ae15cdde488e4f0f17f91ed4b33cb34c85b97c`.
 
 - Pilot scoring checkpoint `26cb0e0d8fb1c719950aac9ac96fc3b33f100218` đang review; threshold cấu hình được, default 0.65 theo benchmark nhỏ tại branch scoring. 287 test liên quan, lint và format đạt. Full suite timeout 300s và 1200s; typecheck qua local symlink còn lỗi `Theme` baseline. Chưa xác minh E2E pilot → executor → child.
-- `facts` chưa chứa agent baseline tools nên tool trùng agent baseline vẫn có thể được chấm; executor bỏ grant trùng và cảnh báo. Pilot pin `944128f` chưa có contract mới; chưa push executor hoặc đổi pin.
+- `facts` chưa chứa agent baseline tools nên tool trùng agent baseline vẫn có thể được chấm; executor bỏ grant trùng và cảnh báo.
+- Pilot branch scoring `83fd9a3` đã pin executor fork `47dfba8d4d8d0b5b848682c8c9fec7125ba7910f`. Typecheck, lint, format và 281 test liên quan đạt với dependency thực. Review phát hiện warning Unicode quá giới hạn byte; đã sửa và thêm test. Full suite trước đó timeout; chưa xác minh E2E pilot → executor → child. Fork registration còn preflight crew/config trước authority; async/remote warning chưa tới child. Ticket vẫn in-progress.
 
 ## Ranh giới
 

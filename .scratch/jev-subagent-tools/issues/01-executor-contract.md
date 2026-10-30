@@ -36,6 +36,7 @@ Không sửa Pi SDK. Ưu tiên file-backed plugin có host binding xác thực v
 - Foreground explicit/file-backed checkpoint đã merge và review: `4e0b46b982636d66eba5ff7a091333ae1450a0a1`. Integration worktree: Pi 1.4.0 host tests 101/101 và typecheck đạt. Background, remote, implicit/MCP selection và `codemode.models` chưa hỗ trợ; ticket vẫn in-progress. Full suite có assertion manifest lỗi trên base.
 - Review P2 còn theo dõi: admission trả `scope-denied` thay vì diagnostic cụ thể; warning first-prompt có thể bị tiêu thụ nếu prompt lỗi; cần bổ sung test baseline/selection `codemode` và `models`.
 - Grant capability fact đã merge `1584de2d26ee035f6108a6ed794b5b52786be589`; review OK with notes, regression required tools đỏ trên base/xanh sau fix. Integration branch: typecheck và 111 Pi 1.4.0 host tests đạt; full integration trước merge 1376 pass/6 skip. Ticket vẫn in-progress.
+- Warning authority → receipt → parent/child foreground bổ sung tại executor `47dfba8d4d8d0b5b848682c8c9fec7125ba7910f`, đã push fork; review OK với P1 Unicode được sửa phía pilot. Executor typecheck và 178 Node tests đạt, bao gồm test Pi 1.4.0 child thật với authority warning. Async/remote warning chưa truyền tới child; chưa xác minh pilot → executor → child end-to-end.
 
 ## Ranh giới
 
