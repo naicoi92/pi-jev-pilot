@@ -5,7 +5,7 @@
     "": {
       "name": "pi-jev-pilot",
       "dependencies": {
-        "pi-subagents": "git+https://github.com/naicoi92/pi-subagents.git#c97a95c69d3a7d3b0e7ef7c8b77e767dd31b98a2",
+        "pi-subagents": "git+https://github.com/naicoi92/pi-subagents.git#0834c9906138c87f6eb321529541ea0651e9134f",
       },
       "devDependencies": {
         "@earendil-works/pi-ai": "1.4.0",
@@ -301,7 +301,7 @@
 
     "path-key": ["path-key@3.1.1", "", {}, "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q=="],
 
-    "pi-subagents": ["pi-subagents@github:naicoi92/pi-subagents#c97a95c", { "dependencies": { "@js-temporal/polyfill": "0.5.1", "acorn": "8.18.0", "jiti": "2.7.0", "undici": "8.12.3", "yaml": "2.8.3" }, "peerDependencies": { "@earendil-works/pi-agent-core": "*", "@earendil-works/pi-ai": ">=1.2.0", "@earendil-works/pi-coding-agent": "*", "@earendil-works/pi-tui": "*", "typebox": "*" }, "optionalPeers": ["@earendil-works/pi-agent-core", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-tui", "typebox"], "bin": { "pi-subagents": "install.mjs" } }, "naicoi92-pi-subagents-c97a95c", "sha512-19INvXNjUHm95NUHfP8S+32zEyLrM40j4qcsUTD7mN7/MYYEKxRcct0gR4wrWe/Fnc2yVVD/40lldbBoLTKYNw=="],
+    "pi-subagents": ["pi-subagents@github:naicoi92/pi-subagents#0834c99", { "dependencies": { "@js-temporal/polyfill": "0.5.1", "acorn": "8.18.0", "jiti": "2.7.0", "undici": "8.12.3", "yaml": "2.8.3" }, "peerDependencies": { "@earendil-works/pi-agent-core": "*", "@earendil-works/pi-ai": ">=1.2.0", "@earendil-works/pi-coding-agent": "*", "@earendil-works/pi-tui": "*", "typebox": "*" }, "optionalPeers": ["@earendil-works/pi-agent-core", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-tui", "typebox"], "bin": { "pi-subagents": "install.mjs" } }, "naicoi92-pi-subagents-0834c99", "sha512-JgNtw7OYYMVl5WRiGcUx53LcG/KIlg6JSPFYa3jXw0W37YqT7ke+3mZR1Vw+0sgkdAsjX+vR8+0CPFsuk+x+wQ=="],
 
     "proper-lockfile": ["proper-lockfile@4.1.2", "", { "dependencies": { "graceful-fs": "^4.2.4", "retry": "^0.12.0", "signal-exit": "^3.0.2" } }, "sha512-TjNPblN4BwAWMXU8s9AEz4JmQxnD1NNL7bNOY/AKUzyamc379FWASUhc/K1pL2noVb+XmZKLL68cjzLsiOAMaA=="],
 

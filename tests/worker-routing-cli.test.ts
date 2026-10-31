@@ -7,7 +7,12 @@ import { join, resolve } from "node:path";
 import { WorkerEvidence, reapWorkerCli } from "./fixtures/worker-evidence.ts";
 
 const root = resolve(import.meta.dir, "..");
-const executorCommit = "944128f754d1bd7ce17cfd5c325f0018bebe2a67";
+const executorCommit = "0834c9906138c87f6eb321529541ea0651e9134f";
+/** Question names without per-tool `tool_N` scoring questions, which depend on the offered tool inventory. */
+const questionNames = (questions: unknown): string[] =>
+  Object.keys(questions as object)
+    .filter((key) => !/^tool_\d+$/.test(key))
+    .sort();
 let process: ChildProcessWithoutNullStreams | undefined;
 let closed: Promise<void> | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
@@ -1081,10 +1086,7 @@ export default function(pi) {
             prompt: "Return CHILD_RECEIPT_OK without tools.",
             agentType: "jev-pilot:junior",
           });
-          expect(Object.keys(allClassifications[2]!.questions as object).sort()).toEqual([
-            "effort",
-            "risky",
-          ]);
+          expect(questionNames(allClassifications[2]!.questions)).toEqual(["effort", "risky"]);
           expect(allClassifications[3]!.state).toMatchObject({
             prompt: "Task: Return CHILD_RECEIPT_OK without tools.",
           });
@@ -1094,10 +1096,7 @@ export default function(pi) {
             prompt: direct.task,
             agentType: "jev-pilot:junior",
           });
-          expect(Object.keys(allClassifications[1]!.questions as object).sort()).toEqual([
-            "effort",
-            "risky",
-          ]);
+          expect(questionNames(allClassifications[1]!.questions)).toEqual(["effort", "risky"]);
         }
       }
       if (classifications.length) {
@@ -1119,11 +1118,8 @@ export default function(pi) {
           if (name !== "slot-standard")
             expect(criteria["slot::deep"]).toContain("Never for writing or changing code.");
         }
-        expect(Object.keys(classifications[0]!.questions as object).sort()).toEqual([
-          "effort",
-          "risky",
-          "tier",
-        ]);
+        // Worker tool selection adds one `tool_N` question per offered candidate tool.
+        expect(questionNames(classifications[0]!.questions)).toEqual(["effort", "risky", "tier"]);
       }
       if (name === "coexistence-jev-first")
         expect(await Bun.file(join(directory, "host-conflict.log")).text()).toContain(
