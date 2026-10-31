@@ -17,6 +17,8 @@ export interface JevConfig {
   readonly qualityEnabled: boolean;
   readonly designEnabled: boolean;
   readonly recordDecisions: boolean;
+  /** Tools that need a live human; workers ask the parent instead, so they are never granted. */
+  readonly workerInteractiveTools: readonly string[];
   readonly designSkills: readonly string[];
   readonly classifier: Readonly<{
     url: string;
@@ -44,6 +46,7 @@ const FLAGS = {
   designEnabled: true,
   recordDecisions: true,
 } as const;
+const INTERACTIVE_TOOLS = ["ask_user_question"];
 const DESIGN_SKILLS = ["design-taste-frontend", "impeccable", "web-design-guidelines"];
 const LEGACY_ENV = new Set([
   "JEV_EFFORT_ENABLED",
@@ -155,6 +158,7 @@ export function loadJevConfig(): JevConfig {
       ...Object.keys(FLAGS),
       "workerToolRejectThreshold",
       "workerToolThreshold",
+      "workerInteractiveTools",
       "designSkills",
       "classifier",
       "tiers",
@@ -184,6 +188,21 @@ export function loadJevConfig(): JevConfig {
     workerToolRejectThreshold > 1
   )
     fail("workerToolRejectThreshold", "expected a number between 0 and 1");
+  const interactiveRaw =
+    "workerInteractiveTools" in root ? root.workerInteractiveTools : INTERACTIVE_TOOLS;
+  if (!Array.isArray(interactiveRaw))
+    fail("workerInteractiveTools", "expected an array of tool names");
+  const workerInteractiveTools = [
+    ...new Set(
+      (interactiveRaw as unknown[])
+        .map((name, index) => {
+          if (typeof name !== "string")
+            return fail(`workerInteractiveTools[${index}]`, "expected text");
+          return name.trim();
+        })
+        .filter(Boolean),
+    ),
+  ];
   const design = "designSkills" in root ? root.designSkills : DESIGN_SKILLS;
   if (!Array.isArray(design)) fail("designSkills", "expected an array of strings");
   const designSkills = [
@@ -263,6 +282,7 @@ export function loadJevConfig(): JevConfig {
     schemaVersion: 1,
     ...flags,
     workerToolRejectThreshold: workerToolRejectThreshold as number,
+    workerInteractiveTools: Object.freeze(workerInteractiveTools),
     designSkills: Object.freeze(designSkills),
     classifier: Object.freeze({ url, apiKeyEnv, model, timeoutMs: timeoutMs as number }),
     tiers: Object.freeze(tiers),

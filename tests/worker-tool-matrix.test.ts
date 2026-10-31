@@ -335,3 +335,16 @@ test("default-allow: tools beyond the scoring cap are allowed, only flagged ones
   expect(names).not.toContain("tool3");
   expect(names).toContain("tool39");
 });
+
+test("interactive tools are never scored or granted to a worker", async () => {
+  const x = await run({
+    tools: [
+      { name: "ask_user_question", description: "Ask the user", sourcePath: "/tmp/ask.ts" },
+      { name: "search", description: "Search source", sourcePath: "/tmp/plugin.ts" },
+    ],
+  });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  const questions = Object.values(x.body.questions as Record<string, { instructions?: string }>);
+  expect(questions.some((q) => q.instructions?.includes("ask_user_question"))).toBe(false);
+  expect(x.result.receipt.selectedTools?.map((tool) => tool.name)).toEqual(["search"]);
+});

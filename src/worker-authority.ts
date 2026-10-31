@@ -123,6 +123,7 @@ export function createWorkerAuthority(options: {
                   isAbsolute(tool.sourcePath) &&
                   !request.facts.callerTools?.includes(tool.name) &&
                   !tool.name.startsWith("mcp__") &&
+                  !assessment.config.workerInteractiveTools.includes(tool.name) &&
                   ![
                     "list_mcp_resources",
                     "list_mcp_resource_templates",
