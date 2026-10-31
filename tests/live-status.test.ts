@@ -422,3 +422,26 @@ test("worker widget follows public tool expansion state at render time", () => {
   expanded = false;
   expect(widget.render(120)).toHaveLength(1);
 });
+
+test("LIVE-TOOLS worker summary shows aggregate selected/not-selected tool counts", () => {
+  const { line, text } = mounted();
+  line.settle(line.choose(), { kind: "decided", effort: "high", requested: "high", skill: "tdd" });
+  line.agentRunning(true);
+  line.toolStarted("c", "read");
+  line.setWorkerSummary({
+    activity: "2 workers running",
+    effort: "mixed",
+    running: 2,
+    tools: { selected: 3, rejected: 5 },
+  });
+  expect(text()).toBe("Jev · reading · high · /tdd · 2 workers · tools +3 −5");
+});
+
+test("LIVE-TOOLS worker summary without scored tools adds no tools part", () => {
+  const { line, text } = mounted();
+  line.settle(line.choose(), { kind: "decided", effort: "high", requested: "high", skill: "tdd" });
+  line.agentRunning(true);
+  line.toolStarted("c", "read");
+  line.setWorkerSummary({ activity: "1 worker running", effort: "low", running: 1 });
+  expect(text()).toBe("Jev · reading · high · /tdd · 1 worker");
+});

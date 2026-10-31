@@ -100,6 +100,7 @@ export function registerWorkerAuthorityLifecycle(
               warn: (message) => ctx.ui.notify(message, "warning"),
               configurationError: (message) => ctx.ui.notify(message, "error"),
               selectedTier: (tier) => status?.tier(presentation, tier),
+              toolsScored: (counts) => status?.tools(presentation, counts),
             }).decide(request, { ...context, signal: controller.signal });
             if (controller.signal.aborted) return { kind: "reject", reason: "cancelled" };
             return result;

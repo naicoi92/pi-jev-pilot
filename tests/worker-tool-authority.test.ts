@@ -120,3 +120,95 @@ test("AC1 and AC7: one worker assessment selects the host identity", async () =>
     delete process.env[key];
   }
 });
+
+test("worker authority reports selected and not-selected tool counts without tool identities", async () => {
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch() {
+      return Response.json({
+        answers: {
+          effort: { choice: "low", confidence: 0.9 },
+          risky: { noul: 0 },
+          tool_0: { noul: 0.9 },
+          tool_1: { noul: 0.1 },
+          tool_2: { noul: 0.05 },
+        },
+      });
+    },
+  });
+  const key = "JEV_TOOL_COUNT_KEY";
+  process.env[key] = "fixture";
+  const reported: unknown[] = [];
+  const revisions = { definitionRevision: "d", constraintRevision: "c" };
+  const original = {
+    kind: "verified" as const,
+    model: "local/model",
+    thinking: "high" as const,
+    provenance: "host-effective" as const,
+    ...revisions,
+  };
+  const authority = createWorkerAuthority({
+    assessment: {
+      config: {
+        ...loadJevConfig(),
+        classifier: {
+          url: server.url.toString(),
+          apiKeyEnv: key,
+          model: "jev-latest",
+          timeoutMs: 1000,
+        },
+      },
+      tuning: { ...DEFAULT_EFFORT_THRESHOLDS, timeoutMs: 1000 },
+    },
+    tiers: {},
+    crew: { mode: "standard", slots: [], offered: [] },
+    warn() {},
+    configurationError() {},
+    toolsScored: (counts) => reported.push(counts),
+  });
+  try {
+    const tool = (name: string) => ({ name, sourcePath: `/tmp/${name}.ts`, description: name });
+    await authority.decide(
+      {
+        control: {
+          logicalLaunchId: "leaf",
+          runtimeAttemptId: "a",
+          ownerGeneration: "g",
+          context: "fresh",
+        },
+        facts: {
+          task: "Find the defect",
+          toolSelection: "supported",
+          tools: [tool("a"), tool("b"), tool("c")],
+          role: { name: "worker", description: "Review", provenance: "resolved-agent" },
+        },
+        policyContext: {
+          ...revisions,
+          modelContract: { kind: "fixed", model: "local/model" },
+          comparison: { kind: "resolved", model: "local/model", provenance: "parent" },
+          original,
+        },
+      } as any,
+      {
+        signal: new AbortController().signal,
+        assessmentCutoff: Date.now() + 5000,
+        hardDeadline: Date.now() + 5000,
+        assessmentAvailable: true,
+        async resolveTarget() {
+          return {
+            kind: "resolved",
+            model: "local/model",
+            supportedThinking: ["low", "high"],
+            baseline: original,
+            ...revisions,
+          };
+        },
+      },
+    );
+    expect(reported).toEqual([{ selected: 1, rejected: 2 }]);
+  } finally {
+    server.stop(true);
+    delete process.env[key];
+  }
+});

@@ -488,3 +488,27 @@ test("worker-status typed attached foreground terminal requires exact session/ca
   expect(state.details("call-a")[0]).toEndWith("failed");
   expect(state.details("call-a")[1]).toEndWith("accepted");
 });
+
+test("worker-status shows selected and not-selected tool counts, never identities", () => {
+  const { state } = fixture();
+  const owner = state.assessing(request());
+  state.tier(owner, "fast");
+  state.tools(owner, { selected: 1, rejected: 2 });
+  const withTool = {
+    ...receipt(),
+    selectedTools: [{ name: "PRIVATE_TOOL", sourcePath: "/private/x.ts" }],
+  } as AppliedWorkerDecision;
+  state.applied(withTool);
+  state.accepted(accepted(withTool));
+  const details = state.details("call-a").join("\n");
+  expect(details).toContain("tools +1 −2");
+  expect(details).not.toContain("PRIVATE_TOOL");
+  expect(details).not.toContain("/private");
+});
+
+test("worker-status omits tool counts when no tool was scored", () => {
+  const { state, assess } = fixture();
+  assess();
+  state.accepted(accepted());
+  expect(state.details("call-a").join("\n")).not.toContain("tools");
+});

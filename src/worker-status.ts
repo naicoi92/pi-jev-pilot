@@ -11,6 +11,8 @@ export interface WorkerSummary {
   activity: string;
   effort?: string;
   running: number;
+  /** Totals across the shown workers; present only when tools were scored. */
+  tools?: { selected: number; rejected: number };
   details?: string[];
 }
 
@@ -20,6 +22,8 @@ interface Worker {
   readonly logicalLaunchId: string;
   role?: string;
   tier?: Tier;
+  /** Scored-tool counts only; identities and paths never reach presentation. */
+  tools?: { selected: number; rejected: number };
   receipt?: AppliedWorkerDecision;
   binding?: SubagentWorkerDecisionAcceptedEvent;
   status?: Status;
@@ -96,6 +100,13 @@ export class WorkerStatus {
     if (!worker || worker.receipt || receipt.ownerGeneration !== this.generation) return;
     // Copy commitment: callers cannot change presentation by mutating their object later.
     worker.receipt = Object.freeze({ ...receipt });
+  }
+
+  tools(owner: WorkerAssessment | undefined, counts: { selected: number; rejected: number }): void {
+    if (owner?.epoch !== this.epoch || owner.receipt) return;
+    const valid = (n: number) => Number.isSafeInteger(n) && n >= 0;
+    if (valid(counts.selected) && valid(counts.rejected))
+      owner.tools = { selected: counts.selected, rejected: counts.rejected };
   }
 
   accepted(value: unknown): value is SubagentWorkerDecisionAcceptedEvent {
@@ -306,9 +317,17 @@ export class WorkerStatus {
       .join(" · ");
     const efforts = new Set(selected.map((worker) => worker.receipt?.thinking));
     const effort = efforts.size > 1 ? "mixed" : selected[0]?.receipt?.thinking;
+    const scored = selected.flatMap((worker) => (worker.tools ? [worker.tools] : []));
+    const tools = scored.length
+      ? {
+          selected: scored.reduce((sum, item) => sum + item.selected, 0),
+          rejected: scored.reduce((sum, item) => sum + item.rejected, 0),
+        }
+      : undefined;
     return {
       activity,
       ...(effort ? { effort } : {}),
+      ...(tools ? { tools } : {}),
       running: active.filter((worker) => worker.status === "running").length,
       details: selected.map((worker) => this.formatDetails(worker)),
     };
@@ -327,6 +346,7 @@ export class WorkerStatus {
       worker.receipt?.reason,
       safeIdentity(worker.receipt?.model),
       worker.receipt?.thinking,
+      worker.tools ? `tools +${worker.tools.selected} −${worker.tools.rejected}` : undefined,
       worker.status,
     ]
       .filter(Boolean)

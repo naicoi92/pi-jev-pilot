@@ -198,22 +198,29 @@ export class WorkerVisibility {
     this.render();
   }
 
-  describe(
-    owner: WorkerVisibilityOwner,
-    agent: unknown,
-    retained: unknown,
-    thinking: unknown,
+  /**
+   * Binds the executor-accepted decision pair to the originating tool call. The pair is the
+   * committed plan, not proof of execution, so the outcome stays `unconfirmed`. Only model
+   * identity and enumerated effort cross this boundary, never task text or tool paths.
+   */
+  applied(
+    toolCallId: string,
+    pair: { model: unknown; thinking: unknown; requestedThinking?: unknown },
   ): void {
-    if (this.rows.get(owner.toolCallId) !== owner) return;
-    owner.agent = safeAgent(agent);
+    const owner = this.rows.get(toolCallId);
+    if (!owner || owner.blocked) return;
+    const model = safeIdentity(pair.model);
+    const effective = safeEffort(pair.thinking);
     owner.plan = {
       ...owner.plan,
-      agent: owner.agent,
-      retained: safeIdentity(retained),
-      model: safeIdentity(retained),
-      requested: safeEffort(thinking),
-      effective: safeEffort(thinking),
+      model,
+      requested: safeEffort(pair.requestedThinking ?? pair.thinking),
+      effective,
+      elapsedMs: Date.now() - owner.started,
     };
+    owner.decision = `plan ${workerTarget(model, effective)} · launch unconfirmed`;
+    // Plan row is keyed by invocation, so a later row supersedes the unknown placeholder.
+    if (owner.planRecorded) this.persist?.(owner.plan);
     this.render();
   }
 

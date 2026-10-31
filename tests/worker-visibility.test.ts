@@ -504,3 +504,24 @@ test("worker presentation without live summary never acknowledges native leaf", 
   f.pi.events.emit("subagent:worker-decision-accepted", event);
   expect(isWorkerPresentationDelegated(sessionId, "leaf")).toBe(false);
 });
+
+test("accepted decision fills plan model and effort instead of leaving them unknown", async () => {
+  const f = await fixture();
+  await f.call({ agent: "worker", task: brief }, "bound");
+  const prepared = await prepareFixtureWorker(f.ctx, { agent: "worker", task: brief });
+  if (prepared.kind !== "committed") throw new Error("No committed fixture receipt");
+  f.pi.events.emit("subagent:worker-decision-accepted", {
+    version: 1,
+    sessionId: f.ctx.sessionManager.getSessionFile(),
+    toolCallId: "bound",
+    runId: "leaf",
+    logicalLaunchId: prepared.receipt.logicalLaunchId,
+    receipt: prepared.receipt,
+  });
+  const plan = (f.entries as WorkerDecisionRow[])
+    .filter((row) => row?.kind === "worker" && row.stage === "plan")
+    .at(-1);
+  expect(plan?.model).toBe(prepared.receipt.model);
+  expect(plan?.effective).toBe(prepared.receipt.thinking);
+  expect(plan?.outcome).toBe("unconfirmed");
+});

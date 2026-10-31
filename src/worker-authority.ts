@@ -56,6 +56,8 @@ export function createWorkerAuthority(options: {
   warn(message: string): void;
   configurationError(message: string): void;
   selectedTier?(tier: Tier): void;
+  /** Counts only: scored candidates split by threshold. Never tool identities or paths. */
+  toolsScored?(counts: { selected: number; rejected: number }): void;
 }): WorkerDecisionAuthority {
   return {
     async decide(request, context) {
@@ -181,6 +183,11 @@ export function createWorkerAuthority(options: {
               ]
             : [];
         });
+        if (offeredTools.length && answers)
+          options.toolsScored?.({
+            selected: selectedTools.length,
+            rejected: offeredTools.length - selectedTools.length,
+          });
         if (fixedBaseline || result.outcome !== "classified") {
           const baseline = retain(
             fixedBaseline ??

@@ -95,7 +95,9 @@ export function registerWorkerAdapter(
   pi.on("session_before_tree", clear);
   // Acceptance is logical commitment, never evidence that a child has started.
   pi.events.on(SUBAGENT_WORKER_DECISION_ACCEPTED_EVENT, (event: unknown) => {
-    status.accepted(event);
+    if (!status.accepted(event)) return;
+    const { toolCallId, receipt } = event;
+    visibility.applied(toolCallId, receipt);
   });
   pi.events.on("subagent:child-status", (event: unknown) => status.child(event));
   pi.events.on("subagent:foreground-complete", (event: unknown) => status.complete(event));
