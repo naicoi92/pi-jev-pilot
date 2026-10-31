@@ -1,3 +1,9 @@
+import {
+  addWorkerToolCounts,
+  formatWorkerToolCounts,
+  isWorkerToolCounts,
+  type WorkerToolCounts,
+} from "./worker-tool-counts.ts";
 import type {
   AppliedWorkerDecision,
   WorkerDecisionRequest,
@@ -12,7 +18,7 @@ export interface WorkerSummary {
   effort?: string;
   running: number;
   /** Totals across the shown workers; present only when tools were scored. */
-  tools?: { selected: number; rejected: number };
+  tools?: WorkerToolCounts;
   details?: string[];
 }
 
@@ -23,7 +29,7 @@ interface Worker {
   role?: string;
   tier?: Tier;
   /** Scored-tool counts only; identities and paths never reach presentation. */
-  tools?: { selected: number; rejected: number };
+  tools?: WorkerToolCounts;
   receipt?: AppliedWorkerDecision;
   binding?: SubagentWorkerDecisionAcceptedEvent;
   status?: Status;
@@ -102,11 +108,13 @@ export class WorkerStatus {
     worker.receipt = Object.freeze({ ...receipt });
   }
 
-  tools(owner: WorkerAssessment | undefined, counts: { selected: number; rejected: number }): void {
-    if (owner?.epoch !== this.epoch || owner.receipt) return;
-    const valid = (n: number) => Number.isSafeInteger(n) && n >= 0;
-    if (valid(counts.selected) && valid(counts.rejected))
-      owner.tools = { selected: counts.selected, rejected: counts.rejected };
+  tools(owner: WorkerAssessment | undefined, counts: WorkerToolCounts): void {
+    if (owner?.epoch !== this.epoch || owner.receipt || !isWorkerToolCounts(counts)) return;
+    owner.tools = {
+      selected: counts.selected,
+      rejected: counts.rejected,
+      reasons: { ...counts.reasons },
+    };
   }
 
   accepted(value: unknown): value is SubagentWorkerDecisionAcceptedEvent {
@@ -318,12 +326,7 @@ export class WorkerStatus {
     const efforts = new Set(selected.map((worker) => worker.receipt?.thinking));
     const effort = efforts.size > 1 ? "mixed" : selected[0]?.receipt?.thinking;
     const scored = selected.flatMap((worker) => (worker.tools ? [worker.tools] : []));
-    const tools = scored.length
-      ? {
-          selected: scored.reduce((sum, item) => sum + item.selected, 0),
-          rejected: scored.reduce((sum, item) => sum + item.rejected, 0),
-        }
-      : undefined;
+    const tools = scored.length ? addWorkerToolCounts(scored) : undefined;
     return {
       activity,
       ...(effort ? { effort } : {}),
@@ -346,7 +349,7 @@ export class WorkerStatus {
       worker.receipt?.reason,
       safeIdentity(worker.receipt?.model),
       worker.receipt?.thinking,
-      worker.tools ? `tools +${worker.tools.selected} −${worker.tools.rejected}` : undefined,
+      worker.tools ? formatWorkerToolCounts(worker.tools) : undefined,
       worker.status,
     ]
       .filter(Boolean)

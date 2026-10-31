@@ -1,3 +1,4 @@
+import { formatWorkerToolCounts } from "./worker-tool-counts.ts";
 import type {
   ExtensionAPI,
   ExtensionUIContext,
@@ -270,7 +271,7 @@ export class LiveStatusLine {
       });
     const tools = this.workerSummary?.tools;
     if (options.workers && (this.busy() || this.running) && workers && tools)
-      parts.push({ text: `tools +${tools.selected} −${tools.rejected}`, color: "dim" });
+      parts.push({ text: formatWorkerToolCounts(tools), color: "dim" });
     if (parts.length === 1) parts.push({ text: "ready", color: "muted" });
     return parts;
   }

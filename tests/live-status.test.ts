@@ -432,9 +432,11 @@ test("LIVE-TOOLS worker summary shows aggregate selected/not-selected tool count
     activity: "2 workers running",
     effort: "mixed",
     running: 2,
-    tools: { selected: 3, rejected: 5 },
+    tools: { selected: 3, rejected: 5, reasons: { danger: 2, invalid: 0, ineligible: 3 } },
   });
-  expect(text()).toBe("Jev · reading · high · /tdd · 2 workers · tools +3 −5");
+  expect(text()).toBe(
+    "Jev · reading · high · /tdd · 2 workers · tools +3 −5 (danger 2, ineligible 3)",
+  );
 });
 
 test("LIVE-TOOLS worker summary without scored tools adds no tools part", () => {

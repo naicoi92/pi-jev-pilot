@@ -1,3 +1,4 @@
+import type { WorkerToolCounts } from "./worker-tool-counts.ts";
 import type {
   ThinkingLevel,
   WorkerDecision,
@@ -57,7 +58,7 @@ export function createWorkerAuthority(options: {
   configurationError(message: string): void;
   selectedTier?(tier: Tier): void;
   /** Counts only: scored candidates split by threshold. Never tool identities or paths. */
-  toolsScored?(counts: { selected: number; rejected: number }): void;
+  toolsScored?(counts: WorkerToolCounts): void;
 }): WorkerDecisionAuthority {
   return {
     async decide(request, context) {
@@ -113,9 +114,10 @@ export function createWorkerAuthority(options: {
         if (enabled && !toolSelectionSupported && request.facts.tools?.length) {
           warnTool("Worker tool selection is unavailable for this launch.");
         }
+        const inventory = enabled && toolSelectionSupported ? (request.facts.tools ?? []) : [];
         const candidates =
           enabled && toolSelectionSupported
-            ? (request.facts.tools ?? []).filter(
+            ? inventory.filter(
                 (tool) =>
                   !!tool.sourcePath &&
                   isAbsolute(tool.sourcePath) &&
@@ -174,20 +176,28 @@ export function createWorkerAuthority(options: {
           ...(tool.namespace ? { namespace: tool.namespace } : {}),
           sourcePath: tool.sourcePath,
         });
+        let invalid = 0;
+        let danger = 0;
         const scoredAllowed = offeredTools.flatMap((tool, index) => {
           if (!answers) return [];
           const score = answers?.[`tool_${index}`]?.noul;
           if (typeof score !== "number" || !Number.isFinite(score) || score < 0 || score > 1) {
             warnTool(`Worker tool score unavailable: ${tool.name}.`);
+            invalid++;
             return [];
           }
-          return score < assessment.config.workerToolRejectThreshold ? [identity(tool)] : [];
+          if (score >= assessment.config.workerToolRejectThreshold) {
+            danger++;
+            return [];
+          }
+          return [identity(tool)];
         });
         const selectedTools = answers ? [...scoredAllowed, ...unscoredTools.map(identity)] : [];
         if (offeredTools.length && answers)
           options.toolsScored?.({
             selected: selectedTools.length,
-            rejected: candidates.length - selectedTools.length,
+            rejected: inventory.length - selectedTools.length,
+            reasons: { danger, invalid, ineligible: inventory.length - candidates.length },
           });
         if (fixedBaseline || result.outcome !== "classified") {
           const baseline = retain(

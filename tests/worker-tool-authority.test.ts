@@ -132,7 +132,7 @@ test("worker authority reports selected and not-selected tool counts without too
           risky: { noul: 0 },
           tool_0: { noul: 0.1 },
           tool_1: { noul: 0.9 },
-          tool_2: { noul: 0.95 },
+          tool_2: { noul: "bad" },
         },
       });
     },
@@ -180,7 +180,8 @@ test("worker authority reports selected and not-selected tool counts without too
         facts: {
           task: "Find the defect",
           toolSelection: "supported",
-          tools: [tool("a"), tool("b"), tool("c")],
+          tools: [tool("a"), tool("b"), tool("c"), tool("codemode"), tool("granted")],
+          callerTools: ["granted"],
           role: { name: "worker", description: "Review", provenance: "resolved-agent" },
         },
         policyContext: {
@@ -206,7 +207,9 @@ test("worker authority reports selected and not-selected tool counts without too
         },
       },
     );
-    expect(reported).toEqual([{ selected: 1, rejected: 2 }]);
+    expect(reported).toEqual([
+      { selected: 1, rejected: 4, reasons: { danger: 1, invalid: 1, ineligible: 2 } },
+    ]);
   } finally {
     server.stop(true);
     delete process.env[key];

@@ -493,7 +493,11 @@ test("worker-status shows selected and not-selected tool counts, never identitie
   const { state } = fixture();
   const owner = state.assessing(request());
   state.tier(owner, "fast");
-  state.tools(owner, { selected: 1, rejected: 2 });
+  state.tools(owner, {
+    selected: 1,
+    rejected: 2,
+    reasons: { danger: 1, invalid: 0, ineligible: 1 },
+  });
   const withTool = {
     ...receipt(),
     selectedTools: [{ name: "PRIVATE_TOOL", sourcePath: "/private/x.ts" }],
@@ -501,7 +505,7 @@ test("worker-status shows selected and not-selected tool counts, never identitie
   state.applied(withTool);
   state.accepted(accepted(withTool));
   const details = state.details("call-a").join("\n");
-  expect(details).toContain("tools +1 −2");
+  expect(details).toContain("tools +1 −2 (danger 1, ineligible 1)");
   expect(details).not.toContain("PRIVATE_TOOL");
   expect(details).not.toContain("/private");
 });
