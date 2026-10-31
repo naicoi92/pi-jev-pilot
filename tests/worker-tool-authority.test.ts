@@ -20,7 +20,7 @@ test("AC1 and AC7: one worker assessment selects the host identity", async () =>
         answers: {
           effort: { choice: "low", confidence: 0.9 },
           risky: { noul: 0 },
-          tool_0: { noul: 0.8 },
+          tool_0: { noul: 0.1 },
         },
       });
     },
@@ -130,9 +130,9 @@ test("worker authority reports selected and not-selected tool counts without too
         answers: {
           effort: { choice: "low", confidence: 0.9 },
           risky: { noul: 0 },
-          tool_0: { noul: 0.9 },
-          tool_1: { noul: 0.1 },
-          tool_2: { noul: 0.05 },
+          tool_0: { noul: 0.1 },
+          tool_1: { noul: 0.9 },
+          tool_2: { noul: 0.95 },
         },
       });
     },

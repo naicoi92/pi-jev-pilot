@@ -131,8 +131,11 @@ export function createWorkerAuthority(options: {
               )
             : [];
         if (candidates.length > MAX_WORKER_TOOL_QUESTIONS)
-          warnTool("Worker tool inventory exceeds the scoring limit.");
+          warnTool("Worker tool inventory exceeds the scoring limit; unscored tools stay allowed.");
+        // Default-allow: every eligible tool is granted unless scored dangerous. Tools past
+        // the question cap are not scored and therefore stay allowed.
         const offeredTools = candidates.slice(0, MAX_WORKER_TOOL_QUESTIONS);
+        const unscoredTools = candidates.slice(MAX_WORKER_TOOL_QUESTIONS);
         if (fixedBaseline && !offeredTools.length) return retain(fixedBaseline);
         let config;
         try {
@@ -166,27 +169,25 @@ export function createWorkerAuthority(options: {
             ? (result.value as { answers?: Record<string, { noul?: unknown }> }).answers
             : undefined;
         if (!answers && offeredTools.length) warnTool("Worker tool scores unavailable.");
-        const selectedTools = offeredTools.flatMap((tool, index) => {
+        const identity = (tool: (typeof candidates)[number]) => ({
+          name: tool.name,
+          ...(tool.namespace ? { namespace: tool.namespace } : {}),
+          sourcePath: tool.sourcePath,
+        });
+        const scoredAllowed = offeredTools.flatMap((tool, index) => {
           if (!answers) return [];
           const score = answers?.[`tool_${index}`]?.noul;
           if (typeof score !== "number" || !Number.isFinite(score) || score < 0 || score > 1) {
             warnTool(`Worker tool score unavailable: ${tool.name}.`);
             return [];
           }
-          return score >= assessment.config.workerToolThreshold
-            ? [
-                {
-                  name: tool.name,
-                  ...(tool.namespace ? { namespace: tool.namespace } : {}),
-                  sourcePath: tool.sourcePath,
-                },
-              ]
-            : [];
+          return score < assessment.config.workerToolRejectThreshold ? [identity(tool)] : [];
         });
+        const selectedTools = answers ? [...scoredAllowed, ...unscoredTools.map(identity)] : [];
         if (offeredTools.length && answers)
           options.toolsScored?.({
             selected: selectedTools.length,
-            rejected: offeredTools.length - selectedTools.length,
+            rejected: candidates.length - selectedTools.length,
           });
         if (fixedBaseline || result.outcome !== "classified") {
           const baseline = retain(

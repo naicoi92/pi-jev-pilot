@@ -33,7 +33,7 @@ async function run(options: {
             answers: options.answers ?? {
               effort: { choice: "low", confidence: 0.9 },
               risky: { noul: 0 },
-              tool_0: { noul: 0.8 },
+              tool_0: { noul: 0.1 },
             },
           });
     },
@@ -254,7 +254,7 @@ test("AC4 invalid score omits only that tool", async () => {
       { name: "first", description: "first", sourcePath: "/tmp/a" },
       { name: "second", description: "second", sourcePath: "/tmp/b" },
     ],
-    answers: { ...base, tool_0: { noul: "bad" }, tool_1: { noul: 0.8 } },
+    answers: { ...base, tool_0: { noul: "bad" }, tool_1: { noul: 0.1 } },
   });
   if (x.result.kind !== "committed") throw Error("not committed");
   expect(x.result.receipt.selectedTools).toEqual([{ name: "second", sourcePath: "/tmp/b" }]);
@@ -275,20 +275,20 @@ test("AC4 Unicode tool warnings are byte-bounded and sanitize control characters
   expect(warning).not.toContain("\ufffd");
 });
 
-test("AC1 threshold is inclusive", async () => {
+test("AC1 reject threshold is inclusive: dangerous at or above it is dropped", async () => {
   const x = await run({
     tools: [
-      { name: "low", description: "low", sourcePath: "/tmp/a" },
+      { name: "below", description: "below", sourcePath: "/tmp/a" },
       { name: "edge", description: "edge", sourcePath: "/tmp/b" },
     ],
-    answers: { ...base, tool_0: { noul: 0.64 }, tool_1: { noul: 0.65 } },
+    answers: { ...base, tool_0: { noul: 0.69 }, tool_1: { noul: 0.7 } },
   });
   if (x.result.kind !== "committed") throw Error("not committed");
-  expect(x.result.receipt.selectedTools).toEqual([{ name: "edge", sourcePath: "/tmp/b" }]);
+  expect(x.result.receipt.selectedTools).toEqual([{ name: "below", sourcePath: "/tmp/a" }]);
 });
 test("AC4 invalid effort retains original with valid tool score", async () => {
   const x = await run({
-    answers: { effort: { choice: "invalid" }, risky: { noul: 0 }, tool_0: { noul: 0.8 } },
+    answers: { effort: { choice: "invalid" }, risky: { noul: 0 }, tool_0: { noul: 0.1 } },
   });
   if (x.result.kind !== "committed") throw Error("not committed");
   expect(x.result.receipt.thinking).toBe("high");
@@ -318,4 +318,20 @@ test("AC2 unsupported and caller tools are not scored", async () => {
     })),
   });
   expect(Object.keys(x.body.questions).filter((k) => k.startsWith("tool_"))).toEqual([]);
+});
+
+test("default-allow: tools beyond the scoring cap are allowed, only flagged ones are dropped", async () => {
+  const tools = Array.from({ length: 40 }, (_, i) => ({
+    name: `tool${i}`,
+    description: `tool${i}`,
+    sourcePath: `/tmp/${i}`,
+  }));
+  const answers: Record<string, unknown> = { ...base };
+  for (let i = 0; i < 32; i++) answers[`tool_${i}`] = { noul: i === 3 ? 0.95 : 0.1 };
+  const x = await run({ tools, answers });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  const names = x.result.receipt.selectedTools!.map((tool) => tool.name);
+  expect(names).toHaveLength(39);
+  expect(names).not.toContain("tool3");
+  expect(names).toContain("tool39");
 });

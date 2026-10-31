@@ -9,7 +9,8 @@ export interface JevConfig {
   readonly effortEnabled: boolean;
   readonly workerRoutingEnabled: boolean;
   readonly workerToolSelectionEnabled: boolean;
-  readonly workerToolThreshold: number;
+  /** A worker tool is dropped only when the classifier scores it dangerous/inappropriate at or above this value. */
+  readonly workerToolRejectThreshold: number;
   readonly skillsEnabled: boolean;
   readonly skillRerank: boolean;
   readonly strategyEnabled: boolean;
@@ -152,6 +153,7 @@ export function loadJevConfig(): JevConfig {
     [
       "schemaVersion",
       ...Object.keys(FLAGS),
+      "workerToolRejectThreshold",
       "workerToolThreshold",
       "designSkills",
       "classifier",
@@ -169,14 +171,19 @@ export function loadJevConfig(): JevConfig {
       flags[key] = root[key] as boolean;
     }
   }
-  const workerToolThreshold = "workerToolThreshold" in root ? root.workerToolThreshold : 0.65;
+  if ("workerToolThreshold" in root)
+    console.warn(
+      "Jev: ignored legacy workerToolThreshold (allow-score); tools are now allowed by default. Use workerToolRejectThreshold to tune the dangerous-tool cutoff.",
+    );
+  const workerToolRejectThreshold =
+    "workerToolRejectThreshold" in root ? root.workerToolRejectThreshold : 0.7;
   if (
-    typeof workerToolThreshold !== "number" ||
-    !Number.isFinite(workerToolThreshold) ||
-    workerToolThreshold < 0 ||
-    workerToolThreshold > 1
+    typeof workerToolRejectThreshold !== "number" ||
+    !Number.isFinite(workerToolRejectThreshold) ||
+    workerToolRejectThreshold < 0 ||
+    workerToolRejectThreshold > 1
   )
-    fail("workerToolThreshold", "expected a number between 0 and 1");
+    fail("workerToolRejectThreshold", "expected a number between 0 and 1");
   const design = "designSkills" in root ? root.designSkills : DESIGN_SKILLS;
   if (!Array.isArray(design)) fail("designSkills", "expected an array of strings");
   const designSkills = [
@@ -255,7 +262,7 @@ export function loadJevConfig(): JevConfig {
   return Object.freeze({
     schemaVersion: 1,
     ...flags,
-    workerToolThreshold: workerToolThreshold as number,
+    workerToolRejectThreshold: workerToolRejectThreshold as number,
     designSkills: Object.freeze(designSkills),
     classifier: Object.freeze({ url, apiKeyEnv, model, timeoutMs: timeoutMs as number }),
     tiers: Object.freeze(tiers),

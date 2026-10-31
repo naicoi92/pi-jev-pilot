@@ -118,9 +118,8 @@ test("AC1 native worker can invoke the JEV-selected host tool", async () => {
       risky: { noul: 0 },
       tier: { choice: "balanced", confidence: 1 },
     };
-    for (const [key, question] of Object.entries(questions))
-      if (key.startsWith("tool_"))
-        answers[key] = { noul: question.instructions?.includes("fixture_score_tool") ? 0.99 : 0 };
+    for (const key of Object.keys(questions))
+      if (key.startsWith("tool_")) answers[key] = { noul: 0 };
     return { answers };
   };
   f.toolCalls.push(

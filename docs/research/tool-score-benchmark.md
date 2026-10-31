@@ -1,5 +1,8 @@
 # Benchmark sơ bộ: JEV tool relevance
 
+> **Đã thay thế (2026-10-31):** worker tool selection chuyển sang *default-allow*. Câu hỏi classifier là "nguy hiểm / rõ ràng không phù hợp"; chỉ tool có điểm >= `workerToolRejectThreshold` (mặc định `0.7`) bị loại, tool vượt cap 32 câu hỏi vẫn được cho phép. Ngưỡng `0.65` dưới đây là của mô hình *chọn tool phù hợp* cũ. Probe 2 task thật cho thấy mô hình cũ loại cả `codegraph_*`, `fetch_content`, `todo` (điểm 0.4–0.6); `workerToolThreshold` cũ bị bỏ qua kèm cảnh báo.
+
+
 **Kết quả:** Default đề xuất `0.65`, cấu hình được. Dataset nhỏ, nhãn do assistant gán trước khi chạy và chưa được user review; kết quả không phải bảo đảm an toàn.
 
 ## Phương pháp

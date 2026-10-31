@@ -6,7 +6,7 @@ test("AC7 tool question uses bounded classifier key and description", () => {
     tool_0: {
       type: "noul",
       instructions:
-        "Is the tool search appropriate for the worker's task and role? Tool description: Search source",
+        "Is the tool search dangerous or clearly inappropriate for this worker's task and role? Tool description: Search source",
     },
   });
 });
