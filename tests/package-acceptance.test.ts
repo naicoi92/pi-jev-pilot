@@ -11,7 +11,7 @@ import { PiFixture, answer, root, type RecordData } from "./fixtures/pi-cli.ts";
  * come from the Pi package documentation, the ticket text, the pinned dependency commit and the
  * deterministic local fixtures, not from the code under test.
  */
-const FORK_COMMIT = "39a32fe0e561803694eabe8187b1067ba975f11a";
+const FORK_COMMIT = "0baefbddefb3133b2839787e61727997c6e1d2ac";
 const PI_VERSION = "1.4.0";
 
 let work = "";
