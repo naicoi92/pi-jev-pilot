@@ -12,6 +12,7 @@ import type {
 import type { SubagentAttachedForegroundCompleteEvent } from "pi-subagents/shared-types";
 import { safeAgent, safeIdentity } from "./decision-visibility.ts";
 import type { Tier } from "./tier-policy.ts";
+import type { EffortRead } from "./decision-visibility.ts";
 
 export interface WorkerSummary {
   activity: string;
@@ -28,6 +29,8 @@ interface Worker {
   readonly logicalLaunchId: string;
   role?: string;
   tier?: Tier;
+  /** Numbers the decision model gave for effort; never task text. */
+  effortRead?: EffortRead;
   /** Scored-tool counts only; identities and paths never reach presentation. */
   tools?: WorkerToolCounts;
   receipt?: AppliedWorkerDecision;
@@ -99,6 +102,15 @@ export class WorkerStatus {
 
   tier(owner: WorkerAssessment | undefined, tier: Tier): void {
     if (owner?.epoch === this.epoch && !owner.receipt) owner.tier = tier;
+  }
+
+  effortRead(owner: WorkerAssessment | undefined, read: EffortRead): void {
+    if (owner?.epoch === this.epoch && !owner.receipt) owner.effortRead = { ...read };
+  }
+
+  /** The effort read recorded for a launch, if the decision model answered. */
+  readFor(logicalLaunchId: string): EffortRead | undefined {
+    return this.workers.get(logicalLaunchId)?.effortRead;
   }
 
   applied(receipt: AppliedWorkerDecision): void {

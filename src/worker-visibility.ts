@@ -4,10 +4,12 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   latestDecisionRows,
   MAX_WORKER_SEQUENCE,
+  readEffortRead,
   readWorkerInvocation,
   safeAgent,
   safeIdentity,
   safeEffort,
+  type EffortRead,
   type WorkerDecisionRow,
   type VisibleOutcome,
 } from "./decision-visibility.ts";
@@ -206,6 +208,7 @@ export class WorkerVisibility {
   applied(
     toolCallId: string,
     pair: { model: unknown; thinking: unknown; requestedThinking?: unknown },
+    effortRead?: EffortRead,
   ): void {
     const owner = this.rows.get(toolCallId);
     if (!owner || owner.blocked) return;
@@ -217,6 +220,7 @@ export class WorkerVisibility {
       requested: safeEffort(pair.requestedThinking ?? pair.thinking),
       effective,
       elapsedMs: Date.now() - owner.started,
+      ...(effortRead && readEffortRead(effortRead) ? { effortRead } : {}),
     };
     owner.decision = `plan ${workerTarget(model, effective)} · launch unconfirmed`;
     // Plan row is keyed by invocation, so a later row supersedes the unknown placeholder.

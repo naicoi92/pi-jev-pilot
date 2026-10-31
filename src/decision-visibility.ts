@@ -49,6 +49,42 @@ export interface MainDecisionRow {
   outcome: VisibleOutcome;
   elapsedMs: number;
 }
+/**
+ * What the decision model said about effort, as numbers only. Lets a reader tell a high
+ * result that the classifier chose from one that a policy floor lifted. Never carries task text.
+ */
+export interface EffortRead {
+  /** Rubric level 0..4 after the close-call lean, or null when none was read. */
+  level: number | null;
+  confidence: number | null;
+  risky: number | null;
+  /** Probability for each rubric level 0..4, or null when the model gave none. */
+  probabilities: number[] | null;
+}
+const unit = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+const nullable = (value: unknown): boolean => value === null || unit(value);
+export function readEffortRead(value: unknown): EffortRead | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const read = value as Record<string, unknown>;
+  const keys = ["level", "confidence", "risky", "probabilities"];
+  if (Object.keys(read).length !== keys.length || Object.keys(read).some((k) => !keys.includes(k)))
+    return;
+  const level = read.level;
+  if (
+    level !== null &&
+    !(Number.isInteger(level) && (level as number) >= 0 && (level as number) <= 4)
+  )
+    return;
+  if (!nullable(read.confidence) || !nullable(read.risky)) return;
+  const probabilities = read.probabilities;
+  if (
+    probabilities !== null &&
+    !(Array.isArray(probabilities) && probabilities.length === 5 && probabilities.every(unit))
+  )
+    return;
+  return value as EffortRead;
+}
 export interface WorkerDecisionRow {
   version: 1;
   kind: "worker";
@@ -61,6 +97,8 @@ export interface WorkerDecisionRow {
   effective: VisibleEffort;
   outcome: VisibleOutcome;
   elapsedMs: number;
+  /** Present only when the decision model was asked about effort and answered. */
+  effortRead?: EffortRead;
 }
 export type DecisionRow = MainDecisionRow | WorkerDecisionRow;
 export function safeIdentity(value: unknown): string {
@@ -88,7 +126,14 @@ export function readDecisionRow(value: unknown): DecisionRow | undefined {
   const keys =
     row.kind === "main"
       ? [...common, "previous"]
-      : [...common, "invocation", "agent", "stage", "retained"];
+      : [
+          ...common,
+          "invocation",
+          "agent",
+          "stage",
+          "retained",
+          ...("effortRead" in row ? ["effortRead"] : []),
+        ];
   if (
     Object.keys(row).length !== keys.length ||
     Object.keys(row).some((key) => !keys.includes(key))
@@ -110,8 +155,13 @@ export function readDecisionRow(value: unknown): DecisionRow | undefined {
     if (!readWorkerInvocation(row.invocation) || safeAgent(row.agent) !== row.agent) return;
     if (row.stage !== "plan" && row.stage !== "executor") return;
     if (row.retained !== "unknown" && safeIdentity(row.retained) !== row.retained) return;
+    if ("effortRead" in row && !readEffortRead(row.effortRead)) return;
   } else return;
   return value as DecisionRow;
+}
+function effortReadLine(read: EffortRead): string {
+  const probs = read.probabilities?.map((p) => p.toFixed(2)).join("/") ?? "none";
+  return `Effort read: level ${read.level ?? "none"} · confidence ${read.confidence ?? "none"} · risky ${read.risky ?? "none"} · P(0..4) ${probs}`;
 }
 export function decisionLines(row: DecisionRow, expanded: boolean): string[] {
   const heading =
@@ -131,6 +181,7 @@ export function decisionLines(row: DecisionRow, expanded: boolean): string[] {
       : [
           `Retained → selected target: ${row.retained} → ${row.model}`,
           `Requested → effective effort: ${row.requested} → ${row.effective}`,
+          ...(row.effortRead ? [effortReadLine(row.effortRead)] : []),
           `Elapsed: ${row.elapsedMs}ms`,
           "Executor receipt reports launch target, not server-resolved identity.",
         ]),

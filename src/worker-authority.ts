@@ -7,7 +7,8 @@ import type {
   WorkerDecisionBaseline,
 } from "pi-subagents/worker-decision-authority";
 import { classify, systemOneConfig, WORKER_EFFORT_QUESTION } from "./system-one.ts";
-import { selectEffort } from "./effort-policy.ts";
+import { effortScore, selectEffort } from "./effort-policy.ts";
+import type { EffortRead } from "./decision-visibility.ts";
 import { type EffortAssessment } from "./effort-assessment.ts";
 import { selectsSlot, selectWorkerModel } from "./crew-policy.ts";
 import { cascadeTiers } from "./tier-fallback.ts";
@@ -60,6 +61,8 @@ export function createWorkerAuthority(options: {
   selectedTier?(tier: Tier): void;
   /** Counts only: scored candidates split by threshold. Never tool identities or paths. */
   toolsScored?(counts: WorkerToolCounts): void;
+  /** What the decision model said about effort, numbers only. Never task text. */
+  effortRead?(read: EffortRead): void;
 }): WorkerDecisionAuthority {
   return {
     async decide(request, context) {
@@ -218,6 +221,19 @@ export function createWorkerAuthority(options: {
             : baseline;
         }
         const decision = result.decision;
+        if (decision && options.effortRead) {
+          const level = effortScore(decision, assessment.tuning.effortCloseMargin);
+          const raw = decision.effortProbabilities;
+          const probabilities = raw
+            ? [0, 1, 2, 3, 4].map((index) => Number(raw[String(index)] ?? 0))
+            : null;
+          options.effortRead({
+            level,
+            confidence: decision.effortConfidence,
+            risky: decision.risky,
+            probabilities,
+          });
+        }
         const tierDecision = decision?.tier
           ? {
               tier: decision.tier,

@@ -97,7 +97,7 @@ export function registerWorkerAdapter(
   pi.events.on(SUBAGENT_WORKER_DECISION_ACCEPTED_EVENT, (event: unknown) => {
     if (!status.accepted(event)) return;
     const { toolCallId, receipt } = event;
-    visibility.applied(toolCallId, receipt);
+    visibility.applied(toolCallId, receipt, status.readFor(receipt.logicalLaunchId));
   });
   pi.events.on("subagent:child-status", (event: unknown) => status.child(event));
   pi.events.on("subagent:foreground-complete", (event: unknown) => status.complete(event));

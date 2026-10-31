@@ -396,3 +396,40 @@ test("RC-3 RESTORE-OVERFLOW cap rollover persists distinct bounded labels throug
   expect(new Set([first.label, second.label, next.label]).size).toBe(3);
   expect(branch).toHaveLength(4);
 });
+
+const read = {
+  level: 2,
+  confidence: 0.61,
+  risky: 0.08,
+  probabilities: [0.01, 0.15, 0.57, 0.24, 0.03],
+};
+test("EFFORT-READ-1 a worker row may carry numbers describing the effort read", () => {
+  const row = { ...worker("unconfirmed"), effortRead: read };
+  expect(readDecisionRow(row)).toBeDefined();
+  expect(decisionLines(row, true).join("\n")).toContain(
+    "Effort read: level 2 · confidence 0.61 · risky 0.08 · P(0..4) 0.01/0.15/0.57/0.24/0.03",
+  );
+});
+test("EFFORT-READ-2 a worker row without a read is unchanged", () => {
+  expect(readDecisionRow(worker("unconfirmed"))).toBeDefined();
+  expect(decisionLines(worker("unconfirmed"), true).join("\n")).not.toContain("Effort read");
+});
+test("EFFORT-READ-3 malformed or text-bearing reads are rejected", () => {
+  for (const bad of [
+    { ...read, note: "SECRET" },
+    { ...read, level: 5 },
+    { ...read, level: 1.5 },
+    { ...read, confidence: 2 },
+    { ...read, risky: "0.1" },
+    { ...read, probabilities: [0.1, 0.2] },
+    { ...read, probabilities: [0, 0, 0, 0, "x"] },
+    "task text",
+    [],
+  ])
+    expect(readDecisionRow({ ...worker("unconfirmed"), effortRead: bad })).toBeUndefined();
+  expect(readDecisionRow({ ...main, effortRead: read })).toBeUndefined();
+});
+test("EFFORT-READ-4 a read with no answer fields is valid", () => {
+  const empty = { level: null, confidence: null, risky: null, probabilities: null };
+  expect(readDecisionRow({ ...worker("unconfirmed"), effortRead: empty })).toBeDefined();
+});
