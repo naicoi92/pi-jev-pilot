@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { WorkerEvidence, reapWorkerCli } from "./fixtures/worker-evidence.ts";
 
 const root = resolve(import.meta.dir, "..");
-const executorCommit = "0baefbddefb3133b2839787e61727997c6e1d2ac";
+const executorCommit = "72aeb5e01c03e633430b35ecec4fa81652998668";
 /** Question names without per-tool `tool_N` scoring questions, which depend on the offered tool inventory. */
 const questionNames = (questions: unknown): string[] =>
   Object.keys(questions as object)
