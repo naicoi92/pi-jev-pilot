@@ -32,7 +32,7 @@ test("CFG-02-defaults: missing file and missing fields have identical approved d
     effortEnabled: true,
     workerRoutingEnabled: true,
     workerToolSelectionEnabled: true,
-    workerToolRejectThreshold: 0.7,
+    workerToolRejectThreshold: 0.5,
     workerInteractiveTools: ["ask_user_question"],
     skillsEnabled: true,
     skillRerank: false,

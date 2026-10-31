@@ -180,7 +180,7 @@ export function loadJevConfig(): JevConfig {
       "Jev: ignored legacy workerToolThreshold (allow-score); tools are now allowed by default. Use workerToolRejectThreshold to tune the dangerous-tool cutoff.",
     );
   const workerToolRejectThreshold =
-    "workerToolRejectThreshold" in root ? root.workerToolRejectThreshold : 0.7;
+    "workerToolRejectThreshold" in root ? root.workerToolRejectThreshold : 0.5;
   if (
     typeof workerToolRejectThreshold !== "number" ||
     !Number.isFinite(workerToolRejectThreshold) ||

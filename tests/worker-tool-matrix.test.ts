@@ -14,6 +14,7 @@ async function run(options: {
   incomplete?: boolean;
   tools?: Array<{ name: string; description: string; sourcePath: string }>;
   callerTools?: string[];
+  agent?: { name: string; [key: string]: unknown };
   status?: number;
   twice?: boolean;
   fork?: boolean;
@@ -22,11 +23,13 @@ async function run(options: {
 }) {
   const warnings: string[] = [];
   let body: any;
+  let state: any;
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     async fetch(request) {
       body = await request.json();
+      state = body.state;
       return options.status
         ? new Response("error", { status: options.status })
         : Response.json({
@@ -96,6 +99,7 @@ async function run(options: {
         toolSelection: options.unsupported ? "unsupported" : "supported",
         toolsIncomplete: options.incomplete,
         callerTools: options.callerTools,
+        ...(options.agent ? { agent: options.agent } : {}),
         tools: options.tools ?? [
           { name: "search", description: "Search source", sourcePath: "/tmp/plugin.ts" },
         ],
@@ -168,7 +172,7 @@ async function run(options: {
         },
       });
     }
-    return { result, body, warnings };
+    return { result, body, warnings, state };
   } finally {
     owner.dispose();
     server.stop(true);
@@ -281,7 +285,7 @@ test("AC1 reject threshold is inclusive: dangerous at or above it is dropped", a
       { name: "below", description: "below", sourcePath: "/tmp/a" },
       { name: "edge", description: "edge", sourcePath: "/tmp/b" },
     ],
-    answers: { ...base, tool_0: { noul: 0.69 }, tool_1: { noul: 0.7 } },
+    answers: { ...base, tool_0: { noul: 0.49 }, tool_1: { noul: 0.5 } },
   });
   if (x.result.kind !== "committed") throw Error("not committed");
   expect(x.result.receipt.selectedTools).toEqual([{ name: "below", sourcePath: "/tmp/a" }]);
@@ -347,4 +351,83 @@ test("interactive tools are never scored or granted to a worker", async () => {
   const questions = Object.values(x.body.questions as Record<string, { instructions?: string }>);
   expect(questions.some((q) => q.instructions?.includes("ask_user_question"))).toBe(false);
   expect(x.result.receipt.selectedTools?.map((tool) => tool.name)).toEqual(["search"]);
+});
+
+const toolList = (...names: string[]) =>
+  names.map((name) => ({ name, description: name, sourcePath: `/tmp/${name}.ts` }));
+const askedTools = (body: any) =>
+  Object.values(body.questions as Record<string, { instructions?: string }>)
+    .map((q) => /Is the tool (\S+)/.exec(q.instructions ?? "")?.[1])
+    .filter(Boolean);
+
+test("declared excludeTools are always withheld, even when the classifier would allow them", async () => {
+  const x = await run({
+    tools: toolList("keep", "ninerouter_status", "ninerouter_web_search", "powershell"),
+    agent: { name: "worker", excludeTools: ["ninerouter_*", "powershell"] },
+    answers: {
+      ...base,
+      tool_0: { noul: 0 },
+      tool_1: { noul: 0 },
+      tool_2: { noul: 0 },
+      tool_3: { noul: 0 },
+    },
+  });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  expect(x.result.receipt.selectedTools?.map((tool) => tool.name)).toEqual(["keep"]);
+  expect(askedTools(x.body)).toEqual(["keep"]);
+});
+
+test("a tool the agent declares in tools is never withheld by the classifier", async () => {
+  const x = await run({
+    tools: toolList("declared", "other"),
+    agent: { name: "worker", tools: ["declared", "read"] },
+    answers: { ...base, tool_0: { noul: 0.99 }, tool_1: { noul: 0.99 } },
+  });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  const names = x.result.receipt.selectedTools?.map((tool) => tool.name) ?? [];
+  expect(names).toContain("declared");
+  expect(names).not.toContain("other");
+  expect(askedTools(x.body)).not.toContain("declared");
+});
+
+test("declared exclusion wins over a declared tool", async () => {
+  const x = await run({
+    tools: toolList("both", "other"),
+    agent: { name: "worker", tools: ["both"], excludeTools: ["both"] },
+  });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  expect(x.result.receipt.selectedTools?.map((tool) => tool.name)).not.toContain("both");
+});
+
+test("agent metadata reaches the classifier state without the system prompt", async () => {
+  const x = await run({
+    agent: {
+      name: "worker",
+      source: "project",
+      tools: ["read"],
+      excludeTools: ["powershell"],
+      skills: ["tdd"],
+      allowNestedSubagents: false,
+      systemPromptChars: 1234,
+    },
+  });
+  expect(x.state.agent).toMatchObject({
+    name: "worker",
+    source: "project",
+    tools: ["read"],
+    excludeTools: ["powershell"],
+    skills: ["tdd"],
+    allowNestedSubagents: false,
+    systemPromptChars: 1234,
+  });
+  expect(JSON.stringify(x.state)).not.toContain('systemPrompt":"');
+});
+
+test("the dangerous-tool reject threshold defaults to 0.5", async () => {
+  const x = await run({
+    tools: toolList("below", "edge"),
+    answers: { ...base, tool_0: { noul: 0.49 }, tool_1: { noul: 0.5 } },
+  });
+  if (x.result.kind !== "committed") throw Error("not committed");
+  expect(x.result.receipt.selectedTools?.map((tool) => tool.name)).toEqual(["below"]);
 });

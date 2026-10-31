@@ -1,3 +1,4 @@
+import { applyAgentToolPolicy } from "./worker-tool-policy.ts";
 import type { WorkerToolCounts } from "./worker-tool-counts.ts";
 import type {
   ThinkingLevel,
@@ -115,24 +116,24 @@ export function createWorkerAuthority(options: {
           warnTool("Worker tool selection is unavailable for this launch.");
         }
         const inventory = enabled && toolSelectionSupported ? (request.facts.tools ?? []) : [];
-        const candidates =
-          enabled && toolSelectionSupported
-            ? inventory.filter(
-                (tool) =>
-                  !!tool.sourcePath &&
-                  isAbsolute(tool.sourcePath) &&
-                  !request.facts.callerTools?.includes(tool.name) &&
-                  !tool.name.startsWith("mcp__") &&
-                  !assessment.config.workerInteractiveTools.includes(tool.name) &&
-                  ![
-                    "list_mcp_resources",
-                    "list_mcp_resource_templates",
-                    "read_mcp_resource",
-                    "codemode",
-                    "models",
-                  ].includes(tool.name),
-              )
-            : [];
+        // The agent file is the contract: excludeTools always withholds, tools always grants.
+        const policy = applyAgentToolPolicy(inventory, request.facts.agent);
+        const eligible = (tool: (typeof inventory)[number]) =>
+          !!tool.sourcePath &&
+          isAbsolute(tool.sourcePath) &&
+          !request.facts.callerTools?.includes(tool.name) &&
+          !tool.name.startsWith("mcp__") &&
+          ![
+            "list_mcp_resources",
+            "list_mcp_resource_templates",
+            "read_mcp_resource",
+            "codemode",
+            "models",
+          ].includes(tool.name);
+        const declaredGrants = policy.declared.filter(eligible);
+        const candidates = policy.open.filter(
+          (tool) => eligible(tool) && !assessment.config.workerInteractiveTools.includes(tool.name),
+        );
         if (candidates.length > MAX_WORKER_TOOL_QUESTIONS)
           warnTool("Worker tool inventory exceeds the scoring limit; unscored tools stay allowed.");
         // Default-allow: every eligible tool is granted unless scored dangerous. Tools past
@@ -152,6 +153,7 @@ export function createWorkerAuthority(options: {
           {
             prompt: request.facts.task.slice(0, 2000),
             agentType: agent.slice(0, 128),
+            ...(request.facts.agent ? { agent: request.facts.agent } : {}),
             ...(request.facts.role
               ? { description: request.facts.role.description.slice(0, 512) }
               : {}),
@@ -193,12 +195,18 @@ export function createWorkerAuthority(options: {
           }
           return [identity(tool)];
         });
-        const selectedTools = answers ? [...scoredAllowed, ...unscoredTools.map(identity)] : [];
+        const selectedTools = answers
+          ? [...declaredGrants.map(identity), ...scoredAllowed, ...unscoredTools.map(identity)]
+          : declaredGrants.map(identity);
         if (offeredTools.length && answers)
           options.toolsScored?.({
             selected: selectedTools.length,
             rejected: inventory.length - selectedTools.length,
-            reasons: { danger, invalid, ineligible: inventory.length - candidates.length },
+            reasons: {
+              danger,
+              invalid,
+              ineligible: inventory.length - selectedTools.length - danger - invalid,
+            },
           });
         if (fixedBaseline || result.outcome !== "classified") {
           const baseline = retain(

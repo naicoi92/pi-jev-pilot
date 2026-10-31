@@ -174,10 +174,10 @@ New sessions do not inherit another session's decisions; resume/reload, forks/tr
 `workerRoutingEnabled` defaults to `true` and accepts only JSON booleans. Ordinary direct/async `subagent` calls use configured authenticated `tiers` mappings. Enable the exact tested fork executor separately with official Pi:
 
 ```bash
-pi install git:github.com/naicoi92/pi-subagents@72aeb5e01c03e633430b35ecec4fa81652998668
+pi install git:github.com/naicoi92/pi-subagents@d9f8f8c9a709a23adf5f323bb046f3fa91517d4c
 ```
 
-The runtime dependency uses the same immutable Git commit; importing its public adapter exports does not enable its tools. Keep **one physical executor owner**: do not also enable an upstream npm executor or another checkout. The fork tree is `a9bf34d1c45e44b2278f2b2520ed9f165f63cc66`; its manifest version `0.84.0` is only a source label (installed from this commit and read from its `package.json`), not upstream npm identity. This pairing uses official Pi 1.4.0, not a universal host guarantee. No npm publication or GitHub Release is required for this verified Git installation route.
+The runtime dependency uses the same immutable Git commit; importing its public adapter exports does not enable its tools. Keep **one physical executor owner**: do not also enable an upstream npm executor or another checkout. The fork tree is `bd4f8b030d9639735d0984cf6609fc37e88df796`; its manifest version `0.84.0` is only a source label (installed from this commit and read from its `package.json`), not upstream npm identity. This pairing uses official Pi 1.4.0, not a universal host guarantee. No npm publication or GitHub Release is required for this verified Git installation route.
 
 Originating native foreground/direct-async workers use the executor's public decision-authority API. Jev registers the actual file-first host session at startup/reload and owns its disposer; missing, stale or mismatched authority fails closed. One worker decision sends only a bounded factual projection to the classifier: task 2000 characters, resolved agent type 128 and description 512, without parent history or private policy context. The executor retains complete facts for logical identity and validates an explicit physical model and supported thinking pair before launch. A valid decision may overwrite a supplied model and configured agent thinking (max/low→medium). Service/schema/timeout failures retain only a verified original pair; invalid classifier configuration refuses actionably. Disabled routing leaves never-owned executor behavior unchanged; parent cancellation stops applicable work. Fork calls retain only their verified executor pair. Workflow inner launches remain advice-based. Tier comparisons use the executor's trusted explicit-caller or parent physical identity, separately from its original execution-retention pair. Unknown comparison identity is not replaced with an agent default. The reviewed API supports assessed complete pairs even when original thinking is unresolved; unknown effort never becomes a guessed SDK default.
 
@@ -244,7 +244,7 @@ Tested stack, all local and deterministic:
 | Component                                       | Tested version                                                                                                     |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Official Pi (`@earendil-works/pi-coding-agent`) | 1.4.0 (`@earendil-works/pi-ai` 1.4.0); wildcard peer ranges are not a compatibility promise                        |
-| Execution package (`pi-subagents` fork)         | commit `72aeb5e01c03e633430b35ecec4fa81652998668`, tree `a9bf34d1c45e44b2278f2b2520ed9f165f63cc66`, label `0.84.0` |
+| Execution package (`pi-subagents` fork)         | commit `d9f8f8c9a709a23adf5f323bb046f3fa91517d4c`, tree `bd4f8b030d9639735d0984cf6609fc37e88df796`, label `0.84.0` |
 | Bun                                             | >=1.4.3; verified 1.4.4 for the acceptance run                                                                     |
 | Upstream behavior                               | Jev Pilot 0.12.1 at `5d27135b34edf81b40c0bf1df01ae401f6b72ea7`                                                     |
 
